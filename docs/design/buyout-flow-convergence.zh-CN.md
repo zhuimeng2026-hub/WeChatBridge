@@ -432,6 +432,14 @@ POST /v1/admin/revoke    { licenseId }   → {}
 - **适配（我方 4 表模型的必然差异，非私改契约）**：① **reissue 无 pending 请求时新插一行已确认请求**（复制旧行 anchor/amount，9 参）——双表模型下 binding 的 request_id 必须链到一行，否则买家的 poller 永远学不会 reissue（「a licence nobody can poll for is a licence nobody collects」）；对方 5 表模型 bindings 并入 requests，无此问题。② licence 判活走 `LiveBindingByInstallID`（binding 表）而非请求行状态。③ 迁移新增部分唯一索引 `activation_requests_live_install_idx ON activation_requests (install_id) WHERE status = 'pending'`，与 upsert 的 `ON CONFLICT (install_id) WHERE status='pending'` 精确对齐。
 - **出口**：`go build/vet/test ./...` 9 包全绿（-count=1 全新），activation 包 18 测试，store 侧 create 三例 + reissue 持久化例。
 
+#### R-8 A-⑥ 落地与第二次碰撞的整合（2026-10-18 22:30 后，用户两次裁决）
+
+- **事实一（D5 确认）**：用户确认「管理员也是扫码登录」——admin 端点与买家端共用 Bearer 扫码令牌，无独立密码。落地为 `activation.AdminGuard`：`RequireAuth` + `WCB_ADMIN_OPENIDS` 白名单；**空名单 = 503 不是 403**（没配名单是运维失误，403 会把卖家引向查自己账号权限）；openid 精确匹配；账号→openid 经 `auth.Service.Account` 注入（Options.AccountByID），activation 不 import auth。4 表基 config 已实现同变量且生产强制必配，运行时 503 是第二道保险。M-1 随之转「已定」。
+- **事实二（买断 = 全功能）**：用户确认买断即全功能。`buyoutEntitlements()` = PRO/PDF/EXPORT/SCENE/HISTORY 五枚全签，`Lifetime=0` 永久。mock 的 `ent:["pro"]` 是占位（R-4 原登记，此处复确认）。
+- **事实三（第二次碰撞）**：用户裁决「A-⑤/A-⑥ 归本会话移植」后，本会话开始移植；期间**另一方亦完成 A-⑤ 的 4 表移植并 push**（`3fc5702`）。用户再裁：对方 A-⑤ 全盘保留（其 upsert 保号 + licence 判活优于本会话平行版本），本会话只叠加 A-⑥。本会话平行完成态存 tag `a6-port-20261018`。**教训**：并行分支+同一 git 身份下，「认领」必须落到 commit 才作数——看板的 ⬜ 拦不住另一台机器的手。
+- **A-⑥ 契约口径**（均在 handler 注释与测试钉死）：confirm 请求体只带 `requestId`（机器码以库行为准，否则「给甲确认签乙的票」就是一个请求的事）；已确认幂等返回原 licenseId；已拒绝 → 409；`ErrConflict`（两卖家竞态 / 机器或账号已有生效绑定——两个 partial unique 索引）→ 重读，胜者已确认就返回胜者 id。reissue 全交 `ReissueLicence` 事务；「账号在别的机器有生效票」→ 409（换机 = 先作废再重签）。revoke 幂等由 store 区分「已作废」/「从未签发」。列表 item 的 `licenseId`/`avatarUrl` 为对 mock 的增量字段；`amountFen` 可空（`*int64`，买家未填价 JSON 为 `null`）。fake 未建模两个部分唯一索引，测试以 `strictConfirmStore`/`strictReissueStore` 包装 store 代行。
+- **定级**：✅ 已落地（A-⑥ commit，build/vet/test 全绿：对方 18 例 + A-⑥ 21 例）。
+
 #### 流程补记
 
 本册建立本身即验证了同步协议 §5 的价值：C 发现缺陷后**守规矩未私改**、按 message 上报；A 的验证修正了其中一条的定级（C-2 从「发行炸弹」降为「契约违背」）——这正是「先登记、后修复」要达成的效果：缺陷不丢，定级不失真。

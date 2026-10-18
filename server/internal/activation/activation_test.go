@@ -48,7 +48,12 @@ func testAuth(accountID string) gin.HandlerFunc {
 
 func newTestEngine(t *testing.T, st *fakeActivationStore, accountID string) *gin.Engine {
 	t.Helper()
-	svc, err := NewService(Options{Store: st, AccountOf: testAccountReader(accountID)})
+	svc, err := NewService(Options{
+		Store:       st,
+		AccountOf:   testAccountReader(accountID),
+		Signer:      testSigner(t),
+		AccountByID: testAccountByID(accountID),
+	})
 	if err != nil {
 		t.Fatalf("NewService: %v", err)
 	}

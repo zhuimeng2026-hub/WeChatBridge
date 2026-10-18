@@ -25,10 +25,14 @@
 | A-② | API 契约 mock（`server/mock/`） | ✅ | `6a3285a` | 14 项 curl 实测通过；真实 handler 落地后删除 |
 | A-③ | 删 billing/redeem 包 + config 瘦身 | ✅ | `86abca3` | 13 文件 -5,438 行；build/vet/test 全绿；已推 fork |
 | A-④ | store 12 表 → 4 表 + migrations 重写 | ✅ | `88c07c9` | 4 表契约（AuthStore 9 + ActivationStore 9 + Close）；ConfirmActivationRequest/ReissueLicence 两事务；26 文件 +1754/-2321；build/vet/test 全绿；activation_test 22 用例 |
-| A-⑤ | activation 包（登记/状态/取票） | ✅ | `42ccdc8` | 4 表线上移植对方 A-⑤：HTTP 包 3 端点原样搬 + store upsert 化（ON CONFLICT 保号刷新 + RETURNING 防幻写 + 跨账号回落）；reissue 无 pending 时新插已确认行（复制 anchor/amount）；licence 判活走 LiveBindingByInstallID；18 测试 + 迁移加 live_install 部分索引；§11.7 补登 R-1/R-2/移植记录；build/vet/test 9 包全绿 |
-| A-⑥ | admin handler（列表/确认/重签/作废） | ⬜ | — | D5 最小版占位 |
-| A-⑦ | cmd/main.go 装配 + healthz + 优雅关闭 + embed 迁移 | ⬜ | — | 服务第一次真正 listen |
-| A-⑧ | 全量单测 + 集成测试 | ⬜ | — | 出口标准 |
+| A-⑤ | activation 包（登记/状态/取票） | ✅ | `3fc5702` | 4 表线上移植对方 A-⑤：HTTP 包 3 端点原样搬 + store upsert 化（ON CONFLICT 保号刷新 + RETURNING 防幻写 + 跨账号回落）；reissue 无 pending 时新插已确认行（复制 anchor/amount）；licence 判活走 LiveBindingByInstallID；18 测试 + 迁移加 live_install 部分索引；§11.7 补登 R-1/R-2/移植记录；build/vet/test 9 包全绿 |
+| A-⑥ | admin handler（列表/确认/重签/作废） | ✅ | 见下 | D5 已定并落地：管理员=买家端同一个 Bearer + `WCB_ADMIN_OPENIDS` 白名单（空名单 503，账号→openid 经 auth.Service.Account 注入）；四端点 21 测试：confirm 幂等+竞态重读+绑定冲突 409、reissue 走 ReissueLicence 事务、revoke 幂等（store 区分已作废/不存在）；买断 entitlement = 全功能五枚（用户确认）；契约字段对齐 mock；§11.7 补登 R-3/R-4/R-5/R-6 |
+| A-⑦ | cmd/main.go 装配 + healthz + 优雅关闭 + embed 迁移 | ⬜ | — | 服务第一次真正 listen；需把 `cfg.AdminOpenIDs`/`auth.Service.Account`/`license.Signer` 接进 activation.Options。**未认领** |
+| A-⑧ | 全量单测 + 集成测试 | ⬜ | — | 出口标准。**未认领** |
+
+## 第二次碰撞与整合（2026-10-18 22:30 后）
+
+用户裁决「以 4 表为基、A-⑤/A-⑥ 归本会话移植」后，本会话开始移植；**期间另一方亦完成了 A-⑤ 的 4 表移植并 push**（`3fc5702`，upsert 化 + licence 判活，质量高于本会话的平行版本）。用户再裁：**对方 A-⑤ 全盘保留，本会话只叠加其未做的 A-⑥**。本会话平行完成态（A-⑤+A-⑥，5 表基 + 4 表移植两版）存于 tag `a6-port-20261018`/`a6-backup-20261018`，SHA 可取，未丢失。分工自此以 commit 落地：A-⑤ 归对方，A-⑥ 归本会话，A-⑦/A-⑧ 待认领。
 
 ## 出口标准
 

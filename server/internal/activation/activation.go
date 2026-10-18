@@ -1,10 +1,16 @@
-// Package activation is the buy-out product's customer-facing half: a signed-in
-// machine registers itself, polls until the seller confirms the money, and
-// collects the signed licence. Three endpoints, no payment gateway.
+// Package activation is the buy-out product's two halves: the customer-facing
+// flow where a signed-in machine registers itself, polls until the seller
+// confirms the money, and collects the signed licence — and the seller's four
+// endpoints that make that confirmation possible.
 //
 //	POST /v1/activation/request   {installId, anchorDigest, amountFen?} -> {requestId, status}
 //	GET  /v1/activation/status                            -> {status, licenseId?}
 //	GET  /v1/activation/licence                           -> {token, envelope}
+//
+//	GET  /v1/admin/requests?status=pending                -> {items: [...]}
+//	POST /v1/admin/confirm   {requestId}                  -> {licenseId}
+//	POST /v1/admin/reissue   {installId}                  -> {licenseId}
+//	POST /v1/admin/revoke    {licenseId}                  -> {}
 //
 // The wire shapes are the frozen contract of the design document §11.3, the
 // runnable form of which is server/mock/server.js — the mock this package was
@@ -14,7 +20,7 @@
 // of this contract is another language, and a policy change on either side
 // would silently break every purchase in flight.
 //
-// Two rules shape the handlers:
+// Four rules shape the handlers:
 //
 //   - The account comes from the bearer token, never from the body. A request
 //     body that named its own account would let any signed-in customer file
@@ -23,6 +29,12 @@
 //     keyed by the caller's account, not by a request id in the URL. A URL
 //     that carried the id would let any signed-in customer read any other
 //     customer's licence by guessing it.
+//   - The admin half has no password of its own (D5): an administrator is a
+//     WeChat account on the allowlist, holding the same kind of bearer token
+//     any buyer holds. See AdminGuard.
+//   - What the seller confirms is what the database row says. The confirm
+//     body carries a request id and nothing else; the machine code a licence
+//     binds to comes from that row, never from the confirming request.
 //
 // This package was ported onto the 4-table store (activation requests and
 // licence bindings are separate rows here, not one), and one behaviour
@@ -85,7 +97,7 @@ const (
 	maxAnchorDigestLen = 128
 )
 
-// Service is the three endpoints' logic. It is safe for concurrent use.
+// Service is the flow's logic, both halves. It is safe for concurrent use.
 type Service struct {
 	store store.ActivationStore
 	log   *slog.Logger
@@ -96,12 +108,24 @@ type Service struct {
 	// auth.AccountIDFrom, which fails closed when the middleware that fills
 	// the claims never ran.
 	accountOf func(*gin.Context) (string, bool)
+
+	// signer issues the licences the seller's confirm and reissue write.
+	// The customer half never signs; the admin half cannot work without it.
+	signer *license.Signer
+
+	// accountByID reads an account by id, for the admin guard's openid
+	// check. Production passes auth's Service.Account.
+	accountByID func(ctx context.Context, accountID store.ID) (store.Account, error)
+
+	// adminOpenIDs is the seller allowlist. Empty disables the admin half.
+	adminOpenIDs []string
 }
 
-// Options are the wiring knobs. The store and the account reader are required:
-// this package signs nothing (the seller's confirm endpoint does that, on the
-// admin side) and issues no tokens, but every one of its three endpoints is
-// scoped to a signed-in account.
+// Options are the wiring knobs. The store and the account reader are required
+// by every endpoint; the signer and the account-by-id reader are required by
+// the admin half, which is part of this package — a nil signer would turn
+// "the seller confirmed the money" into a 500 at the worst possible moment,
+// so it fails at wiring time instead.
 type Options struct {
 	Store  store.ActivationStore
 	Logger *slog.Logger
@@ -112,6 +136,15 @@ type Options struct {
 	// passes auth.AccountIDFrom; a test passes whatever it needs the claims
 	// to say.
 	AccountOf func(*gin.Context) (string, bool)
+	// Signer issues licences (admin half). Required.
+	Signer *license.Signer
+	// AccountByID reads an account by id, for the admin guard's openid
+	// check. Required.
+	AccountByID func(ctx context.Context, accountID store.ID) (store.Account, error)
+	// AdminOpenIDs is the WeChat openid allowlist for the seller's console
+	// (WCB_ADMIN_OPENIDS). Empty means the admin endpoints answer 503 —
+	// a half-configured deployment fails loud, not permissive.
+	AdminOpenIDs []string
 }
 
 // NewService wires the flow together.
@@ -122,6 +155,12 @@ func NewService(opts Options) (*Service, error) {
 	if opts.AccountOf == nil {
 		return nil, errors.New("activation: account reader is required")
 	}
+	if opts.Signer == nil {
+		return nil, errors.New("activation: signer is required")
+	}
+	if opts.AccountByID == nil {
+		return nil, errors.New("activation: account reader by id is required")
+	}
 	if opts.Logger == nil {
 		opts.Logger = slog.Default()
 	}
@@ -129,10 +168,13 @@ func NewService(opts Options) (*Service, error) {
 		opts.Now = func() time.Time { return time.Now().UTC() }
 	}
 	return &Service{
-		store:     opts.Store,
-		log:       opts.Logger,
-		now:       opts.Now,
-		accountOf: opts.AccountOf,
+		store:        opts.Store,
+		log:          opts.Logger,
+		now:          opts.Now,
+		accountOf:    opts.AccountOf,
+		signer:       opts.Signer,
+		accountByID:  opts.AccountByID,
+		adminOpenIDs: opts.AdminOpenIDs,
 	}, nil
 }
 
