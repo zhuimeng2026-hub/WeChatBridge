@@ -3,6 +3,7 @@
 //
 //	GET  /v1/admin/requests?status=pending   -> the table the seller works from
 //	POST /v1/admin/confirm   {requestId}     -> {licenseId}
+//	POST /v1/admin/reject    {requestId}     -> {}
 //	POST /v1/admin/reissue   {installId}     -> {licenseId}
 //	POST /v1/admin/revoke    {licenseId}     -> {}
 //
@@ -46,12 +47,19 @@ import (
 	"github.com/freestylefly/WeChatBridge/server/internal/httpx"
 	"github.com/freestylefly/WeChatBridge/server/internal/license"
 	"github.com/freestylefly/WeChatBridge/server/internal/store"
+	"github.com/freestylefly/WeChatBridge/server/internal/token"
 )
 
 // ErrRequestRejected is a confirm of a request the seller already said no to.
 // It is an answer, not a failure: the row stays for the ledger, and the path
 // that revives that machine is a reissue.
 var ErrRequestRejected = errors.New("admin: request was rejected")
+
+// ErrRequestConfirmed is a refuse aimed at a request that already carries a
+// licence. The two actions are not interchangeable — one stops a purchase, the
+// other takes back something that was already granted — so the API refuses to
+// treat one as the other.
+var ErrRequestConfirmed = errors.New("admin: request is already confirmed")
 
 // Service is the console's logic. It is safe for concurrent use.
 type Service struct {
@@ -155,6 +163,7 @@ func (s *Service) RegisterRoutes(r gin.IRouter, requireAuth gin.HandlerFunc) {
 	group := r.Group("/v1/admin", requireAuth, s.requireAdmin())
 	group.GET("/requests", s.handleRequests)
 	group.POST("/confirm", s.handleConfirm)
+	group.POST("/reject", s.handleReject)
 	group.POST("/reissue", s.handleReissue)
 	group.POST("/revoke", s.handleRevoke)
 }
@@ -248,6 +257,32 @@ func (s *Service) Confirm(ctx context.Context, requestID string) (string, error)
 		return "", err
 	}
 	return confirmed.LicenseID, nil
+}
+
+// Reject refuses an order: the transfer never arrived, the machine code does
+// not match, the buyer changed their mind.
+//
+// It writes no licence and revokes nothing. A rejected request never had a
+// licence, and if that machine still holds a live one from an earlier order it
+// keeps it — refusing this order is not revoking that licence. Revoking is what
+// Revoke does, and it takes a licence id.
+//
+// The row stays for the ledger. The path that brings that machine back is a
+// fresh registration: the partial unique index on pending requests means
+// rejecting frees the machine immediately, with no extra step.
+func (s *Service) Reject(ctx context.Context, requestID string) error {
+	_, err := s.activation.RejectActivationRequest(ctx, requestID, s.now())
+	if err != nil {
+		// Already confirmed is the one worth naming. Confirming after the fact
+		// is Revoke's job, and saying "rejected" there would be a lie about
+		// which of the two actually happened.
+		if errors.Is(err, store.ErrConflict) {
+			return ErrRequestConfirmed
+		}
+		return err
+	}
+	s.log.Info("request rejected", "request", token.Fingerprint(requestID))
+	return nil
 }
 
 // Reissue is the machine-change path: retire whatever licence the machine

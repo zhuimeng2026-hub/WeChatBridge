@@ -118,8 +118,15 @@ func TestPlanMigrationsReadsTheRealEmbeddedFiles(t *testing.T) {
 		t.Fatal("the embedded migration set is empty")
 	}
 	for _, m := range migs {
-		if !strings.Contains(strings.ToUpper(m.Up), "CREATE TABLE") {
-			t.Errorf("migration %s has no CREATE TABLE — is it really the schema?", m.Name)
+		// Both forms, because both are schema migrations. A guard that only
+		// accepted CREATE TABLE would have made ADD COLUMN impossible to ship —
+		// which is a rule that gets worked around (a throwaway CREATE TABLE
+		// nobody asked for) rather than fixed. What is actually being checked
+		// is that every embedded file changes the schema at all, so a file that
+		// is a typo, a comment, or an index nobody needed still fails.
+		up := strings.ToUpper(m.Up)
+		if !strings.Contains(up, "CREATE TABLE") && !strings.Contains(up, "ALTER TABLE") {
+			t.Errorf("migration %s changes nothing — is it really the schema?", m.Name)
 		}
 	}
 }

@@ -336,6 +336,27 @@ func (f *fakeStore) ConfirmActivationRequest(_ context.Context, requestID, licen
 	return store.ActivationRequest{}, store.ErrNotFound
 }
 
+func (f *fakeStore) RejectActivationRequest(_ context.Context, requestID string, at time.Time) (store.ActivationRequest, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for i := range f.requests {
+		r := &f.requests[i]
+		if r.RequestID != requestID {
+			continue
+		}
+		if r.Status != store.ActivationPending {
+			// Confirm and reject share one conditional flip, so the same race
+			// decides both: whoever commits first, the other reads a conflict.
+			return store.ActivationRequest{}, store.ErrConflict
+		}
+		r.Status = store.ActivationRejected
+		rejectedAt := at
+		r.RejectedAt = &rejectedAt
+		return r.ActivationRequest, nil
+	}
+	return store.ActivationRequest{}, store.ErrNotFound
+}
+
 func (f *fakeStore) ReissueLicence(_ context.Context, installID, licenseID string, envelopeJSON []byte, at time.Time) (store.ActivationRequest, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

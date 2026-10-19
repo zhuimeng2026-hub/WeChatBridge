@@ -33,7 +33,7 @@ import (
 // (SQLSTATE 42702), not a warning.
 const activationRequestColumns = `
 	request_id, account_id, install_id, anchor_digest, amount_fen,
-	status, envelope_json, license_id, created_at, confirmed_at`
+	status, envelope_json, license_id, created_at, confirmed_at, rejected_at`
 
 // qualifiedActivationRequestColumns is activationRequestColumns with the `r.`
 // prefix this table is joined under. Same columns, same order — the scanners
@@ -41,7 +41,7 @@ const activationRequestColumns = `
 // drift.
 const qualifiedActivationRequestColumns = `
 	r.request_id, r.account_id, r.install_id, r.anchor_digest, r.amount_fen,
-	r.status, r.envelope_json, r.license_id, r.created_at, r.confirmed_at`
+	r.status, r.envelope_json, r.license_id, r.created_at, r.confirmed_at, r.rejected_at`
 
 // createActivationRequestSQL is the idempotent registration. A machine with a
 // live request updates that row instead of queueing a second one on the
@@ -115,6 +115,15 @@ const confirmInsertBindingSQL = `
 // being pending, and the guard is not redundant with the lock: it is the line
 // a reviewer greps for, and the line that keeps the answer at one licence if
 // the lock is ever traded for a weaker read.
+// rejectFlipSQL writes the terminal state and its timestamp together, so the
+// database's activation_requests_rejected_is_dated constraint can never be
+// made to hold one without the other. Conditional on pending for the same
+// reason confirm is: two sellers, one row, one winner.
+const rejectFlipSQL = `
+	UPDATE activation_requests
+		SET status = 'rejected', rejected_at = $2
+		WHERE request_id = $1 AND status = 'pending'`
+
 const confirmFlipSQL = `
 	UPDATE activation_requests
 	SET status = 'confirmed', license_id = $2, envelope_json = $3, confirmed_at = $4
@@ -309,6 +318,46 @@ func newRequestID() (string, error) {
 // request of any kind for that machine. The seller is looking at a machine
 // code this service has never heard of, and a reissue that invented a licence
 // out of thin air would be a support call nobody can explain.
+// RejectActivationRequest flips a pending request to rejected and records when.
+//
+// No licence is written and no binding is touched: a rejected request never had
+// either, and if the machine already holds a live licence from an earlier order
+// that licence is unaffected. Refusing one order is not a revocation —
+// RevokeBinding is what does that, and it takes a licence id, not a request id.
+//
+// The conditional flip is the whole point. A seller pressing refuse and confirm
+// at the same moment produces one winner; the loser gets ErrConflict and
+// re-reads the row to see which outcome it was. Same shape as confirm.
+func (s *Store) RejectActivationRequest(ctx context.Context, requestID string, at time.Time) (store.ActivationRequest, error) {
+	var result store.ActivationRequest
+	now := utc(at)
+
+	err := s.inTx(ctx, func(tx pgx.Tx) error {
+		r, err := scanActivationRequest(tx.QueryRow(ctx, confirmLockSQL, requestID))
+		if err != nil {
+			return notFound("reject activation request: load", err)
+		}
+		tag, err := tx.Exec(ctx, rejectFlipSQL, requestID, now)
+		if err != nil {
+			return wrap("reject activation request: flip", err)
+		}
+		// The row was locked and we read its state; zero rows affected means it
+		// changed underneath us, which is the concurrent-winner case, not a miss.
+		if err := conflictWhenUnchanged("reject activation request: flip", nil, tag.RowsAffected()); err != nil {
+			return err
+		}
+		r.Status = store.ActivationRejected
+		rejectedAt := now
+		r.RejectedAt = &rejectedAt
+		result = r
+		return nil
+	})
+	if err != nil {
+		return store.ActivationRequest{}, err
+	}
+	return result, nil
+}
+
 func (s *Store) ReissueLicence(ctx context.Context, installID, licenseID string, envelopeJSON []byte, at time.Time) (store.ActivationRequest, error) {
 	var result store.ActivationRequest
 	now := utc(at)

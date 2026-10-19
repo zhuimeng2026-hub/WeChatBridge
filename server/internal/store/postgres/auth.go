@@ -422,10 +422,10 @@ func (s *Store) RotateRefresh(ctx context.Context, oldHash, newHash, newAccessHa
 	)
 	err := s.inTx(ctx, func(tx pgx.Tx) error {
 		var (
-			accountID, chainID  string
+			accountID, chainID    string
 			currentHash, prevHash string
-			expiresAt           time.Time
-			revokedAt           pgtype.Timestamptz
+			expiresAt             time.Time
+			revokedAt             pgtype.Timestamptz
 		)
 		err := tx.QueryRow(ctx, sessionMatchForUpdateSQL, oldHash).Scan(
 			&accountID, &chainID, &currentHash, &prevHash, &expiresAt, &revokedAt,

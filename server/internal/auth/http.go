@@ -326,6 +326,10 @@ func (s *Service) handleRefresh(c *gin.Context) {
 	}
 }
 
+// accountOrNil resolves through the service so the refresh reply carries the
+// same avatar the poll does. Passing "" here would have been the one-line fix
+// and it is the wrong one: the client would show an avatar until it refreshed
+// and then no avatar at all, which reads as the account losing its picture.
 func (s *Service) accountOrNil(ctx context.Context, a *store.Account) *accountDTO {
 	if a == nil {
 		return nil

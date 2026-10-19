@@ -105,10 +105,12 @@ func scanActivationRequest(row rowScanner) (store.ActivationRequest, error) {
 		amount    pgtype.Int8
 		envelope  []byte
 		confirmed pgtype.Timestamptz
+		rejected  pgtype.Timestamptz
 	)
 	err := row.Scan(
 		&r.RequestID, &r.AccountID, &r.InstallID, &r.AnchorDigest, &amount,
 		&r.Status, &envelope, &r.LicenseID, &r.CreatedAt, &confirmed,
+		&rejected,
 	)
 	if err != nil {
 		return store.ActivationRequest{}, err
@@ -119,6 +121,7 @@ func scanActivationRequest(row rowScanner) (store.ActivationRequest, error) {
 	}
 	r.EnvelopeJSON = envelope
 	r.ConfirmedAt = nullTime(confirmed)
+	r.RejectedAt = nullTime(rejected)
 	r.CreatedAt = utc(r.CreatedAt)
 	return r, nil
 }
@@ -133,10 +136,12 @@ func scanActivationRequestView(row rowScanner) (store.ActivationRequestView, err
 		amount    pgtype.Int8
 		envelope  []byte
 		confirmed pgtype.Timestamptz
+		rejected  pgtype.Timestamptz
 	)
 	err := row.Scan(
 		&v.RequestID, &v.AccountID, &v.InstallID, &v.AnchorDigest, &amount,
 		&v.Status, &envelope, &v.LicenseID, &v.CreatedAt, &confirmed,
+		&rejected,
 		&v.Nickname, &v.AvatarURL,
 	)
 	if err != nil {
@@ -148,6 +153,7 @@ func scanActivationRequestView(row rowScanner) (store.ActivationRequestView, err
 	}
 	v.EnvelopeJSON = envelope
 	v.ConfirmedAt = nullTime(confirmed)
+	v.RejectedAt = nullTime(rejected)
 	v.CreatedAt = utc(v.CreatedAt)
 	return v, nil
 }
