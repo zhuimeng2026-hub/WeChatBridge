@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"context"
 	"errors"
 	"io"
 	"net/http"
@@ -305,7 +306,7 @@ func (s *Service) handleRefresh(c *gin.Context) {
 			AccessToken:  result.AccessToken,
 			RefreshToken: result.RefreshToken,
 			ExpiresAt:    newStamp(result.ExpiresAt),
-			Account:      accountOrNil(result.Account),
+			Account:      s.accountOrNil(c.Request.Context(), result.Account),
 		})
 
 	case store.RefreshTransient:
@@ -325,11 +326,11 @@ func (s *Service) handleRefresh(c *gin.Context) {
 	}
 }
 
-func accountOrNil(a *store.Account) *accountDTO {
+func (s *Service) accountOrNil(ctx context.Context, a *store.Account) *accountDTO {
 	if a == nil {
 		return nil
 	}
-	return toAccountDTO(*a)
+	return s.accountDTO(ctx, *a)
 }
 
 func (s *Service) handleRevoke(c *gin.Context) {
@@ -412,10 +413,10 @@ func (s *Service) handleAccount(c *gin.Context) {
 //   - Nothing about the account comes with it. No nickname, no OpenID, no
 //     plan, no purchase: this returns image bytes and a content type.
 //
-// A 404 is the answer for "no such account" and "no picture for that account"
-// alike. Distinguishing them would be an existence oracle over an id the caller
-// already holds, which buys nothing — the caller cannot do anything with an id
-// it does not already have.
+// An account with no picture — unknown, never fetched, or its file swept — gets
+// the same answer whatever the reason. Distinguishing them would be an existence
+// oracle over an id the caller already holds, which buys nothing: the caller
+// cannot do anything with an id it does not already have.
 func (s *Service) handleAvatar(c *gin.Context) {
 	accountID := c.Param("id")
 

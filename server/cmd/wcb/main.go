@@ -27,6 +27,7 @@ import (
 	"github.com/freestylefly/WeChatBridge/server/internal/activation"
 	"github.com/freestylefly/WeChatBridge/server/internal/admin"
 	"github.com/freestylefly/WeChatBridge/server/internal/auth"
+	"github.com/freestylefly/WeChatBridge/server/internal/avatar"
 	"github.com/freestylefly/WeChatBridge/server/internal/config"
 	"github.com/freestylefly/WeChatBridge/server/internal/httpx"
 	"github.com/freestylefly/WeChatBridge/server/internal/license"
@@ -101,15 +102,36 @@ func run() error {
 		logger.Warn("no payment code configured; the callback page will say so")
 	}
 
+	// The avatar cache is built before the auth service because the service
+	// holds it, and a directory it cannot create has to fail the boot rather
+	// than the first scan. An operator who did not set WCB_AVATAR_DIR gets a
+	// disabled cache, which is a working deployment that keeps serving WeChat's
+	// own URLs.
+	avatarCache, err := avatar.New(cfg.AvatarDir,
+		avatar.WithMaxBytes(cfg.AvatarMaxBytes))
+	if err != nil {
+		return fmt.Errorf("avatar cache: %w", err)
+	}
+	if avatarCache.Disabled() {
+		logger.Info("avatar caching is off; clients keep WeChat's own URLs",
+			"hint", "set WCB_AVATAR_DIR to an absolute path to enable it")
+	} else {
+		logger.Info("avatar cache ready", "dir", cfg.AvatarDir,
+			"max_bytes", cfg.AvatarMaxBytes,
+			"refresh_ttl", cfg.AvatarRefreshTTL.String())
+	}
+
 	authService, err := auth.NewService(
 		auth.Config{
-			PublicBaseURL:  cfg.PublicBaseURL,
-			AuthSessionTTL: cfg.AuthSessionTTL,
+			PublicBaseURL:    cfg.PublicBaseURL,
+			AuthSessionTTL:   cfg.AuthSessionTTL,
+			AvatarRefreshTTL: cfg.AvatarRefreshTTL,
 		},
 		auth.Options{
 			Store:   st,
 			Issuer:  issuer,
 			Payment: paymentCode,
+			Avatars: avatarCache,
 			WeChat: wechat.NewClient(wechat.Config{
 				AppID:     cfg.WeChatAppID,
 				AppSecret: cfg.WeChatAppSecret,
