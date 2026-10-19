@@ -256,20 +256,25 @@ func (p *PaymentCode) Render(kind pageKind, installID string) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// pageTemplate is deliberately self-contained: no stylesheet link, no font, no
-// script from anywhere.
+// pageTemplate is deliberately self-contained and deliberately scriptless: no
+// stylesheet link, no font, no script of any kind.
 //
-// This page is served to a browser that just came back from WeChat on a
-// connection nobody controls, and it is cached by that browser. Every external
-// resource would be a second thing that can fail to load, and a payment page
-// that renders half-styled is a page whose QR code may be the part that did
-// not load.
+// External resources are out for the same reason as everywhere else on a
+// browser-facing page — a payment page that renders half-styled is a page whose
+// QR code may be the part that did not load.
 //
-// The auto-refresh is the one piece of script, and it is what keeps the buyer's
-// two windows from disagreeing: the phone/PC browser holds a page that can go
-// stale while the desktop app is already polling for tokens. Reloading keeps a
-// refreshed copy in front of them. It is inline and unconditional because there
-// is nothing on this origin for it to exfiltrate to.
+// **There is no auto-refresh, and there must never be one.** This URL is
+// one-shot: the redirect that lands here spends the ticket, so a second request
+// for it is answered 「登录已失效」. A `location.reload()` therefore does not
+// refresh anything — after five seconds it replaces the payment code with an
+// error page, and the buyer's only copy of the machine code with it. It looked
+// harmless in development because nothing had actually scanned anything; it
+// only shows up against a real WeChat code, which is the same lesson the login
+// flow keeps teaching.
+//
+// The page is static, and that is the point: its content does not depend on
+// anything the desktop app is doing. The buyer's next step is in the other
+// window, and telling them so is all this page has to do.
 var pageTemplate = template.Must(template.New("callback").Parse(`<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -362,9 +367,6 @@ var pageTemplate = template.Must(template.New("callback").Parse(`<!DOCTYPE html>
 
     <p class="foot">本页面由微信流授权服务生成 · 可以安全地关闭</p>
   </div>
-{{if eq .Kind 0}}
-<script>setTimeout(function(){ location.reload(); }, 5000);</script>
-{{end}}
 </body>
 </html>
 `))
