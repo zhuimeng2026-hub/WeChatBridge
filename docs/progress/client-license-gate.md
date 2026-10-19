@@ -26,7 +26,7 @@
 
 | # | 任务 | 状态 | commit | 备注 |
 |---|---|---|---|---|
-| C-① | 微信登录（session → 浏览器授权链接 → 轮询 → 存双令牌） | ✅ | `98061ea` + 当前 commit | 客户端已切换为系统浏览器打开 `authorizeUrl`；二维码渲染链路与 `FetchQrAsync` 调用从 `AccountController`/`LoginWindow` 移除；本地化文案同步 `en.json` |
+| C-① | 微信登录（session → 浏览器授权链接 → 轮询 → 存双令牌） | ✅ | `98061ea` `7942e84` | 客户端已切换为系统浏览器打开 `authorizeUrl`（`7942e84`）；二维码渲染链路与 `FetchQrAsync` 调用从 `AccountController`/`LoginWindow` 移除；本地化文案同步 `en.json` |
 | C-② | 机器码展示（installId 主键 + 硬件锚摘要辅证） | ✅ | `7232d39` | 购买窗内的可复制机器码 + 锚摘要；通用页另有一行常驻显示 |
 | C-③ | 购买（收款码静态图 + 登记 + 轮询 + 取票） | ⏳ | `7232d39` | `PurchaseWindow` 已写；**待产品方补齐收款码与开发者微信** |
 | C-④ | 启动门禁集成（未登录→登录页；已登录未授权→引导购买） | ✅ | `2d994b0` | `ActivationGate`；**不锁任何功能**，见下 |
