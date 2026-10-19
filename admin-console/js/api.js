@@ -184,6 +184,13 @@
       return this._withAuth("POST", "/v1/admin/confirm", { requestId: requestId });
     }
 
+    // reject refuses an order: the transfer never arrived, the machine code
+    // does not match, the buyer changed their mind. It writes no licence and
+    // revokes nothing — revoking is revoke(), and it takes a licence id.
+    reject(requestId) {
+      return this._withAuth("POST", "/v1/admin/reject", { requestId: requestId });
+    }
+
     reissue(installId) {
       return this._withAuth("POST", "/v1/admin/reissue", { installId: installId });
     }

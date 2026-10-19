@@ -112,6 +112,7 @@
 | `GET /v1/activation/licence` | confirmed 后取票据 | 新增 |
 | `GET /v1/admin/requests` | 待确认列表 | 新增 |
 | `POST /v1/admin/confirm` | 确认 → 签发 | 新增 |
+| `POST /v1/admin/reject` | 拒绝一单（2026-10-19 补，见 §11.7 M-4） | 新增 |
 | `POST /v1/admin/reissue` | 换机重签（新 installId，作废旧绑定） | 新增 |
 | `POST /v1/admin/revoke` | 作废（数据库标记；见 §6 关于不可撤销的诚实说明） | 新增 |
 
@@ -347,6 +348,7 @@ GET  /v1/admin/requests?status=pending
 POST /v1/admin/confirm   { requestId }   → { licenseId }
 POST /v1/admin/reissue   { installId }   → { licenseId }   // 换机重签：作废旧绑定、签新票
 POST /v1/admin/revoke    { licenseId }   → {}
+POST /v1/admin/reject    { requestId }   → {}   // 拒绝一单：不签发、不作废任何东西（2026-10-19，M-4）
 ```
 
 **不得更改的既有契约**：license envelope 的 canonical 格式（`TestSharedCanonicalVector` 在 Go/C# 双侧钉死）、auth 包全部端点、`httpx` 错误码体系。错误响应统一为 `httpx.Fail` 的既有信封 `{ "error": { "code", "message", "request_id" } }`（带 `X-Request-Id` 响应头），成功响应为裸 payload（`httpx.OK` 即 `c.JSON(payload)`，无包装层）；新增错误码在契约文档登记。可运行契约见 `server/mock/`（零依赖 Node mock，分支 2/3 第一天即可对着开发，真实 handler 落地后删除）。

@@ -154,6 +154,38 @@ async function main() {
     await expectApiError("confirm 未知 requestId → 404 not_found",
       () => api.admin.confirm("act_deadbeef"), 404, "not_found");
 
+    // ---------- 拒绝 ----------
+    // 服务端原本没有拒绝路径：ActivationState.Rejected 存在、客户端轮询认识它，
+    // 却没有任何一个端点能产生它。买家付了钱而卖家不认，单子永远挂在 pending。
+    console.log("\n[4b] 拒绝");
+    // 另开一张单子，别去动后面重签/台账要用的那两条——种子只有两条。
+    const fresh = await fetch(baseURL + "/v1/activation/request", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer " + pollDone.accessToken,
+      },
+      body: JSON.stringify({ installId: "install_reject", anchorDigest: "sha256:reject" }),
+    }).then((r) => r.json());
+    check("新登记可用于拒绝用例", !!fresh.requestId, JSON.stringify(fresh));
+    const toReject = { requestId: fresh.requestId, installId: "install_reject", nickname: "买家", amountFen: null, createdAt: new Date().toISOString() };
+
+    const refused = await api.admin.reject(toReject.requestId);
+    check("reject → 204 空 payload（没有签发内容）",
+      refused === null || refused === undefined ||
+      (typeof refused === "object" && Object.keys(refused).length === 0),
+      JSON.stringify(refused));
+
+    const afterReject = (await api.admin.listRequests("")).items || [];
+    const rejectedRow = afterReject.find((i) => i.requestId === toReject.requestId);
+    check("被拒的行 status 变 rejected", rejectedRow && rejectedRow.status === "rejected",
+      JSON.stringify(rejectedRow));
+
+    await expectApiError("reject 已签发的登记 → 409 conflict（并指向作废）",
+      () => api.admin.reject(target.requestId), 409, "conflict");
+    await expectApiError("reject 未知 requestId → 404 not_found",
+      () => api.admin.reject("act_deadbeef"), 404, "not_found");
+
     // ---------- 换机重签 / 作废 ----------
     console.log("\n[5] 换机重签 / 作废");
     const reissued = await api.admin.reissue(items[0].installId);
@@ -171,9 +203,12 @@ async function main() {
     check("confirmed 列表含本次签发",
       (ledger.items || []).some((i) => i.requestId === target.requestId && i.status === "confirmed"));
     const all = await api.admin.listRequests("");
-    check("全量列表 3 条（2 种子 + 1 新登记……含已确认）",
-      (all.items || []).length === 3, "实际 " + (all.items || []).length);
-
+    check("全量列表含本次流程建过的每一张单子",
+      (all.items || []).length >= 3 &&
+      [target.requestId, toReject.requestId].every((id) =>
+        (all.items || []).some((i) => i.requestId === id)),
+      "实际 " + (all.items || []).length + " 条");
+    
     // ---------- 错误信封形状 ----------
     console.log("\n[7] 错误信封");
     try {

@@ -41,7 +41,7 @@
 |---|---|---|---|---|
 | C-① | 微信登录（session → 浏览器授权链接 → 轮询 → 存双令牌） | ✅ | `98061ea` `7942e84` 当前 commit | 客户端已切换为系统浏览器打开 `authorizeUrl`（`7942e84`）；二维码渲染链路与 `FetchQrAsync` 调用从 `AccountController`/`LoginWindow` 移除；本地化文案同步 `en.json`；**真机端到端六步全跑通**（当前 commit，verify: true） |
 | C-② | 机器码展示（installId 主键 + 硬件锚摘要辅证） | ✅ | `7232d39` | 购买窗内的可复制机器码 + 锚摘要；通用页另有一行常驻显示 |
-| C-③ | 购买（收款码静态图 + 登记 + 轮询 + 取票） | ⏳ | `7232d39` | `PurchaseWindow` 已写；**待产品方补齐收款码与开发者微信** |
+| C-③ | 购买（登记 + 轮询 + 取票） | ✅ | `7232d39` 本次 | 收款码与开发者微信已补齐。**收款码改由服务端回调页提供**（`WCB_PAYMENT_CODE_PATH` + `WCB_SELLER_WECHAT`），客户端那张损坏占位图已删除。**补 `POST /v1/admin/reject`**（设计 §11.7 M-4）——原先卖家只有签发/重签/作废，没有拒绝路径 |
 | C-④ | 启动门禁集成（未登录→登录页；已登录未授权→引导购买） | ✅ | `2d994b0` | `ActivationGate`；**不锁任何功能**，见下 |
 | C-⑤ | 轮询退避 + 卖家拒绝/超时提示 | ✅ | `4ce2420` `d48827f` `cbcaa5d` | `PollSchedule` + 控制器失败分支；退避算术单测已补（`cbcaa5d`） |
 | C-⑥ | 出口 = `dotnet build/test` 通过 + mock 全流程 | ⏳ | 见下 | 两形态 build/test 全绿， `-background` 实跑常驻；mock 全流程仍未跑 |
@@ -278,3 +278,19 @@ set WECHATBRIDGE_LICENSE_SERVER=http://127.0.0.1:8901/
 
 - 签名是 **64 字节 raw `r‖s`**（`internal/license/crypto.go` 的 `signRaw`），不是 DER。`openssl dgst -verify` 要 DER，直接喂会报 `Error verifying data`，得先转 `SEQUENCE{INTEGER r, INTEGER s}`。
 - canonical 每行都带 `key=` 前缀（`license.go:115`），无尾随换行，空段用 `-`。凭印象拼很容易少写前缀，那样算出的是不同的字节。
+
+
+## 卖家的四个动作（2026-10-19 补齐拒绝）
+
+后台只有四个端点，**日常只用一个**：
+
+| 动作 | 端点 | 什么时候用 |
+| --- | --- | --- |
+| 确认 | `POST /v1/admin/confirm` | 日常 99% 只有这个。转账备注里的机器码 == 列表里的 `installId` == 买家客户端那串，三者对上才点 |
+| **拒绝** | `POST /v1/admin/reject` | 转账没到、机器码对不上、买家改主意。**不签发、不作废任何东西**——那两件事各有各的端点。拒绝后 `pending` 部分唯一索引自动释放，买家可立即重新登记 |
+| 重签 | `POST /v1/admin/reissue` | 买家重装/换机。旧 binding 打 `revoked_at`，新的才生效 |
+| 作废 | `POST /v1/admin/revoke` | 退款，或发现发错机器。**打日期不删行**——「这张证还有效吗」的诚实答案是日期 |
+
+**拒绝为什么此前缺失**：`ActivationState.Rejected` 一直存在于 store 和买家轮询里，却没有任何端点能产生它。买家付了钱而卖家不认，单子永远停在 `pending`，窗口关不掉。
+
+**退款要两个动作**：`reject` 挡掉这一单，`revoke` 收回已签发的那张。只做一个都不够——这正是把两件事拆成两个端点的原因。

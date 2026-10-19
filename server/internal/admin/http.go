@@ -56,6 +56,9 @@ type requestsResponse struct {
 type confirmRequest struct {
 	RequestID string `json:"requestId"`
 }
+type rejectRequest struct {
+	RequestID string `json:"requestId"`
+}
 
 type reissueRequest struct {
 	InstallID string `json:"installId"`
@@ -105,6 +108,37 @@ func (s *Service) handleRequests(c *gin.Context) {
 		})
 	}
 	httpx.OK(c, http.StatusOK, requestsResponse{Items: items})
+}
+
+func (s *Service) handleReject(c *gin.Context) {
+	var body rejectRequest
+	if err := c.ShouldBindJSON(&body); err != nil && !errors.Is(err, io.EOF) {
+		httpx.Fail(c, httpx.BadRequest("请求体格式不正确。"))
+		return
+	}
+	requestID := strings.TrimSpace(body.RequestID)
+	if requestID == "" {
+		httpx.Fail(c, httpx.BadRequest("请求号缺失。"))
+		return
+	}
+
+	if err := s.Reject(c.Request.Context(), requestID); err != nil {
+		switch {
+		case errors.Is(err, store.ErrNotFound):
+			httpx.Fail(c, httpx.NotFound("请求的内容不存在。"))
+		case errors.Is(err, ErrRequestConfirmed):
+			// Distinct from a rejected row, and the distinction is the point:
+			// a licence already exists here, so what the seller wants is
+			// /revoke, not /reject. Saying "already rejected" would send them
+			// to a button that cannot do what they need.
+			httpx.Fail(c, httpx.Conflict("该请求已签发许可证，不能拒绝；请改用作废。"))
+		default:
+			httpx.Fail(c, httpx.FromStore(err))
+		}
+		return
+	}
+
+	c.Status(http.StatusNoContent)
 }
 
 func (s *Service) handleConfirm(c *gin.Context) {

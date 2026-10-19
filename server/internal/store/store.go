@@ -232,6 +232,10 @@ type ActivationRequest struct {
 	LicenseID    string
 	CreatedAt    time.Time
 	ConfirmedAt  *time.Time
+	// RejectedAt is when a seller refused the order. A ledger that records
+	// that a request was rejected but not when answers half the question a
+	// support conversation asks.
+	RejectedAt *time.Time
 }
 
 // ActivationStatus is the state machine the buyer's poller watches. Rejected
@@ -307,6 +311,15 @@ type ActivationStore interface {
 	// request still being pending, so two sellers pressing the same button
 	// produce one licence; the loser reads ErrConflict and re-reads the row.
 	ConfirmActivationRequest(ctx context.Context, requestID, licenseID string, envelopeJSON []byte, at time.Time) (ActivationRequest, error)
+	// RejectActivationRequest flips a pending request to rejected. It exists so
+	// a seller can refuse an order — a transfer that never arrived, a machine
+	// code that does not match — instead of leaving it pending forever with no
+	// way to close it.
+	//
+	// The flip is conditional on the request still being pending, exactly like
+	// confirm's, so refusing an already-issued licence is a conflict rather
+	// than a silent revocation. Revoking is what RevokeBinding is for.
+	RejectActivationRequest(ctx context.Context, requestID string, at time.Time) (ActivationRequest, error)
 
 	// Licence bindings.
 	// ReissueLicence revokes the account's live binding — if any — and

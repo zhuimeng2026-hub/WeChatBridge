@@ -202,6 +202,25 @@ func (f *fakeActivationStore) ConfirmActivationRequest(_ context.Context, reques
 	return store.ActivationRequest{}, store.ErrNotFound
 }
 
+func (f *fakeActivationStore) RejectActivationRequest(_ context.Context, requestID string, at time.Time) (store.ActivationRequest, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for i := range f.requests {
+		r := &f.requests[i]
+		if r.RequestID != requestID {
+			continue
+		}
+		if r.Status != store.ActivationPending {
+			return store.ActivationRequest{}, store.ErrConflict
+		}
+		r.Status = store.ActivationRejected
+		rejectedAt := at
+		r.RejectedAt = &rejectedAt
+		return r.ActivationRequest, nil
+	}
+	return store.ActivationRequest{}, store.ErrNotFound
+}
+
 func (f *fakeActivationStore) ReissueLicence(_ context.Context, installID, licenseID string, envelopeJSON []byte, at time.Time) (store.ActivationRequest, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

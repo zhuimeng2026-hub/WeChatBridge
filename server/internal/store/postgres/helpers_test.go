@@ -97,13 +97,20 @@ func activationRequestRow(status string, amount *int64) *pgxmock.Rows {
 		licenseID = "lic-1"
 		confirmed = testLater
 	}
+	// rejected_at mirrors confirmed_at: null until the terminal state actually
+	// happens, and the two are set together by the same statement.
+	rejected := any(nullTimeValue())
+	if store.ActivationStatus(status) == store.ActivationRejected {
+		rejected = testLater
+	}
 	return pgxmock.NewRows([]string{
 		"request_id", "account_id", "install_id", "anchor_digest", "amount_fen",
 		"status", "envelope_json", "license_id", "created_at", "confirmed_at",
+		"rejected_at",
 	}).AddRow(
 		"req-1", "acct-1", "install-1", "anchor-1", amountValue,
 		store.ActivationStatus(status), []byte(`{"licenseId":"lic-1"}`), licenseID,
-		testNow, confirmed,
+		testNow, confirmed, rejected,
 	)
 }
 
@@ -124,14 +131,18 @@ func activationRequestViewRow(status string, amount *int64) *pgxmock.Rows {
 		licenseID = "lic-1"
 		confirmed = testLater
 	}
+	rejected := any(nullTimeValue())
+	if store.ActivationStatus(status) == store.ActivationRejected {
+		rejected = testLater
+	}
 	return pgxmock.NewRows([]string{
 		"request_id", "account_id", "install_id", "anchor_digest", "amount_fen",
 		"status", "envelope_json", "license_id", "created_at", "confirmed_at",
-		"nickname", "avatar_url",
+		"rejected_at", "nickname", "avatar_url",
 	}).AddRow(
 		"req-1", "acct-1", "install-1", "anchor-1", amountValue,
 		store.ActivationStatus(status), []byte(`{"licenseId":"lic-1"}`), licenseID,
-		testNow, confirmed, "Nick", "https://avatar.invalid/a.png",
+		testNow, confirmed, rejected, "Nick", "https://avatar.invalid/a.png",
 	)
 }
 

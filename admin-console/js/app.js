@@ -539,6 +539,7 @@
     var ops = document.createElement("div");
     ops.className = "ops";
     ops.appendChild(actionButton("确认签发", "btn-primary btn-sm", function () { doConfirm(it); }));
+    ops.appendChild(actionButton("拒绝", "btn-sm", function () { doReject(it); }));
     ops.appendChild(actionButton("换机重签", "btn-sm", function () { doReissue(it.installId); }));
     tdOps.appendChild(ops);
     tr.appendChild(tdOps);
@@ -659,6 +660,33 @@
   }
 
   // ---------------- 三个管理动作 ----------------
+
+  async function doReject(it) {
+    // 二次确认里写清后果：拒绝之后这台机器可以立刻重新登记，而这笔订单
+    // 永远不会签发。卖家面对的是"钱没到/机器码对不上"，不是"稍后再看看"。
+    var ok = await showConfirm("确认拒绝这张登记？", [
+      ["机器码", it.installId],
+      ["微信昵称", it.nickname || "—"],
+      ["期望金额", fmtAmount(it.amountFen)],
+      ["登记时间", fmtTime(it.createdAt)],
+      ["后果", "永不签发；该机器可立即重新登记"],
+    ]);
+    if (!ok) return;
+    inFlight++;
+    try {
+      await api.admin.reject(it.requestId);
+      appendLog("reject", it.requestId, true, "");
+      showToast("ok", "已拒绝", "登记 " + it.requestId + " 不会再签发许可证");
+      refreshPending();
+      refreshLedger();
+    } catch (err) {
+      appendLog("reject", it.requestId, false, errMessage(err));
+      reportError("拒绝登记", err);
+      if (err && err.name === "ApiError" && err.status === 401) forceRelogin();
+    } finally {
+      inFlight--;
+    }
+  }
 
   async function doConfirm(it) {
     var ok = await showConfirm("确认签发这张登记？", [

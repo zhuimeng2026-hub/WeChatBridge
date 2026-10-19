@@ -529,6 +529,34 @@ async function adminConfirm(req, res) {
   sendJSON(res, 200, { licenseId });
 }
 
+async function adminReject(req, res) {
+  if (!adminOK(req)) {
+    return sendError(res, 401, "unauthorized", "缺少访问令牌。");
+  }
+  const body = await readBody(req).catch(() => ({}));
+  const requestId = (body.requestId || "").trim();
+  if (!requestId) {
+    return sendError(res, 400, "bad_request", "请求号缺失。");
+  }
+  const r = state.activations.get(requestId);
+  if (!r) {
+    return sendError(res, 404, "not_found", "请求的内容不存在。");
+  }
+  if (r.status === "confirmed") {
+    // 这张已经签发过许可证，要收回的是 /revoke，不是 /reject。
+    return sendError(res, 409, "conflict", "该请求已签发许可证，不能拒绝；请改用作废。");
+  }
+  if (r.status === "rejected") {
+    // 条件翻转的失败方读到的就是终态，不是 204。
+    return sendError(res, 409, "conflict", "该购买请求已被拒绝。");
+  }
+  // 不写许可证、不动 binding：拒绝这一单不等于收回别的机器码上的许可证。
+  r.status = "rejected";
+  r.rejectedAt = now();
+  res.writeHead(204);
+  res.end();
+}
+
 async function adminReissue(req, res) {
   if (!adminOK(req)) {
     return sendError(res, 401, "unauthorized", "缺少访问令牌。");
@@ -631,6 +659,7 @@ const server = http.createServer(async (req, res) => {
     // Admin (new)
     if (req.method === "GET" && path === "/v1/admin/requests") return await adminRequests(req, res, url);
     if (req.method === "POST" && path === "/v1/admin/confirm") return await adminConfirm(req, res);
+    if (req.method === "POST" && path === "/v1/admin/reject") return await adminReject(req, res);
     if (req.method === "POST" && path === "/v1/admin/reissue") return await adminReissue(req, res);
     if (req.method === "POST" && path === "/v1/admin/revoke") return await adminRevoke(req, res);
 
