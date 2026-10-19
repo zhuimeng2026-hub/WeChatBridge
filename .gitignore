@@ -77,3 +77,13 @@ memory/
 # Python byte-code from local scripts
 __pycache__/
 *.pyc
+
+# Local agent workspace: verification probes, scratch notes and one-off commit
+# messages. These are working artifacts for this machine only and must never
+# reach the repository (the probe scripts in particular are unmaintained side
+# channels beside the real implementation).
+/.artifacts/
+
+# Exported public-key reference file (P-256 SPKI for the licence verifier).
+# It is a build input reference, not source — keep it local.
+/pubkey.txt
