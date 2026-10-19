@@ -92,12 +92,42 @@ public partial class LoginWindow : Window
         try
         {
             Process.Start(new ProcessStartInfo(e.Uri.AbsoluteUri) { UseShellExecute = true });
+            // Step out of the way: the user is now looking at a browser tab, not this
+            // window. We come back automatically when the controller flips to Done.
+            // If the launch above threw, we skip the minimise so the user can still
+            // see the error and try the Copy button instead.
+            WindowState = WindowState.Minimized;
         }
         catch (Exception ex)
         {
             // Surface a friendly hint without crashing the window. The status line
             // will get refreshed on the next controller tick.
             System.Diagnostics.Debug.WriteLine($"login: failed to open {e.Uri} ({ex.Message})");
+        }
+    }
+
+    /// <summary>
+    /// Copies the sign-in URL to the clipboard verbatim. The link is the
+    /// <i>same</i> one the <c>AuthorizeLink</c> would have launched, so a user whose
+    /// default browser is wedged, or whose link handler has been hijacked by some
+    /// other app, can paste it into whatever they trust.
+    /// </summary>
+    private void OnCopyClicked(object sender, RoutedEventArgs e)
+    {
+        var url = _controller.AuthorizeUrl;
+        if (string.IsNullOrWhiteSpace(url))
+            return;
+        try
+        {
+            Clipboard.SetText(url);
+            StatusText.Text = L10n.Text("已复制到剪贴板");
+        }
+        catch (Exception ex)
+        {
+            // Clipboard.SetText can throw on locked-down shells; fall through to a
+            // hint that asks the user to select the link manually. Don't crash.
+            System.Diagnostics.Debug.WriteLine($"login: clipboard set failed ({ex.Message})");
+            StatusText.Text = L10n.Text("复制失败，请手动选中链接");
         }
     }
 
@@ -128,6 +158,21 @@ public partial class LoginWindow : Window
         FinishButton.Visibility = done ? Visibility.Visible : Visibility.Collapsed;
         StartButton.Visibility = done ? Visibility.Collapsed : Visibility.Visible;
         StartButton.IsEnabled = _controller.CanStart;
+
+        // CopyButton follows the link: enabled when the URL is on screen, disabled
+        // otherwise. The button is in the XAML tree the whole time, so its position
+        // does not jump as the controller advances.
+        CopyButton.IsEnabled = !string.IsNullOrEmpty(_controller.AuthorizeUrl);
+
+        // If we minimised ourselves so the user could see the browser, come back
+        // when the controller reports Done. The WindowState guard is what makes
+        // this safe: a window the user never asked us to minimise stays Normal,
+        // and a user who minimised us manually does not get yanked back.
+        if (done && WindowState == WindowState.Minimized)
+        {
+            WindowState = WindowState.Normal;
+            Activate();
+        }
 
         // The button doubles as 刷新 while a link is on screen: a ticket that has been
         // open for five minutes and never scanned is expired, and the user's next move
