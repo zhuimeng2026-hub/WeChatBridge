@@ -12,37 +12,21 @@ namespace WeChatBridge.Windows.Activation;
 /// second button handler quietly enabling something.
 /// </para>
 /// <para>
-/// The one piece of state this window owns is <see cref="_confirmed"/>. The payment
-/// code is a static image the seller pasted into the build; putting it on screen is the
-/// moment the user starts owing someone money, so it waits until they have seen the
-/// amount and the machine code they are binding.
+/// The payment code and the seller's contact details are not in this app, and the
+/// app carries no state of its own any more. WeChat's redirect lands in a browser,
+/// so the page that came back from the scan is the only place the code exists —
+/// and it prints the machine code, the amount and the contact beside it. Keeping a
+/// second copy here meant two surfaces to replace together, and this one was still
+/// an empty placeholder while the real one worked.
+/// </para>
+/// <para>
+/// What is left here is the part that needs a real window: which machine is being
+/// licensed, and the 「我已付款」 action that registers it.
 /// </para>
 /// </summary>
 public partial class PurchaseWindow : Window
 {
-    /// <summary>
-    /// The seller's WeChat id: after-sales contact, and the fallback for adding
-    /// them by hand when the code beside it will not scan.
-    /// <para>
-    /// The payment code itself is not in this app. WeChat's redirect lands in a
-    /// browser, so the page that came back from the scan is where the code is —
-    /// a fact about the flow, not a preference. This window still carries the
-    /// machine code and the 「我已付款」 action, because those need a real window
-    /// behind them.
-    /// </para>
-    /// <para>
-    /// This duplicates WCB_SELLER_WECHAT on the server, which prints the same id
-    /// beside the code. Two copies of one contact detail is a drift waiting to
-    /// happen: changing one means changing both, and the one that goes stale is
-    /// the one a buyer reads when the code will not scan.
-    /// </para>
-    /// </summary>
-    private const string SellerWeChat = "aiwomeishi";
-
     private readonly ActivationController _controller;
-
-    /// <summary>The user has read the terms and asked to see the payment code.</summary>
-    private bool _confirmed;
 
     public PurchaseWindow(ActivationController controller)
     {
@@ -61,15 +45,6 @@ public partial class PurchaseWindow : Window
 
     /// <summary>True when the licence is on disk, so the gate can be re-read.</summary>
     public bool IsLicensed => _controller.IsLicensed;
-
-    private void OnConfirmClicked(object sender, RoutedEventArgs e)
-    {
-        // Showing the payment code is not the same as registering. Nothing goes to the
-        // service until the user says they have paid, so a window opened and abandoned
-        // leaves no trace on the seller's ledger.
-        _confirmed = true;
-        Render();
-    }
 
     private void OnPaidClicked(object sender, RoutedEventArgs e) => _ = RegisterAsync();
 
@@ -142,17 +117,13 @@ public partial class PurchaseWindow : Window
         AnchorDigestText.Text = string.IsNullOrWhiteSpace(_controller.AnchorDigest)
             ? L10n.Text("（无法读取，仅以机器码为准）")
             : _controller.AnchorDigest;
-        SellerWeChatText.Text = SellerWeChat;
 
         // The transfer note is the machine code: it is what the seller matches a manual
         // WeChat transfer against, and the only link between a payment and a licence.
+        // The browser page prints it too; this is the copy the buyer can take from.
         PaymentNoteText.Text = _controller.InstallId;
 
         StatusText.Text = _controller.StatusMessage;
-
-        // The payment code appears only after the terms have been read, and stays put
-        // afterwards — a user who is mid-poll still needs to see what they paid for.
-        PaymentCard.Visibility = _confirmed ? Visibility.Visible : Visibility.Collapsed;
 
         var stage = _controller.Stage;
 
@@ -165,11 +136,10 @@ public partial class PurchaseWindow : Window
         StopButton.Visibility = _controller.IsPolling ? Visibility.Visible : Visibility.Collapsed;
         RetryButton.Visibility = _controller.CanRetry ? Visibility.Visible : Visibility.Collapsed;
 
+        // Once the registration is in flight the only honest button is the one that
+        // stops the wait, so 停止等待 and 我已付款 are never both on screen.
         PaidButton.Visibility =
-            _confirmed && stage == PurchaseStage.Idle ? Visibility.Visible : Visibility.Collapsed;
-
-        ConfirmButton.Visibility =
-            !_confirmed && stage == PurchaseStage.Idle ? Visibility.Visible : Visibility.Collapsed;
+            stage == PurchaseStage.Idle ? Visibility.Visible : Visibility.Collapsed;
 
         // Once the money is moving there is nothing to confirm or claim; the only
         // honest button is the one that stops the wait.

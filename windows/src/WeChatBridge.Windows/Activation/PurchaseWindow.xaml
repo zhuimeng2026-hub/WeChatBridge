@@ -50,11 +50,11 @@
  <StackPanel>
  <TextBlock Style="{StaticResource Heading}" Text="{loc:Loc Key='购买授权'}"/>
  <TextBlock Style="{StaticResource Body}" Margin="0,8,0,0"
- Text="{loc:Loc Key='微信流买断版一次买断，永久离线可用。确认后按提示在浏览器里扫码付款，付完回到这里点「我已付款」，卖家核对到账后即可激活。'}" />
+ Text="{loc:Loc Key='微信流买断版一次买断，永久离线可用。在浏览器里扫码付款，付完回到这里点「我已付款」，卖家核对到账后即可激活。'}" />
 
- <!-- What the user is buying, and who they are buying it for. Shown before the payment
-      code appears on purpose: nobody should see a QR code before they have seen the
-      amount and the machine it will be bound to. -->
+ <!-- What the user is buying, and which machine it will be bound to. Shown before
+      the payment instructions because the transfer note below is the machine code:
+      reading the number and being told to write it down are one thought, not two. -->
  <Border Style="{StaticResource Card}" Margin="0,18,0,0"><StackPanel>
  <TextBlock Style="{StaticResource Body}" Foreground="{StaticResource InkColor}" Text="{loc:Loc Key='本机机器码'}"/>
  <Grid Margin="0,6,0,0"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
@@ -68,25 +68,16 @@
  <TextBlock Style="{StaticResource Body}" Margin="0,16,0,0" Foreground="{StaticResource InkColor}" Text="{loc:Loc Key='硬件锚摘要'}"/>
  <TextBlock x:Name="AnchorDigestText" Style="{StaticResource Body}" FontFamily="Consolas, Courier New" FontSize="12"
  Margin="0,4,0,0" TextWrapping="Wrap" AutomationProperties.Name="{loc:Loc Key='硬件锚摘要'}"/>
-
- <TextBlock Style="{StaticResource Body}" Margin="0,16,0,0" Foreground="{StaticResource InkColor}" Text="{loc:Loc Key='开发者微信'}"/>
- <!-- PLACEHOLDER: the seller's WeChat id goes here. Single source of truth — see
-      SellerWeChat in PurchaseWindow.xaml.cs. The same value is what the user is told
-      to add for after-sales. -->
- <TextBlock x:Name="SellerWeChatText" Style="{StaticResource Body}" FontSize="15" FontWeight="SemiBold"
- Foreground="{StaticResource InkColor}" Margin="0,4,0,0" AutomationProperties.Name="{loc:Loc Key='开发者微信'}"/>
- <TextBlock Style="{StaticResource Body}" FontSize="12" Margin="0,4,0,0" Foreground="{StaticResource InkTertiaryColor}"
- Text="{loc:Loc Key='付款后如有疑问，加这个微信售后。'}" />
  </StackPanel></Border>
 
  <!-- The payment code is NOT here, and that is deliberate.
       WeChat's redirect lands in a browser, so the page that came back from the
       scan is where the code is — a fact about the flow, not a choice. Showing a
       second copy here would mean two surfaces that must be replaced together,
-      and this one was still an empty placeholder while the real one worked.
-      Hidden until 确认购买 — the single child rule applies to every Border here,
-      so the contents sit in a StackPanel. -->
- <Border x:Name="PaymentCard" Style="{StaticResource Card}" Margin="0,16,0,0" Visibility="Collapsed"><StackPanel>
+      and this one was still an empty placeholder while the real one worked. The
+      same argument retires the seller's contact details: the callback page
+      prints them next to the code. One place to update, one place to get right. -->
+ <Border Style="{StaticResource Card}" Margin="0,16,0,0"><StackPanel>
  <TextBlock Style="{StaticResource Body}" Foreground="{StaticResource InkColor}" HorizontalAlignment="Center"
  Text="{loc:Loc Key='扫码付款'}"/>
  <TextBlock Style="{StaticResource Body}" Margin="0,12,0,0" TextAlignment="Center" TextWrapping="Wrap"
@@ -127,9 +118,7 @@
  <Button x:Name="StopButton" Style="{StaticResource GateButton}" Content="{loc:Loc Key='停止等待'}"
  Click="OnStopClicked" Margin="0,0,8,0" Visibility="Collapsed"/>
  <Button x:Name="PaidButton" Style="{StaticResource GatePrimary}" Content="{loc:Loc Key='我已付款'}"
- Click="OnPaidClicked" Visibility="Collapsed" Margin="0,0,8,0"/>
- <Button x:Name="ConfirmButton" Style="{StaticResource GatePrimary}" Content="{loc:Loc Key='确认购买'}"
- Click="OnConfirmClicked" IsDefault="True"/>
+ Click="OnPaidClicked" IsDefault="True" Visibility="Collapsed" Margin="0,0,8,0"/>
  </StackPanel>
  </Grid>
  </Grid></Border>

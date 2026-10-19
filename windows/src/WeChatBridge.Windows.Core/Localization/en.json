@@ -880,10 +880,7 @@
   "复制机器码": "Copy the machine code",
   "这是许可证的绑定凭据。重装或换机会失效，找卖家重签。": "This is what the licence is bound to. Reinstalling or changing machine invalidates it — ask the seller to re-issue.",
   "硬件锚摘要": "Hardware anchor digest",
-  "开发者微信": "Seller's WeChat",
-  "付款后如有疑问，加这个微信售后。": "Questions after paying? Add this WeChat for support.",
   "扫码付款": "Scan to pay",
-  "收款码": "Payment code",
   "转账请备注：": "Add this note to the transfer:",
   "转账备注": "Transfer note",
   "付款后回到这里点「我已付款」。没备注的转账需要人工核对，会慢一些。": "Come back here and press \"I have paid\" afterwards. A transfer without the note has to be matched by hand, which takes longer.",
@@ -906,8 +903,7 @@
   "本机机器码：{0}": "This machine's code: {0}",
   "收款码在你刚才扫码用的那个浏览器窗口里，请切回去扫码支付。": "The payment code is in the browser window you scanned from. Switch back to it to pay.",
   "那个窗口已经关掉的话，回登录页重新扫码一次就能再打开。": "If you closed that window, go back to the sign-in page and scan again to reopen it.",
-  "微信流买断版一次买断，永久离线可用。确认后按提示在浏览器里扫码付款，付完回到这里点「我已付款」，卖家核对到账后即可激活。": "The buy-out licence is paid for once and works offline forever. Confirm to see the payment code, pay, then come back and press \"I have paid\" — the seller activates it once they see it arrive.",
-  "确认购买": "Confirm purchase",
+  "微信流买断版一次买断，永久离线可用。在浏览器里扫码付款，付完回到这里点「我已付款」，卖家核对到账后即可激活。": "The buy-out licence is paid for once and works offline forever. Pay by scanning in the browser window, then come back and press \"I have paid\" — the seller activates it once they see it arrive.",
   "我已付款": "I have paid",
   "停止等待": "Stop waiting"
 }
