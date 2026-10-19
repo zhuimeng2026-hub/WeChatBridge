@@ -152,6 +152,60 @@ func (s *Store) GetAuthSession(ctx context.Context, ticket string) (store.AuthSe
 	return sess, nil
 }
 
+// ---------------------------------------------------------------------------
+// The token handoff — the one-time bridge between the WeChat redirect
+// (instance A) and the client's poll (instance B, behind a load balancer).
+// It lives in shared storage for exactly this reason; an in-process copy on one
+// instance would be unreachable from the other.
+// ---------------------------------------------------------------------------
+
+const putAuthHandoffSQL = `
+	INSERT INTO auth_handoffs (ticket, access_token, refresh_token, access_expires_at, account_id, expires_at)
+	VALUES ($1, $2, $3, $4, $5, $6)
+	ON CONFLICT (ticket) DO UPDATE SET
+		access_token      = EXCLUDED.access_token,
+		refresh_token     = EXCLUDED.refresh_token,
+		access_expires_at = EXCLUDED.access_expires_at,
+		account_id        = EXCLUDED.account_id,
+		expires_at        = EXCLUDED.expires_at`
+
+const takeAuthHandoffSQL = `
+	DELETE FROM auth_handoffs WHERE ticket = $1
+	RETURNING access_token, refresh_token, access_expires_at, account_id`
+
+// PutAuthHandoff records the credentials a completed scan minted. A sweep of
+// already-expired rows keeps the table from growing from scans nobody collected.
+func (s *Store) PutAuthHandoff(ctx context.Context, h store.AuthHandoff) error {
+	if _, err := s.db.Exec(ctx, `DELETE FROM auth_handoffs WHERE expires_at < $1`, utc(time.Now())); err != nil {
+		return wrap("put auth handoff: sweep", err)
+	}
+	if _, err := s.db.Exec(ctx, putAuthHandoffSQL,
+		h.Ticket, h.AccessToken, h.RefreshToken, utc(h.AccessExpiresAt), h.AccountID, utc(h.ExpiresAt),
+	); err != nil {
+		return wrap("put auth handoff", err)
+	}
+	return nil
+}
+
+// TakeAuthHandoff consumes and returns the credentials for a ticket. The DELETE
+// ... RETURNING makes the read exactly once: a second poll for the same ticket
+// finds nothing, which the caller reports as a repeat with the account only.
+func (s *Store) TakeAuthHandoff(ctx context.Context, ticket string) (store.AuthHandoff, bool, error) {
+	var h store.AuthHandoff
+	err := s.db.QueryRow(ctx, takeAuthHandoffSQL, ticket).Scan(
+		&h.AccessToken, &h.RefreshToken, &h.AccessExpiresAt, &h.AccountID,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return store.AuthHandoff{}, false, nil
+		}
+		return store.AuthHandoff{}, false, wrap("take auth handoff", err)
+	}
+	h.Ticket = ticket
+	h.AccessExpiresAt = utc(h.AccessExpiresAt)
+	return h, true, nil
+}
+
 // authState maps a stored state onto the domain enum.
 //
 // An unrecognised string is treated as expired rather than passed through.

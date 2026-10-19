@@ -39,6 +39,11 @@ type fakeStore struct {
 	// honours that so nothing here can come to depend on it.
 	byOpenID map[string]string
 
+	// handoffs is the in-memory stand-in for the shared auth_handoffs table. It
+	// lets two fakeService instances share a handoff the way two real instances
+	// share the database, so the multi-instance bridge has a test.
+	handoffs map[string]store.AuthHandoff
+
 	// refreshIndex maps every refresh hash ever issued to a session id.
 	// Retired hashes stay in here on purpose — see the type comment.
 	refreshIndex map[string]string
@@ -65,6 +70,7 @@ func newFakeStore() *fakeStore {
 		sessions:       make(map[string]store.Session),
 		accounts:       make(map[string]store.Account),
 		byOpenID:       make(map[string]string),
+		handoffs:       make(map[string]store.AuthHandoff),
 		refreshIndex:   make(map[string]string),
 		currentRefresh: make(map[string]string),
 		migrations:     make(map[string]string),
@@ -178,6 +184,28 @@ func (f *fakeStore) GetAccount(_ context.Context, id store.ID) (store.Account, e
 		return store.Account{}, store.ErrNotFound
 	}
 	return a, nil
+}
+
+// PutAuthHandoff / TakeAuthHandoff back the handoff in memory, shared across
+// every fakeService that holds this store — which is exactly the topology the
+// store-backed handoff exists to support. Take deletes on read, so the tokens
+// are readable once, like the real table.
+func (f *fakeStore) PutAuthHandoff(_ context.Context, h store.AuthHandoff) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.handoffs[h.Ticket] = h
+	return nil
+}
+
+func (f *fakeStore) TakeAuthHandoff(_ context.Context, ticket string) (store.AuthHandoff, bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	h, ok := f.handoffs[ticket]
+	if !ok {
+		return store.AuthHandoff{}, false, nil
+	}
+	delete(f.handoffs, ticket)
+	return h, true, nil
 }
 
 func (f *fakeStore) CreateSession(_ context.Context, s store.Session) error {

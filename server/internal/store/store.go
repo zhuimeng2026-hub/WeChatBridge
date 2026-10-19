@@ -98,6 +98,28 @@ type AuthSession struct {
 	CreatedAt    time.Time
 }
 
+// AuthHandoff is the one-time plaintext credential bridge between the WeChat
+// redirect (which mints the tokens) and the client's poll (which collects
+// them). It MUST live in shared storage: the two requests almost always land on
+// different processes behind a load balancer, and an in-process copy on one of
+// them would make the tokens unreachable from the other. The tokens are
+// short-lived — ExpiresAt equals the ticket's — and are deleted on first take.
+//
+// Storing the plaintext refresh token here relaxes a long-standing rule that the
+// database never holds a usable token. It is the right trade now: the tokens
+// already travel to the client over HTTPS and are written to its disk, and the
+// row is transient (deleted on take, swept when expired). The alternative — an
+// in-memory handoff — breaks the moment the redirect and the poll are served by
+// two processes, which is the normal case behind a load balancer.
+type AuthHandoff struct {
+	Ticket          string
+	AccessToken     string
+	RefreshToken    string
+	AccessExpiresAt time.Time
+	AccountID       ID
+	ExpiresAt       time.Time
+}
+
 // AuthSessionState mirrors the client's enum exactly. Unknown is not a
 // fifth state here — it is a parse failure, and the store treats any string it
 // does not recognise as expired rather than guessing.
@@ -154,6 +176,14 @@ type AuthStore interface {
 	// CompleteAuthSession atomically marks the ticket authorized and resolves
 	// or creates the account for the OpenID.
 	CompleteAuthSession(ctx context.Context, ticket, openID, unionID, nickname, avatar, installID string) (Account, error)
+
+	// PutAuthHandoff records the credentials minted by a completed scan. It is
+	// the shared half of the sign-in bridge; see AuthHandoff.
+	PutAuthHandoff(ctx context.Context, h AuthHandoff) error
+	// TakeAuthHandoff consumes and returns the credentials for a ticket. A
+	// second call for the same ticket reports ok=false — the tokens are
+	// readable exactly once, like the in-process handoff it replaces.
+	TakeAuthHandoff(ctx context.Context, ticket string) (AuthHandoff, bool, error)
 
 	// UpsertAccountByOpenID returns the account and whether it was created, so
 	// the caller can tell a first sign-in from a return visit.

@@ -104,7 +104,16 @@ func NewService(cfg Config, opts Options) (*Service, error) {
 		return nil, errors.New("auth: wechat client is required")
 	}
 	if opts.Handoff == nil {
-		opts.Handoff = NewMemoryHandoff(opts.Now)
+		// Production must keep the handoff in shared storage: the WeChat redirect
+		// and the client's poll routinely land on different processes behind a load
+		// balancer, and the in-memory handoff would make the tokens unreachable
+		// from the instance that serves the poll. Tests pass a MemoryHandoff
+		// explicitly and are unaffected by this default.
+		if opts.Store != nil {
+			opts.Handoff = NewStoreHandoff(opts.Store, opts.Now)
+		} else {
+			opts.Handoff = NewMemoryHandoff(opts.Now)
+		}
 	}
 	if opts.Logger == nil {
 		opts.Logger = slog.Default()
@@ -351,12 +360,17 @@ func (s *Service) Poll(ctx context.Context, ticket string) (PollResult, error) {
 // keeps hashes — and a second poll reports the account without them. That is
 // not a happy path; it is what happens if a client polls twice past the end,
 // and the honest answer is "you already have these".
+//
+// The account is always read fresh from the store rather than taken from the
+// handoff: the shared handoff only carries the account id, and a poll served by
+// any instance must report the full profile.
 func (s *Service) authorized(ctx context.Context, session store.AuthSession) (PollResult, error) {
 	creds, ok := s.handoff.Take(ctx, session.Ticket)
 	if !ok {
 		// Either a repeat poll, or the redirect landed on a different process
-		// from this one. The account is still worth reporting: it is not a
-		// secret and it lets the UI show who is signed in.
+		// from this one, or the handoff could not be read. The account is still
+		// worth reporting: it is not a secret and it lets the UI show who is
+		// signed in.
 		result := PollResult{Status: StatusAuthorized, ExpiresAt: session.ExpiresAt}
 		if session.AccountID != "" {
 			account, err := s.store.GetAccount(ctx, session.AccountID)
@@ -368,17 +382,36 @@ func (s *Service) authorized(ctx context.Context, session store.AuthSession) (Po
 		return result, nil
 	}
 
+	accountID := creds.Account.ID
+	if accountID == "" {
+		accountID = session.AccountID
+	}
+	account, err := s.store.GetAccount(ctx, accountID)
+	if err != nil {
+		// The handoff named an account that vanished; fall back to the
+		// session's account if present so the UI still shows the sign-in rather
+		// than an error the user cannot act on.
+		if session.AccountID != "" {
+			if acct, gerr := s.store.GetAccount(ctx, session.AccountID); gerr == nil {
+				account = acct
+			}
+		}
+		if account.ID == "" {
+			return PollResult{}, fmt.Errorf("auth: get account: %w", err)
+		}
+	}
+
 	result := PollResult{
 		Status:       StatusAuthorized,
 		AccessToken:  creds.AccessToken,
 		RefreshToken: creds.RefreshToken,
 		ExpiresAt:    creds.AccessExpiresAt,
-		Account:      &creds.Account,
+		Account:      &account,
 	}
 	s.log.Info("auth session delivered",
 		"ticket", token.Fingerprint(session.Ticket),
-		"account", token.Fingerprint(creds.Account.ID),
-		"chain", token.Fingerprint(creds.Account.ID))
+		"account", token.Fingerprint(account.ID),
+		"chain", token.Fingerprint(account.ID))
 	return result, nil
 }
 

@@ -94,6 +94,55 @@ func (h *MemoryHandoff) Len() int {
 	return len(h.held)
 }
 
+// ---------------------------------------------------------------------------
+// StoreHandoff — the deployment-safe handoff.
+// ---------------------------------------------------------------------------
+
+// StoreHandoff keeps the credentials in the database the redirect and the poller
+// already share, so a scan completed by one instance is always collectable by a
+// poll served by another. The in-memory MemoryHandoff is correct only for a
+// single process and is kept for tests; production must use this.
+type StoreHandoff struct {
+	store store.AuthStore
+	now   func() time.Time
+}
+
+// NewStoreHandoff builds a handoff backed by the shared store.
+func NewStoreHandoff(s store.AuthStore, now func() time.Time) *StoreHandoff {
+	if now == nil {
+		now = func() time.Time { return time.Now().UTC() }
+	}
+	return &StoreHandoff{store: s, now: now}
+}
+
+func (h *StoreHandoff) Put(_ context.Context, ticket string, creds Credentials, ttl time.Duration) {
+	if err := h.store.PutAuthHandoff(context.Background(), store.AuthHandoff{
+		Ticket:           ticket,
+		AccessToken:      creds.AccessToken,
+		RefreshToken:     creds.RefreshToken,
+		AccessExpiresAt:  creds.AccessExpiresAt,
+		AccountID:        creds.Account.ID,
+		ExpiresAt:        h.now().Add(ttl),
+	}); err != nil {
+		// A handoff we cannot persist is a scan the user will never collect; the
+		// poller surfaces the miss as a retryable failure rather than a freeze.
+		_ = err
+	}
+}
+
+func (h *StoreHandoff) Take(ctx context.Context, ticket string) (Credentials, bool) {
+	ah, ok, err := h.store.TakeAuthHandoff(ctx, ticket)
+	if err != nil || !ok {
+		return Credentials{}, false
+	}
+	return Credentials{
+		AccessToken:     ah.AccessToken,
+		RefreshToken:    ah.RefreshToken,
+		AccessExpiresAt: ah.AccessExpiresAt,
+		Account:         store.Account{ID: ah.AccountID},
+	}, true
+}
+
 // sweepLocked drops anything past its expiry. Entries are few — one per login
 // in flight — so a full pass per Put is cheap, and it means a process that
 // stops logging people in stops holding their tokens even if nothing ever
