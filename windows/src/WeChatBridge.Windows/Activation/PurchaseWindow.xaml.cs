@@ -42,6 +42,13 @@ public partial class PurchaseWindow : Window
         _controller.Changed += Render;
         Closed += OnClosed;
 
+        // First paint. Without this the XAML defaults — empty machine code, an
+        // empty status line, a paid button hidden behind Visibility="Collapsed" —
+        // sit on screen until the auto-register path's first Raise() reaches Render,
+        // which is the "blank window" frame a freshly-returned customer notices
+        // before the controller pushes its first state.
+        Render();
+
         // When opened from the "我已付款" entry, the click already asserted payment,
         // so ask for the authorization code (the request id) the moment the window
         // appears instead of waiting for a second press.
