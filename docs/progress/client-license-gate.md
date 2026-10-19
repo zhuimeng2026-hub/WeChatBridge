@@ -15,12 +15,18 @@
 > 另：`LicensePublicKeys.PlaceholderKeyV1` 的占位公钥已换成真实签发公钥，
 > 此前的 🔴 阻塞项解除（私钥在服务端 `/etc/wechatbridge/license-ec.pk8.pem`，
 > 公私钥 DER 逐字节一致，签名/验签实测通过）。
+>
+> 2026-10-19 11:00 再校准：**C-① 客户端侧已落地 ✅**。
+> `AccountController` 不再拉 `FetchQrAsync`；`LoginWindow` 用 `Hyperlink` + `Process.Start UseShellExecute=true`
+> 把 `authorizeUrl` 交给系统浏览器；en.json 文案全部就地改为「链接」语义，`{0}` 索引与 LocalizationTests
+> 断言对齐；dotnet build/test 双形态绿（Perpetual 581+55、Subscription 580+55）。
+> 真机端到端验证仍待与另两台树的联调周期一起跑。
 
 ## 任务表
 
 | # | 任务 | 状态 | commit | 备注 |
 |---|---|---|---|---|
-| C-① | 微信登录（session → QR PNG → 轮询 → 存双令牌） | ⏳ | `98061ea` | 代码在，**但 QR 那一步是错的**，见下「微信登录二维码的错配」 |
+| C-① | 微信登录（session → 浏览器授权链接 → 轮询 → 存双令牌） | ✅ | `98061ea` + 当前 commit | 客户端已切换为系统浏览器打开 `authorizeUrl`；二维码渲染链路与 `FetchQrAsync` 调用从 `AccountController`/`LoginWindow` 移除；本地化文案同步 `en.json` |
 | C-② | 机器码展示（installId 主键 + 硬件锚摘要辅证） | ✅ | `7232d39` | 购买窗内的可复制机器码 + 锚摘要；通用页另有一行常驻显示 |
 | C-③ | 购买（收款码静态图 + 登记 + 轮询 + 取票） | ⏳ | `7232d39` | `PurchaseWindow` 已写；**待产品方补齐收款码与开发者微信** |
 | C-④ | 启动门禁集成（未登录→登录页；已登录未授权→引导购买） | ✅ | `2d994b0` | `ActivationGate`；**不锁任何功能**，见下 |

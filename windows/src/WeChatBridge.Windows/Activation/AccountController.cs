@@ -9,10 +9,10 @@ public enum LoginStage
     /// <summary>Nothing has been asked for yet.</summary>
     Idle,
 
-    /// <summary>Asking the service for a QR ticket.</summary>
+    /// <summary>Asking the service for a sign-in link.</summary>
     Requesting,
 
-    /// <summary>Showing the code and waiting for the phone.</summary>
+    /// <summary>Showing the link and waiting for the phone.</summary>
     WaitingScan,
 
     /// <summary>Signed in.</summary>
@@ -36,6 +36,13 @@ public enum LoginStage
 /// <see cref="CancellationTokenSource"/> is never reused, so a second attempt starts
 /// from a clean ticket rather than inheriting a half-finished one.
 /// </para>
+/// <para>
+/// <b>The QR image is gone.</b> The server's <c>/qr</c> endpoint renders a code that
+/// WeChat opens as a plain link in the phone browser, which is not how PC sign-in
+/// works. The window now shows the <see cref="AuthorizeUrl"/> as a clickable link
+/// the user opens in a desktop browser; the code that lives inside that page is the
+/// one WeChat will accept. See <c>docs/design/client-login-browser-fix.zh-CN.md</c>.
+/// </para>
 /// </summary>
 public sealed class AccountController : IDisposable
 {
@@ -44,8 +51,6 @@ public sealed class AccountController : IDisposable
     private readonly Action<string>? _log;
     private readonly CancellationTokenSource _lifetime = new();
     private bool _disposed;
-
-    private byte[]? _qrPng;
 
     public AccountController(AccountService account, string? installId, Action<string>? log = null)
     {
@@ -61,13 +66,13 @@ public sealed class AccountController : IDisposable
     /// <summary>One line, in the user's language, saying what is happening.</summary>
     public string StatusMessage { get; private set; } = L10n.Text("点击下方按钮，用微信扫码登录。");
 
-    /// <summary>The PNG bytes for the QR code, or null before one exists.</summary>
-    public byte[]? QrPng => _qrPng;
-
-    /// <summary>The URL the QR encodes. Shown under the code, so a user who cannot scan can still log in.</summary>
+    /// <summary>
+    /// The URL to open in a desktop browser. WeChat renders the real sign-in code
+    /// inside that page; showing the URL is the only way the user can reach it.
+    /// </summary>
     public string AuthorizeUrl { get; private set; } = string.Empty;
 
-    /// <summary>Seconds left on the ticket, for the countdown under the code.</summary>
+    /// <summary>Seconds left on the ticket, for the countdown under the link.</summary>
     public int SecondsRemaining { get; private set; }
 
     public bool IsBusy => Stage is LoginStage.Requesting;
@@ -82,12 +87,11 @@ public sealed class AccountController : IDisposable
     public bool IsSignedIn => _account.IsSignedIn;
 
     /// <summary>
-    /// Asks for a QR ticket, fetches the image, and waits for the scan.
+    /// Asks for a sign-in ticket and waits for the scan.
     /// <para>
     /// One method rather than three, because the order is not the caller's to choose:
-    /// there is nothing to show without the ticket and nothing to wait for without
-    /// the image, and a caller that could interleave them would eventually ask for a
-    /// ticket twice and show the user two codes.
+    /// there is nothing to show without the ticket and a caller that could interleave
+    /// the steps would eventually ask for a ticket twice.
     /// </para>
     /// </summary>
     public async Task StartAsync()
@@ -95,11 +99,10 @@ public sealed class AccountController : IDisposable
         if (_disposed)
             return;
 
-        _qrPng = null;
         AuthorizeUrl = string.Empty;
         SecondsRemaining = 0;
         Stage = LoginStage.Requesting;
-        StatusMessage = L10n.Text("正在获取二维码…");
+        StatusMessage = L10n.Text("正在获取登录链接…");
         Raise();
 
         try
@@ -108,10 +111,9 @@ public sealed class AccountController : IDisposable
                 .BeginLoginAsync(_installId, Environment.MachineName, _lifetime.Token)
                 .ConfigureAwait(true);
 
-            _qrPng = await _account.FetchQrAsync(ticket, _lifetime.Token).ConfigureAwait(true);
             AuthorizeUrl = ticket.AuthorizeUrl;
             Stage = LoginStage.WaitingScan;
-            StatusMessage = L10n.Text("请用微信扫描二维码。");
+            StatusMessage = L10n.Text("请在浏览器中打开以下链接，用微信扫码完成授权。");
             UpdateCountdown(ticket.ExpiresAt);
             Raise();
 
