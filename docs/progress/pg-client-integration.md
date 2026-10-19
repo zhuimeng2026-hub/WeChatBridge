@@ -24,8 +24,8 @@
 | P-④ | 激活服务默认地址落到生产域名 | ✅ | `706a2c3` | `ActivationContract.DefaultBaseAddress` 从 `api.wechatbridge.invalid/` 换成 `https://ocbot.aixifs.com/`，与微信开放平台回调域同域。开发机用 `WECHATBRIDGE_LICENSE_SERVER` 覆盖 |
 | P-⑤ | 登录窗首次渲染缺陷 | ✅ | `413d15d` | 按钮永久禁用（XAML 旧文案残留 + 首渲染缺失） |
 | P-⑥ | 出包脚本 | ✅ | `020e72f` `6459829` | `windows/scripts/build-app.ps1` 从 `Directory.Build.props` 读版本号，主程序与 ShareTarget 一起 publish，自包含产物少一个运行时文件就报错；`build-app.bat` 是双击壳 |
-| P-⑦ | 一键构建并启动 | ✅ | 本 commit | 仓库根 `build-and-run.ps1` + `build-and-run.bat`。见下 |
-| P-⑧ | CLAUDE.md 与代码对齐 | ⏳ | — | 见下 |
+| P-⑦ | 一键构建并启动 | ✅ | `6340b47` | 仓库根 `build-and-run.ps1` + `build-and-run.bat`。见下 |
+| P-⑧ | CLAUDE.md 与代码对齐 | ✅ | 本 commit | 见下 |
 
 ## P-⑦ 备注：一键构建并启动
 

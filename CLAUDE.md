@@ -67,9 +67,7 @@ Scripts/install-dev-build.sh                  # 装到 ~/Applications，让扩�
 ### Windows
 
 ```bash
-# Git Bash 下 dotnet 不在 PATH 上，先 export
-export PATH="$PATH:/c/Program Files/dotnet"
-
+# dotnet 10.0.402 SDK 已在本机 PATH 上，不需要 export。
 # Edition 必须同时传给 restore / build / test，只传给 build 会让测试跑在另一个 edition 上
 dotnet restore windows/WeChatBridge.Windows.sln -p:WeChatBridgeEdition=Perpetual
 dotnet build   windows/WeChatBridge.Windows.sln -c Release --no-restore -p:WeChatBridgeEdition=Perpetual
@@ -81,19 +79,63 @@ dotnet test    windows/WeChatBridge.Windows.sln -c Release -p:WeChatBridgeEditio
 powershell -ExecutionPolicy Bypass -File windows/scripts/Test-NoNetworkCode.ps1 -Edition Perpetual
 ```
 
+**出包走 `windows/scripts/build-app.ps1`，不要手拼 `dotnet publish`。** 它从
+`Directory.Build.props` 把 `<Version>` 读回来（五个调用点曾各自硬编码，静默漂移），
+`ValidateSet` 锁死 `-Configuration Release` / `-Runtime win-x64` / `-Edition`，
+主程序与 ShareTarget **两个**工程一起 publish（只出主 exe 是静默失败：分享面板直接不出现），
+发布后再断言两个 exe 的 `FileVersion` 与四个运行时文件（`hostfxr.dll` `hostpolicy.dll`
+`coreclr.dll` `PresentationFramework.dll`）都在——自包含产物少一个文件就是用户双击后
+弹「缺少 .NET 运行时」。默认自包含；`-FrameworkDependent` 是显式选择。
+`build-app.bat` 是给人双击的壳，`.ps1` 才是源码真相（CI 直接调 `.ps1`）。
+
+**仓库根的 `build-and-run.ps1` 是给人用的总入口**：构建 → 门禁 →（可选）注册分享入口 → 启动，
+产出 `windows\artifacts\publish\win-x64\WeChatBridge.Windows.exe`（自包含，双击即开，本机不必装
+.NET）。根目录的 `build-and-run.bat` 是它的双击壳（`.bat` 必须**纯 ASCII**，因为 cmd 按 ANSI
+读它；中文全在 `.ps1` 里，而 `.ps1` 是 UTF-8 with BOM）。它不自己拼 `dotnet publish`，只编排已有脚本。三个要点：
+
+- **Appx 与门禁都在独立进程里跑。** `Get-AppxPackage` / `Add-AppxPackage` 只在 Windows
+  PowerShell 5.1 上可用（PS7 加载 Appx 模块直接失败，0x80131539）；`Test-NoNetworkCode.ps1`
+  结尾是 `exit 0`，而 `exit` 会把调用它的整个脚本一起带走。两者都必须用
+  `powershell.exe -File` 走子进程。**收尾时查注册状态也是走子进程**——不能靠「这次有没有加
+  `-Register`」来推，上一轮注册过的话入口一直都在。
+- **构建前会先停掉跑在产物目录里的进程。** 微信每次分享都留下一个 ShareTarget 常驻进程
+  （keeper），它一直占着 `share-target\` 里的 dll；不先停掉，publish 会以
+  MSB3021/MSB3027（"文件被 xxx 锁定"）失败。只按**路径**匹配（只停跑在要覆盖的目录里的那些），
+  不按进程名一刀切——用户装在别处的正式版不该被构建脚本关掉。
+- **`.bat` 在 `NoDefaultCurrentDirectoryInExePath=1` 的机器上不能靠裸名字调用。** 该设置让 cmd
+  不再搜当前目录，于是报「不是内部或外部命令」——**文件明明就在眼前**。双击不受影响；
+  命令行里要用 `.\build-and-run.bat`。仓库里原有的 `windows/scripts/build-app.bat` 同样如此。
+
+`-Register` 才会把入口注册进微信的「转发到其他应用」；不注册的话 App 能开，但转发菜单里没有它。
+
 ### Go 服务端
 
 ```bash
 cd server
-GOTOOLCHAIN=go1.26.9 go build ./... && GOTOOLCHAIN=go1.26.9 go vet ./... && GOTOOLCHAIN=go1.26.9 go test ./...
-GOTOOLCHAIN=go1.26.9 go test ./internal/license/ -run TestVerify -v     # 单包单测试
+go build ./... && go vet ./... && go test ./...     # 实测 10 个包全绿
+go test ./internal/license/ -run TestVerify -v     # 单包单测试
 ```
 
-**`GOTOOLCHAIN=go1.26.9` 不能省。** `go.mod` 写 `go 1.26`，而发行版装的是 Go 1.22。裸跑 `go test ./...` 会先尝试下载 toolchain，在只能走内部镜像的机器上得到 `toolchain not available`——**这看着像网络问题，实际是版本没选对**：对应 toolchain 早已在 `$(go env GOMODCACHE)/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64` 里，显式指定即可命中缓存。装 Go 1.26+ 本机后这个前缀可以摘掉。
+**`GOTOOLCHAIN=go1.26.9` 是 Linux 镜像机的绕法，在本机（Windows）上不要加。** `go.mod` 写
+`go 1.26`；发行版镜像装的是 Go 1.22，裸跑 `go test ./...` 会去下载 toolchain，在只能走内部
+镜像的机器上得到 `toolchain not available`——**这看着像网络问题，实际是版本没选对**：对应
+toolchain 早已在 `$(go env GOMODCACHE)/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64` 里，
+显式指定即可命中缓存。**本机装的是 Go 1.26.2，缓存里只有 `go1.26.5.windows-amd64`**——在这台
+机器上加 `GOTOOLCHAIN=go1.26.9` 反而会去下载一个本地没有的版本。
 
 `go test ./...` 全绿**不需要**真实 PostgreSQL、微信凭据或网络——每个外部依赖都在接口后面，测试用 pgxmock / fake store 顶替。**但 pgxmock 只断言查询字符串，从不执行它**：`store/postgres` 里那些真正要紧的语义——部分唯一索引的并发冲突（`activation_requests_live_install_idx` 是 `UNIQUE … WHERE status='pending'`）、条件 UPDATE 守卫实际影响几行、隐式行序——一行都没被真跑过。覆盖它们是 A-⑧ 的活，需要真库。
 
 #### 本机 PostgreSQL（供 A-⑧ 集成测试）
+
+**这台 Windows 机器上没有 PostgreSQL**：`psql` / `pg_isready` 都不在 PATH，也没有任何本地
+服务在跑。下面的步骤是 Linux 部署机的做法，本机照抄会失败。服务端在本机起得来的两条路：
+
+1. **`server/mock/server.js`（契约 mock）** —— 零依赖、无数据库、无签名。见下节。
+2. **SQLite 版（`feat/sqlite-migration` 分支）** —— 评估文档 `docs/design/sqlite-migration.zh-CN.md`
+   结论是「可行、范围比预期小」，领域层 182 个业务测试零改动，只重写 store 包的方言。
+   **主线 `feat/pg-client-integration` 仍是 PostgreSQL 版**，切库是单独一条分支的活。
+
+Linux 部署机上的步骤（**不是本机**）：
 
 服务端的持久层需要一个真实例。它跟 CI 无关（CI 根本不测服务端），纯属本地开发依赖。
 
@@ -125,7 +167,7 @@ WCB_HTTP_ADDR=:18901 GIN_MODE=release ./cmd/wcb
 
 ```bash
 node server/mock/server.js --port 8901     # 零依赖 Node，契约 mock；字段/状态码/错误信封与真服务端逐字节一致
-cd admin-console && node test/smoke.mjs     # 契约冒烟 21 项
+cd admin-console && node test/smoke.mjs     # 契约冒烟 28 项（实测全过）；mock 必须在跑
 cd admin-console && node test/browser.mjs   # 浏览器级 17 项，需 playwright-core + 本机 Chrome（可选）
 ```
 
@@ -150,17 +192,41 @@ macOS 的分享菜单只在构建期由已签名的 appex 条目决定，不能�
 - **主应用故意不进沙盒，扩展必须进沙盒**，两个不对称都被脚本断言。原因：沙盒内任何 `pluginkit` 调用都必然失败（pkd 拒绝沙盒客户端），而「入口」设置页整个建在 pluginkit 上。
 - 串行化在 `ActionRunner.enqueueExclusive`（`private var pending: Task?` 链式 await）。等待队列之后**必须重新检查** `arrival.isFresh`，不能只在读盘时查一次。
 
+### Windows 端：产品面远不止「转发一条消息」
+
+Core 里的功能包（`windows/src/WeChatBridge.Windows.Core/`）：
+
+| 包 | 做什么 | 非显然的点 |
+| --- | --- | --- |
+| `Delivery/` | 激活目标 → 写剪贴板 → 聚焦输入框 → 粘贴 | `DeliveryFailureKind` 是穷举的失败分类（目标不存在 / 进程或 AUMID 没解析出来 / 目标始终没进前台 / 剪贴板被拒 / `SendInput` 短写） |
+| `Collections/` | **分批收集**：连续收原始 ZIP，收齐后一次选目标与场景 | 原始 ZIP 永远留在 `Ready`，**不合并也不重写**；集合有 `Collecting/Draft/Delivering/Delivered/Retry` 五态 |
+| `Scenes/` | 按群聊绑定提示词与适用 Agent | JSON 与 macOS 的 `Scene.swift` 逐字一致，macOS 导出的场景 Windows 原样能导；`SceneStore` 同时读 macOS 的**2001 纪元秒**与 Windows 的 ISO-8601 两种时间写法 |
+| `Skills/` | 应用自管的技能库（`SKILL.md`） | `SkillPackage` 的 SHA-256 摘要与 macOS `SkillInstaller` **逐字节相同**；库状态有 `Diverged`，**分叉的库永不覆盖** |
+| `Obsidian/` | 沉淀成 Markdown 笔记 / 写进文件夹 | 写进 Obsidian 时**同时留一份原始 ZIP 的持久副本**，将来解析器改了还能重建笔记，不必再问微信要 |
+| `Archive/` | 微信原生 ZIP 的内存读取 | 不落盘、不起辅助进程；ZIP64 / 加密 / 未知压缩**一律 fail closed**；TXT 条目与展开后总体积都有上限 |
+| `Identity/` | 群身份 | 按**发送者集合**认群，不按标题——「改过名的群还是那群人：标题栏里那个名字是标签，发送者集合才是身份」 |
+| `LocalChatImporter.cs`（Core 根目录） | 用户选的文件 / 粘贴的文本 | 走**同一条** Inbox 通道，但不激活打包也不碰剪贴板 |
+
+**分享路径永远不许把自家窗口顶到前台。** 投递引擎正在把目标 App 顶到前台，自己再抢一次焦点
+就把 Ctrl+V 抢没了——所以 `--background` 启动的实例从不 `window.Show()`，且
+`ForegroundEventName` 与 `ChangeEventName` 是**两个**命名事件。隐藏窗口不触发 `Loaded`，
+后台实例必须**显式加载**（漏过一次，2026-09-25 实测两批分享永远送不出去）。
+
+**界面是 6 个面板**（`Panes/`，由 `AppTab` 枚举驱动）：记录 / 通用 / 入口 / 场景 / 技能中心 / 关于。
+**引导是 4 步**（`Onboarding/`），**便携版直接跳过引导**——引导会叫未注册的用户重装、
+给 removable drive 兑现不了的「开机自启」选项，并列出十二个在分享菜单注册前毫无意义的入口。
+
 ### Windows：Core 是零依赖，两个应用都只能单向依赖它
 
 ```
 WeChatBridge.Windows ──► Core ──► (仅 BCL)
 WeChatBridge.ShareTarget ──► Core
-                     └────► (Link 主项目的 10 个源文件，无 ProjectReference)
+                     └────► (Link 主项目的 11 个源文件，无 ProjectReference)
 ```
 
 `WeChatBridge.Windows.Core` 是 `net10.0`（**不是** `-windows`）、无 WPF、**零 NuGet 引用**——这个保证是显式的，由测试守着。
 
-ShareTarget 从主程序 Link 了 10 个文件（XAML 选入口浮层等），让同一个面板在助手宿主里长得一模一样。代价：AppTests 对两个项目引用都设 `ReferenceOutputAssembly="false"`（否则 CS0433 类型二义），改用 `CopyShareTargetForProcessTests` 复制 exe 跑进程级测试。
+ShareTarget 从主程序 Link 了 11 个文件（XAML 选入口浮层等），让同一个面板在助手宿主里长得一模一样。代价：AppTests 对两个项目引用都设 `ReferenceOutputAssembly="false"`（否则 CS0433 类型二义），改用 `CopyShareTargetForProcessTests` 复制 exe 跑进程级测试。
 
 **分享注册**：稀疏 MSIX 只提供身份、程序在包外（`uap10:AllowExternalContent`）。`AppxManifest.xml` 的 `DisplayName` 里**绝不能出现连续的「微信 / WeChat / Weixin」**——微信会直接隐藏这类目标，所以全仓库写的是微`<U+2060>`信流。
 
@@ -180,15 +246,44 @@ ShareTarget 从主程序 Link 了 10 个文件（XAML 选入口浮层等），�
 
 ```
 auth/      微信扫码登录（redirect 落在服务端，桌面进程永远拿不到 code）
+           + handoff.go：微信回调（实例 A 铸令牌）与客户端轮询（实例 B 取令牌）之间的
+             一次性桥。Take 是 read-once（第二次返回 false），明文令牌只存在于这张
+             过桥行里（store 只存哈希），取出即删。**进程内 handoff 对多进程不正确**，
+             所以生产走 StoreHandoff——这条同时是「服务架构上禁止多实例」的根据。
+           + payment.go：卖家收款码 / 卖家微信号 / 联系人码，渲染成微信回调页。
+             **图片有问题绝不报错**（LoadPaymentCode 永远成功，坏图降级成「未配置」并
+             记一条 Problem）——为了缺一张 png 就让所有人登不了录是本末倒置。
+             坏图重载保留上一张好图；**页面绝不能自动刷新**（回调 URL 是一次性的，
+             reload 会把收款码换成错误页，买家就永远拿不到机器码）。
+           + 头像：决策逻辑在 service.go（refreshAvatar / avatarIsStale / Avatar），
+             字节缓存是独立的 avatar/ 包。
 token/     access = HS256 JWT；refresh = 不透明 wcb1_ 串（自包含的 refresh 只能靠「不认」作废）
 license/   ECDSA P-256 签发，客户端只嵌 SPKI 公钥
 activation/ 买断版客户侧三端点：登记 → 轮询 → 取票（无支付网关）
-admin/     卖家控制台（Bearer + OpenID 白名单）
+admin/     卖家控制台（Bearer + OpenID 白名单）：列表 / 确认 / 拒绝 / 重签 / 作废
+avatar/    微信头像的内容寻址本地缓存。**只按魔数嗅探类型，不看 Content-Type**
+           （说 image/png 却吐 HTML 的是门户劫持）；只走 https 且只允许微信域名
+           （点锚定后缀，不是子串）；文件名 = 字节的 SHA-256，所以摘要即 ETag。
+           「头像是租约不是地址」——微信的 headimgurl 几天就过期。
 cmd/wcb/   唯一入口：装配、迁移执行、优雅关闭
 store/     接口在 store.go，实现在 store/postgres
 ```
 
 `billing/`（微信支付 Native）与 `redeem/`（兑换码）已随兑换码退役删除（`86abca3 [A-③]`）。**没有支付网关**：买家自己转账，卖家人工核对微信零账后在后台一键发证。
+
+**路由一共 17 个**，`/healthz` 之外的都挂在 `cfg.BasePath`（`WCB_BASE_PATH`，如 `/wechat_auth`）
+下。`/v1/admin/*` 在 `WCB_ADMIN_OPENIDS` 为空时**整个不挂载**（404 而非全信任）。
+`GET /v1/accounts/:id/avatar` **刻意不鉴权**——WPF 的 `Image` 控件发不出 `Authorization` 头；
+安全性靠「路径是 UUID（无从枚举）+ 身体本来就是公开的微信头像 + 不带任何账号信息」三条撑着。
+没有 `WriteTimeout`（写到一半超时的许可证是坏许可证）。
+
+**表已经不止 4 张。** `0001_init.up.sql` 建 4 张（`accounts` / `auth_sessions` /
+`activation_requests` / `licence_bindings`），之后又加了三处迁移：
+`0002_auth_handoff`（`auth_handoffs`）、`0003_activation_rejected`（`activation_requests.rejected_at`）、
+`0004_account_avatar`（`account_avatars`）——**六张业务表 + 一张 `schema_migrations` 台账**。
+台账表由迁移器自己建，每个 `.up.sql` 与它的台账行在**同一个事务**里，崩溃留下的是
+「没应用」而不是「应用了一半」。`envelope_json` 是 `bytea` 不是 `jsonb`——jsonb 会重排键，
+键序一变签名就对不上。
 
 ### 客户端侧：Activation 三件套（`windows/`）
 
@@ -200,7 +295,18 @@ store/     接口在 store.go，实现在 store/postgres
 
 **签名从不是对 JSON 文本签的**，而是对规范化后的 8 行字符串签（域分隔符 `wechatbridge.license.v1`，空段用 `-` 占位，**无尾随换行**）。ent 排序去重，因为 map 迭代或没写 ORDER BY 的 SELECT 每次返回顺序都不同。
 
-**跨语言的东西一律是复制而非共享**：许可证规范化向量 + SHA-256、兑换码归一化表、时间戳格式、wire 枚举字符串，两端各有一份并各有一对测试。`go test ./...` 全绿**不代表**客户端还验得过——唯一无法被编译器检查的跨语言契约就是这个 canonical 格式，所以两端各自钉死了同一个常量与同一个摘要。
+**跨语言的东西一律是复制而非共享**：许可证规范化向量 + SHA-256、时间戳格式、wire 枚举字符串，两端各有一份并各有一对测试。`go test ./...` 全绿**不代表**客户端还验得过——唯一无法被编译器检查的跨语言契约就是这个 canonical 格式，所以两端各自钉死了同一个常量与同一个摘要。
+
+（兑换码归一化表随兑换码退役一起没了，客户端的清理也已完成——`windows/src` 下已经没有
+`Redeem/` 目录，`en.json` 里没有兑换文案，`--redeem` 参数也没了。）
+
+**canonical 向量有一个共享文件，但两端读它的方式故意不同。** `shared/License/license-test-vectors.json`
+由 `server/cmd/license-vectors` 生成，**Go 侧直接读**（`server/internal/license/vectors_test.go`）；
+**C# 侧不读文件**，把向量逐字节写在 `LicensingCanonicalPayloadTests.cs` 里。原因是文件头那句注释：
+*「一个由被测实现生成的向量什么都证明不了」*——所以 C# 那边必须是手写的字面量。
+这带来一个必须知道的坑：**仓库没有 `.gitattributes`，`core.autocrlf` 是开的**，Windows 上
+checkout 出来的字面量带 `\r\n`，于是 `ReplaceLineEndings("\n")` 不是装饰而是必需——不发它，
+签名照样完全有效、字段照样全解析得出，只是客户端永远不同意服务端。
 
 **签名是 64 字节的 raw `r‖s`，不是 DER。** `internal/license/crypto.go` 的 `signRaw` 手工 `FillBytes` 拼两个 32 字节再 base64；`verifyRaw` 的注释写明它自己做 malleability 检查。任何用 `openssl dgst -verify` 之类的通用工具去验这张许可证都会得到 `Error verifying data`——那条命令要 DER（P-256 通常 70–72 字节）。手工验证时先把 raw 转成 `SEQUENCE{INTEGER r, INTEGER s}` 再验，否则会误判成事故。
 
@@ -237,6 +343,9 @@ ent=PRO        ← 大写、排序、去重后逗号连接
 
 **admin 的 403 不是 401。** 鉴权走买家同一套微信扫码 bearer token，`WCB_ADMIN_OPENIDS` 白名单决定谁在后面。token 验得过但账号不在名单上是 403：凭据没问题，背后的身份不是卖家。空白名单是接线错误，`NewService` 直接拒绝——`cmd/wcb` 干脆不挂载 admin 路由（404 而非全信任）。
 
+**卖家有四个动词，不是两个。** `confirm` / `reject` / `reissue` / `revoke`。`reject`（§11.7 M-4）
+是后补的：原先卖家只能说「是」和「收」，不能说「不」——买家的登记会永远卡在 pending。
+
 ## CI 门禁的排序是有意的
 
 `.github/workflows/ci.yml` 的 Windows job 跑 `Perpetual | Subscription` 双矩阵且 `fail-fast: false`（一个腿红不能取消另一个，否则 Subscription 的日志会因 Perpetual 失败而消失——而这恰好是这个矩阵存在的意义）。
@@ -260,14 +369,43 @@ ent=PRO        ← 大写、排序、去重后逗号连接
 
 ## 已知缺口（别当成新 bug 去排查）
 
+- **`origin` 上没有 `server/`、`admin-console/`，也没有 `CLAUDE.md`。** `origin` =
+  `freestylefly/WeChatBridge`，只同步 `macos/` `windows/` `shared/` `site/` `docs/`；
+  **服务端与卖家后台只存在于 fork `zmuimeng`（`zhuimeng2026-hub/WeChatBridge`）**。
+  推 `origin` 会因为没有写权限而失败；`git clone origin` 拿到的仓库里**没有服务端**。
+  「没 push = 没发生」是这套并行协议的第一条原则，唯一的共享通道是 fork。
+- **`site/appcast.xml` 现在装的是「Dukou」这个别的产品的 feed。** 里面零条 WeChatBridge 记录，
+  每一条都指向 `github.com/qzz0518/Dukou` 的 dmg，签名也是用我们不持有的密钥签的。
+  `site/WeChatBridge-0.1.13.md`～`0.1.15.md` 的发布说明在，但**不在 feed 里**。
+  换句话说，macOS 的 Sparkle 更新源目前是断的——`pages.yml` 照发不误，发的是别人的更新源。
+- **`docs/progress/` 下没有当前分支（`feat/pg-client-integration`）的看板。** 协议要求
+  「看板与代码同一个 commit」，现有三块看板（`server-convergence` / `admin-console` /
+  `client-license-gate`）属于另外三条分支。
 - **`windows/src` 下不存在 `Cloud/`、`CloudQr/`、`Billing/` 目录。** 版本隔离机制全部建好并被 CI 守着，但订阅形态的源码还没有落地，所以 `Test-NoNetworkCode.ps1` 在 Subscription 下会打印 SKIPPED。
-- **`LicensePublicKeys.PlaceholderKeyV1` 是刻意的占位串**，不是忘了填。未替换前**每一张许可证都验不过**，`IsPro` 对所有用户恒为 false——这是 fail-closed 设计，不是 bug。填入服务端 SPKI 公钥是发版阻塞项。
-- **`PurchaseWindow.SellerWeChat = "（待填写）"`，收款码静态图也是占位。** 购买窗代码完成但产品方未填，C-③ 因此是 ⬏️。和上面那条一样是发版阻塞项。
-- **服务端已无 `POST /v1/license/redeem`，但 C# 侧的 `Redeem/` 还在**（Core 的 `RedeemContract.Path` 指向那个不存在的路由，`App.xaml.cs` 的 `--redeem` 仍会开兑换窗，`en.json` 里还有一整组兑换文案）。兑换码退役只做了服务端，客户端清理没跟上——今天兑换窗能开、能发请求、必然失败。
-- **`BuyoutProductID` 与 `httpx.CodeWrongProduct` 目前没有任何消费方**：字段被读进 `Config` 就没人用，错误码定义了也没有处理器返回。两者都是兑换码时代的残留，产品校验随兑换码一起退役了。**若日后重建产品校验，默认值已与客户端 `RedeemContract.ProductId` 统一为 `wechatbridge-windows-buyout`**，但别以为今天存在这条校验路径。
+- **`LicensePublicKeys.PlaceholderKeyV1` 这个名字是历史遗留，内容已经是真公钥。**
+  2026-10-19 起编译进客户端的就是服务端现役签发私钥的另一半（私钥在服务端
+  `/etc/wechatbridge/license-ec.pk8.pem`，PKCS#8 / mode 600），端到端验签实测通过。
+  **名字里的 "Placeholder" 不描述内容**——文件自己的注释写着「改名被刻意留在换值那次之外，
+  因为文件当时要交给另一个开发者，改名会多一次 diff；这名字是历史，不是描述」。
+  看到 "Placeholder" 就当成占位串跳过，是这个仓库里最容易犯的误判。
+- **收款码与卖家微信号现在在服务端，不在客户端。** `C#` 侧已经没有 `SellerWeChat` 这个字段了；
+  收款码 / 联系人码 / 卖家微信号分别由 `WCB_PAYMENT_CODE_PATH` / `WCB_CONTACT_QR_PATH` /
+  `WCB_SELLER_WECHAT` 提供，渲染在微信回调页上。客户端那张损坏的占位收款图已删除。
+  **金额不作为页面文本重述**——金额活在微信固定金额收款码的图像里，重述一遍就是第二份会漂移的事实源。
+- **兑换码的客户端清理已完成。** `windows/src` 下没有 `Redeem/` 目录，`en.json` 里没有兑换文案，
+  `App.xaml.cs` 的 `--redeem` 参数没有了。服务端 `POST /v1/license/redeem` 早已退役。
+  只剩 `ActivationContract.cs` 的注释里还提了一句 `RedeemEndpoint.BaseAddress`——那是一句悬空的
+  注释（它引用的类型已经不在了），不是活代码。
+- **`BuyoutProductID` 与 `httpx.CodeWrongProduct` 目前没有任何消费方**：字段被读进 `Config` 就没人用，错误码定义了也没有处理器返回。两者都是兑换码时代的残留，产品校验随兑换码一起退役了。默认值是 `wechatbridge-windows-buyout`，**但今天既没有服务端校验它，也没有客户端拿它比对**——别以为存在这条校验路径。
 - **Go 与 C# 的许可证信封仍有一处不一致**：base64（Go 用 std）对 base64url（C# `Base64Url`）。目前靠 C# 解码器的宽松映射兜住，实测可 roundtrip；一旦有人给 C# 加严格字母表校验就会当场炸。时间戳那处（int64 vs `DateTimeOffset`）已由 `b822761` 修复。成因与排查路径见 `windows/docs/LICENCE-ENVELOPE-WIRE-CONTRACT.zh-CN.md`。
-- **`server/mock/server.js` 该删了但还留着**（`server/mock/README.md` 自己写着「真实 handler 落地后本文件删除」）。它现在是有用的——无 PostgreSQL 时唯一能跑通客户端全流程的东西——但它的签名是占位，envelope 过不了客户端内嵌公钥。
-- **`admin-console` 的台账页许可证号列依赖本机 localStorage 日志**，因为冻结契约的 `GET /v1/admin/requests` 不返回 `licenseId`。非本机完成的签发显示「—」，作废得用页面底部的「手动操作」区输许可证号。
+- **`server/mock/server.js` 该删了但还留着**（`server/mock/README.md` 自己写着「真实 handler 落地后本文件删除」）。它现在是有用的——无 PostgreSQL 时唯一能跑通客户端全流程的东西——但它的签名是占位，envelope 过不了客户端内嵌公钥。**它跟真服务端逐字节一致的部分是路由、字段名、状态码、错误信封**；签名与二维码 PNG 是占位。
+- **`admin-console` 的台账页许可证号列现在由服务端返回**（`GET /v1/admin/requests` 的 item 带
+  `licenseId`，设计文档 §11.7 M-2 补齐）。本机 localStorage 日志降级成兜底，不是唯一来源。
+  卖家还有一个此前没有的路径：`POST /v1/admin/reject`（§11.7 M-4）——原先卖家只能说「是」和「收」，
+  不能说「不」。
 - **`Tests/FolderDeliveryTests.swift` 的 11 个测试不在任何 target 里**，`swift test` 从不编译它们。
 - **`App.swift` / `ShareEntryProbe.swift` / `AppLink.swift` / `ShareFailure.swift` 引用的 ADR-0005 / ADR-0006 在仓库里不存在。**
 - **`ci.yml` 只在 `[main, feat/windows-port]` 上触发**，当前分支不在其中，本地必须自己跑。
+- **macOS 端自 2026-10-04 起基本停更**（`git log -- macos/` 的最后一条），而 `server/` 与
+  `windows/` 每天都在动。macOS 的命令在本机（Windows）上**完全跑不了**——需要 macOS + Xcode。
+  macOS 侧现在主要是 CI 里的那个 job 还在守着。
