@@ -14,24 +14,24 @@
 <section id="view-login" class="view">
   <div class="login-card">
     <h1>卖家管理后台</h1>
-    <p class="login-sub">请使用卖家本人微信扫码登录（微信开放平台网站应用）</p>
+    <p class="login-sub">通过微信开放平台登录，使用管理员微信完成授权。</p>
+    <ol class="login-steps">
+      <li>点击下方按钮，在新标签页打开微信官方授权页。</li>
+      <li>使用微信扫描官方页面上的二维码并确认授权。</li>
+      <li>回到本页面，登录成功后自动进入后台。</li>
+    </ol>
 
-    <div id="login-qr-wrap" class="qr-wrap">
-      <img id="login-qr" alt="登录二维码" hidden>
-      <div id="login-qr-placeholder" class="qr-placeholder">二维码加载中…</div>
-    </div>
-
-    <p id="login-status" class="login-status" role="status">正在获取登录二维码…</p>
+    <p id="login-status" class="login-status" role="status">正在准备微信登录…</p>
     <p id="login-countdown" class="login-countdown" hidden></p>
 
     <div class="login-actions">
-      <button id="login-refresh" type="button" class="btn" hidden>刷新二维码</button>
-      <a id="login-authorize" class="btn btn-link" hidden target="_blank" rel="noopener">在微信中打开</a>
+      <a id="login-authorize" class="btn btn-primary" hidden target="_blank" rel="noopener noreferrer">打开微信授权页</a>
+      <button id="login-refresh" type="button" class="btn" hidden>重新获取登录链接</button>
     </div>
 
     <p class="login-hint">
       控制台身份标识：<code id="login-install-id">—</code><br>
-      手机已在微信内？点上方链接直接授权；否则请用微信「扫一扫」扫描左侧二维码。
+      请保持本页面打开。授权完成后无需复制链接或手动刷新页面。
     </p>
   </div>
 </section>
@@ -128,8 +128,8 @@
     <div class="settings-block">
       <h3>服务端地址</h3>
       <p class="panel-note">
-        默认值在 <code>js/config.js</code>（合并后改那一行即可切真服务端）。
-        下面的覆盖只写本浏览器 localStorage，供开发期在 mock / 真服务端之间切换。
+        默认使用本站接口，无需修改前端配置。下面的覆盖只写本浏览器 localStorage；
+        HTTP 页面只接受同源地址，开发期直接打开本地文件时可连接 mock。
       </p>
       <div class="settings-row">
         <input id="settings-baseurl" type="text" spellcheck="false" placeholder="http://127.0.0.1:8901">
@@ -143,9 +143,9 @@
     <div class="settings-block">
       <h3>关于鉴权</h3>
       <p class="panel-note">
-        登录走微信开放平台网站应用扫码（<code>POST /v1/auth/session</code> → 二维码 → 轮询 → 双令牌），
+        登录走微信开放平台授权（创建会话 → 官方授权页扫码 → 本页轮询 → 双令牌），
         管理操作携带 <code>Authorization: Bearer</code>。访问令牌只存 sessionStorage，
-        关闭标签页即失效；卖家微信的管理员身份由服务端 OpenID 白名单判定。
+        关闭标签页清除本地凭证；卖家微信的管理员身份由服务端 OpenID 白名单判定。
       </p>
     </div>
   </div>

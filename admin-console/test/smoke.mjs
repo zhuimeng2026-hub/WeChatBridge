@@ -58,7 +58,7 @@ async function waitHealth(baseURL, attempts = 40) {
 async function main() {
   // ---------- 起服务（或确认外挂 mock 可达） ----------
   let child = null;
-  let baseURL = cfg.baseURL;
+  let baseURL = process.env.WCB_TEST_BASE_URL || cfg.baseURL || "http://127.0.0.1:8901";
   if (process.env.WCB_MOCK_SCRIPT) {
     const port = 8909;
     baseURL = "http://127.0.0.1:" + port;

@@ -63,6 +63,7 @@
       try {
         res = await fetch(url, {
           method: method,
+          cache: "no-store",
           headers: Object.assign({ "Content-Type": "application/json" }, headers || {}),
           body: body === undefined ? undefined : JSON.stringify(body),
         });
@@ -165,6 +166,7 @@
       this.http = http;
       this._tokens = null; // { accessToken, refreshToken, expiresAt }
       this._onTokens = null;
+      this._refreshPromise = null;
     }
 
     setTokens(tokens) {
@@ -204,13 +206,14 @@
     // 调用即可，不必让 AdminClient 依赖 AuthClient 实例。
     async _withAuth(method, path, body) {
       await this._ensureFresh();
+      const sentToken = this._tokens && this._tokens.accessToken;
       try {
         return await this._send(method, path, body);
       } catch (err) {
         if (err instanceof ApiError && err.status === 401 && this._tokens && this._tokens.refreshToken) {
           // 服务端说令牌过期/失效：续一次，重试一次。重试再失败就把
           // 续期后的错误抛出去，由调用方决定回登录页。
-          await this._refresh();
+          if (this._tokens.accessToken === sentToken) await this._refresh();
           return await this._send(method, path, body);
         }
         throw err;
@@ -234,10 +237,33 @@
     }
 
     async _refresh() {
-      const res = await this.http.json("POST", "/v1/auth/refresh", {
-        refreshToken: this._tokens.refreshToken,
-      });
-      this._apply(res);
+      // Refresh token 轮换只能发一次；列表、台账同时加载时共用同一个请求。
+      if (this._refreshPromise) return this._refreshPromise;
+      const current = this._tokens;
+      this._refreshPromise = (async () => {
+        let res;
+        try {
+          res = await this.http.json("POST", "/v1/auth/refresh", {
+            refreshToken: current.refreshToken,
+          });
+        } catch (err) {
+          // 服务端以 409 表示 refresh token 被重复使用、整条会话链已撤销。
+          if (err instanceof ApiError && err.status === 409) {
+            throw new ApiError(401, "unauthorized", "登录凭证已失效，请重新登录。", err.requestId);
+          }
+          throw err;
+        }
+        if (!res || !res.accessToken || !res.refreshToken) {
+          throw new ApiError(401, "unauthorized", "登录状态已失效，请重新登录。");
+        }
+        // 退出或更换会话后，旧续期请求不得恢复已清除的凭证。
+        if (this._tokens === current) this._apply(res);
+      })();
+      try {
+        return await this._refreshPromise;
+      } finally {
+        this._refreshPromise = null;
+      }
     }
 
     _apply(res) {
