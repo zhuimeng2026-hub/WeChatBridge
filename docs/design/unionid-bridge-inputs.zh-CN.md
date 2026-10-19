@@ -82,6 +82,8 @@
    `mp.GetUserInfo` → 写 `store.Account.Nickname / AvatarURL`。
 3. 配置项 `WCB_MP_APP_ID` / `WCB_MP_APP_SECRET` 加到 `config.go` 必填校验（与现有网站应用配置并列）。
 4. **不破坏**现有 `snsapi_login` 路径；桥接失败（如接口不可用）要降级为"只落 openid+unionid"，不影响登录。
+5. **新增可复用能力 `GetUserInfoByUnionID`**：把"unionid → 公众号 openid → user/info"封装成独立方法，
+   不只登录回调内联用，也供后续按需补拉（库里缺昵称头像时）、admin 侧按 unionid 查人等场景调用。详见 §8。
 
 ---
 
@@ -107,3 +109,21 @@
 | `user/getid` 接口可用 | ⬜ |
 
 > 5 项全 ✅（或至少前 4 项 + 第 5 项明确"可用 / 改用公众号 OAuth"）后，我即可开工写服务端桥接。
+
+---
+
+## 8. 功能补充：用 unionid 获取用户信息
+
+除登录回调自动补全（§0 链路、§5-2）外，桥接还要对外提供一个**以 unionid 为入口查询用户信息**的能力：
+
+- **方法形态（预计）**：`func (c *MPClient) GetUserInfoByUnionID(ctx, unionid string) (*UserInfo, error)`
+  内部顺序：`user/getid(unionid)` → 公众号 openid → `user/info(openid)` → 昵称 / 头像 / 性别 / 地区。
+- **调用时机（不限于登录）**：
+  - 登录回调（§5-2）内部调用它补全当前用户；
+  - **补拉**：库里某 account 只有 openid+unionid、`Nickname/AvatarURL` 为空时，定时或按需触发回填；
+  - **admin 查询**：卖家后台按 unionid 直接查某人昵称头像（是否暴露端点见下，待确认）。
+- **缓存**：`unionid↔openid` 映射与 `user/info` 结果都应缓存；头像走 §6 的 content-address 落盘，
+  昵称等文本短时缓存，避开 access_token 2000 次 / 日上限。
+- **待你确认（不影响凭证收集，但影响代码形态）**：
+  - 是否需要在 `admin-console` 暴露一个"按 unionid 查用户"的端点？还是仅在服务端内部使用？
+  - 补拉是"登录时被动补全"就够，还是要有主动回填任务？

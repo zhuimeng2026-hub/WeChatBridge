@@ -22,6 +22,7 @@
 | U-④ | `HandleCallback` 接桥接：unionid → getid → user/info → 落库 | ⬜ | — | 写 `store.Account.Nickname/AvatarURL`；失败降级只落 openid+unionid，不阻断登录 |
 | U-⑤ | `config.go` 新增 env 必填校验 | ⬜ | — | 与现有网站应用 `WCB_WECHAT_*` 并列 |
 | U-⑥ | 复用 `account_avatars` 内容寻址缓存公众号头像（非新工作） | ⬜ | — | 头像 URL 是租约，落本地 sha256 才能长久可用 |
+| U-⑦ | 可复用能力 `GetUserInfoByUnionID`（unionid→openid→user/info） | ⬜ | — | 不只登录回调内联，供补拉 / admin 查人；是否暴露端点待确认（见 inputs §8） |
 
 ## 验证（计划）
 
