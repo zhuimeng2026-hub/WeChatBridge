@@ -34,15 +34,16 @@ import (
 
 // Scope is the scope the website app's QR sign-in uses.
 //
-// It is snsapi_userinfo, not snsapi_login. The original choice was snsapi_login
-// because that scope avoided a second consent screen, and a login flow that can
-// ask for consent is a login flow that can be refused. The trade is reversed
-// now: the avatar and nickname are how the console proves "the buyer is the
-// person who scanned the code", and snsapi_login leaves both fields empty so
-// the proof is never there. The consent screen stays — the screen is the cost
-// of a credential that proves something, not just a sign-in that grants
-// nothing.
-const Scope = "snsapi_userinfo"
+// It is snsapi_login, not snsapi_userinfo. The website app wx0ebd7da2e72e6be2 has
+// no snsapi_userinfo grant on the WeChat open platform, so a request carrying
+// that scope is rejected outright ("scope 参数错误或没有 scope 权限") before any
+// QR code is even rendered — the user sees the error instead of a sign-in.
+// snsapi_login keeps sign-in working now. Nickname and avatar are recovered on a
+// separate path: the login returns openid+unionid, and the server looks the
+// same-subject public account's openid up by unionid, then calls that account's
+// /sns/userinfo (see server/internal/auth). That bridge is the next task; this
+// roll-back only unblocks sign-in.
+const Scope = "snsapi_login"
 
 // redirectFragment is not decoration. Without it WeChat renders a blank page
 // instead of the QR image, and the symptom is a scan that "does nothing"

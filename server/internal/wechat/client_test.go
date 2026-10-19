@@ -61,7 +61,7 @@ func TestAuthorizeURLCarriesEveryParameterWechatNeeds(t *testing.T) {
 		{"appid", "wxappid0001"},
 		{"redirect_uri", redirect},
 		{"response_type", "code"},
-		{"scope", "snsapi_userinfo"},
+		{"scope", "snsapi_login"},
 		{"state", "ticket-abc"},
 	} {
 		if got := q.Get(tc.name); got != tc.want {
@@ -69,9 +69,9 @@ func TestAuthorizeURLCarriesEveryParameterWechatNeeds(t *testing.T) {
 		}
 	}
 
-	// scope must be snsapi_userinfo and not snsapi_login: the narrower scope
-	// leaves nickname and avatar empty, so the client would have nothing to
-	// show for the account that just signed in.
+	// scope must be snsapi_login: the website app has no snsapi_userinfo grant,
+	// and a rejected scope blocks sign-in entirely. Nickname and avatar now come
+	// from the unionid→public-account bridge, not from a wider login scope.
 	if q.Get("scope") != Scope {
 		t.Errorf("scope = %q, want %q", q.Get("scope"), Scope)
 	}
