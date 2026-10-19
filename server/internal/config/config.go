@@ -43,6 +43,36 @@ type Config struct {
 	// Product policy. One product: the perpetual buy-out.
 	BuyoutProductID string
 
+	// PaymentCodePath is the seller's payment QR, shown on the page the WeChat
+	// callback returns. A path for the same reason the licence key is one: the
+	// seller swaps it without a rebuild, and this one is replaced more often.
+	//
+	// Optional. Unset renders a page that says the code is not configured, which
+	// beats an empty frame — and beats refusing to start, because the one thing
+	// that page must still do is explain itself.
+	PaymentCodePath string
+
+	// ContactQRPath is the seller's own WeChat QR, shown next to SellerWeChat.
+	//
+	// Optional and separate from the payment code because they are different
+	// artefacts with different owners: WeChat issues one, the seller exports
+	// the other. Bundling them would mean replacing the payment code to rotate
+	// a contact detail.
+	//
+	// It cannot be derived from SellerWeChat — a personal WeChat QR carries a
+	// token WeChat signs — so an operator who wants one exports it from the
+	// WeChat app and drops it at this path.
+	ContactQRPath string
+
+	// SellerWeChat is printed under the payment code. It must match what is
+	// baked into the image itself: the buyer reads the image first, and a page
+	// that contradicts it loses.
+	//
+	// There is no price setting here. The code is a WeChat fixed-amount code
+	// and the amount lives inside the image; restating it as page text would be
+	// a second source of truth that drifts the first time the price changes.
+	SellerWeChat string
+
 	// AdminOpenIDs is the WeChat open-platform OpenID whitelist for the
 	// seller's console (design §11.7): the admin API answers only to a
 	// Bearer access token whose account OpenID is on this list. Empty in
@@ -105,6 +135,10 @@ func Load() (Config, error) {
 
 		AdminOpenIDs:   TrustedProxyList("WCB_ADMIN_OPENIDS"),
 		TrustedProxies: TrustedProxyList("WCB_TRUSTED_PROXIES"),
+
+		PaymentCodePath: strings.TrimSpace(os.Getenv("WCB_PAYMENT_CODE_PATH")),
+		SellerWeChat:    strings.TrimSpace(os.Getenv("WCB_SELLER_WECHAT")),
+		ContactQRPath:   strings.TrimSpace(os.Getenv("WCB_CONTACT_QR_PATH")),
 	}
 
 	var err error

@@ -2,12 +2,15 @@ package auth
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -253,11 +256,16 @@ func TestTooManyOutstandingTicketsAnswers429(t *testing.T) {
 // The redirect
 // ---------------------------------------------------------------------------
 
-// §15.1 step 7. The callback is a browser-facing GET and answers 200 with
-// nothing. A redirect here is the reflexive browser-shaped answer and it breaks
-// the flow, because the destination is a page in a browser the desktop process
-// has never heard of. The poller is the channel.
-func TestTheCallbackAnswers200WithAnEmptyBodyAndNoRedirect(t *testing.T) {
+// §15.1 step 7. The callback is a browser-facing GET and answers 200 with no
+// redirect. A redirect here is the reflexive browser-shaped answer and it
+// breaks the flow, because the destination is a page in a browser the desktop
+// process has never heard of. The poller is the channel.
+//
+// The body used to be empty, and that was the bug this test now pins the other
+// way: a 200 with nothing in it renders as a blank white page in the browser
+// the buyer is holding. The status code and the absence of a redirect are
+// unchanged; only the body grew.
+func TestTheCallbackAnswers200WithNoRedirectAndAPageThatSaysSomething(t *testing.T) {
 	t.Parallel()
 
 	h, engine := newTestServer(t)
@@ -274,15 +282,24 @@ func TestTheCallbackAnswers200WithAnEmptyBodyAndNoRedirect(t *testing.T) {
 	if loc := rec.Header().Get("Location"); loc != "" {
 		t.Fatalf("the callback issued a redirect to %q; the desktop client cannot follow that and the poller is the channel", loc)
 	}
-	if n := rec.Header().Get("Content-Length"); n != "" && n != "0" {
-		t.Errorf("Content-Length = %q, want an empty body", n)
+	if ct := rec.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/html") {
+		t.Errorf("Content-Type = %q, want text/html — a JSON envelope here renders as raw text in a browser", ct)
 	}
-	if body := rec.Body.Bytes(); len(bytes.TrimSpace(body)) != 0 {
-		t.Errorf("the callback wrote a body: %q", body)
+	body := rec.Body.Bytes()
+	if len(bytes.TrimSpace(body)) == 0 {
+		t.Fatal("the callback wrote an empty body; the buyer gets a blank white page")
+	}
+	// The machine code is what ties the transfer to the licence, so it has to
+	// be on this page or nobody can reconcile the two by hand.
+	if !bytes.Contains(body, []byte("install-1")) {
+		t.Errorf("the page does not carry the machine code the buyer must put in the transfer note: %s", body)
+	}
+	if rec.Header().Get("Cache-Control") != "no-store" {
+		t.Errorf("Cache-Control = %q, want no-store; the page holds a machine code and a payment instruction",
+			rec.Header().Get("Cache-Control"))
 	}
 
-	// And the scan really did complete — the browser's 200 is not covering
-	// for a failure.
+	// And the scan really did complete — the page is not covering for a failure.
 	poll, err := h.svc.Poll(t.Context(), ticket)
 	if err != nil {
 		t.Fatalf("Poll: %v", err)
@@ -292,28 +309,90 @@ func TestTheCallbackAnswers200WithAnEmptyBodyAndNoRedirect(t *testing.T) {
 	}
 }
 
-func TestTheCallbackRejectsAForgedStateWith400(t *testing.T) {
+// The page is served to a browser straight off WeChat, so it must be HTML on
+// every path — a JSON envelope from the error branches renders as raw text.
+func TestTheCallbackAnswersEveryFailureWithAPageNotAnEnvelope(t *testing.T) {
 	t.Parallel()
 
-	_, engine := newTestServer(t)
-	req := httptest.NewRequest(http.MethodGet, CallbackPath+"?code=auth-code&state=forged", nil)
-	rec := httptest.NewRecorder()
-	engine.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d, want 400", rec.Code)
+	cases := []struct {
+		name  string
+		setup func(*harness)
+		state string
+		want  int
+	}{
+		{
+			name: "forged state",
+			// Whether the ticket was forged, spent or expired must stay
+			// indistinguishable: this reply is also an oracle if it is not.
+			state: "forged",
+			want:  http.StatusBadRequest,
+		},
+		{
+			name: "wechat rejected the code",
+			setup: func(h *harness) {
+				h.wc.exchangeHandler = func(rw http.ResponseWriter, r *http.Request) {
+					_, _ = rw.Write([]byte(`{"errcode":40029,"errmsg":"invalid code"}`))
+				}
+			},
+			want: http.StatusBadRequest,
+		},
+		{
+			name: "wechat is down",
+			setup: func(h *harness) {
+				h.wc.exchangeHandler = func(rw http.ResponseWriter, r *http.Request) {
+					rw.WriteHeader(http.StatusInternalServerError)
+					_, _ = rw.Write([]byte(`{"errcode":-1,"errmsg":"system error"}`))
+				}
+			},
+			want: http.StatusServiceUnavailable,
+		},
 	}
-	body := rec.Body.String()
-	// The reply must not say which half it was. "That ticket does not exist"
-	// versus "that ticket has already been used" is a free probe.
-	for _, leak := range []string{"unknown ticket", "already used", "forged", "not found"} {
-		if strings.Contains(strings.ToLower(body), leak) {
-			t.Errorf("the 400 body leaks why the state failed (%q): %s", leak, body)
-		}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			h, engine := newTestServer(t)
+			if tc.setup != nil {
+				tc.setup(h)
+			}
+			state := tc.state
+			if state == "" {
+				state = createTicket(t, engine, "install-1")["ticket"].(string)
+			}
+
+			req := httptest.NewRequest(http.MethodGet, CallbackPath+"?code=auth-code&state="+state, nil)
+			rec := httptest.NewRecorder()
+			engine.ServeHTTP(rec, req)
+
+			if rec.Code != tc.want {
+				t.Errorf("status = %d, want %d", rec.Code, tc.want)
+			}
+			if ct := rec.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/html") {
+				t.Errorf("Content-Type = %q, want text/html", ct)
+			}
+			body := rec.Body.String()
+			if strings.TrimSpace(body) == "" {
+				t.Fatal("the failure branch wrote an empty body")
+			}
+			// Not a leaked envelope either: the point of the page is that it
+			// reads like an explanation, not like an error envelope with a
+			// stack trace in it.
+			if strings.Contains(body, `"error"`) {
+				t.Errorf("the failure page is still the JSON envelope: %s", body)
+			}
+			for _, leak := range []string{"unknown ticket", "already used", "forged", "not found"} {
+				if strings.Contains(strings.ToLower(body), leak) {
+					t.Errorf("the page leaks why the state failed (%q): %s", leak, body)
+				}
+			}
+		})
 	}
 }
 
-func TestTheCallbackReportsAWeChatOutageAs503(t *testing.T) {
+// A retryable failure must not tell the buyer to scan again. Their code is
+// still good — saying otherwise sends them to redo work that changes nothing.
+func TestTheOutagePageDoesNotTellTheBuyerToScanAgain(t *testing.T) {
 	t.Parallel()
 
 	h, engine := newTestServer(t)
@@ -327,28 +406,180 @@ func TestTheCallbackReportsAWeChatOutageAs503(t *testing.T) {
 	rec := httptest.NewRecorder()
 	engine.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusServiceUnavailable {
-		t.Fatalf("status = %d, want 503 — a WeChat blip is retryable, not a rejected sign-in", rec.Code)
+	body := rec.Body.String()
+	if strings.Contains(body, "重新扫码") || strings.Contains(body, "refresh") {
+		t.Errorf("the outage page tells the buyer to re-scan, but the ticket and their code are both still good: %s", body)
 	}
 	if session, _ := h.store.authSessionByTicket(ticket); session.State != "pending" {
-		t.Fatal("a WeChat outage consumed the ticket")
+		t.Error("a WeChat outage consumed the ticket")
 	}
 }
 
-func TestTheCallbackRejectsAWeChatRejectedCodeWith400(t *testing.T) {
+// install_id is whatever the client put in the request body, so it is
+// attacker-chosen at the moment it is stored. An attacker who gets a victim to
+// scan their ticket would otherwise be running script on the same origin the
+// buyer types into.
+func TestTheCallbackPageEscapesTheMachineCode(t *testing.T) {
 	t.Parallel()
 
-	h, engine := newTestServer(t)
-	h.wc.exchangeHandler = func(rw http.ResponseWriter, r *http.Request) {
-		_, _ = rw.Write([]byte(`{"errcode":40029,"errmsg":"invalid code"}`))
-	}
-	ticket := createTicket(t, engine, "install-1")["ticket"].(string)
+	payload := `<script>alert(1)</script>`
+	_, engine := newTestServer(t)
+	ticket := createTicket(t, engine, payload)["ticket"].(string)
 
-	req := httptest.NewRequest(http.MethodGet, CallbackPath+"?code=bad&state="+ticket, nil)
+	req := httptest.NewRequest(http.MethodGet, CallbackPath+"?code=auth-code&state="+ticket, nil)
 	rec := httptest.NewRecorder()
 	engine.ServeHTTP(rec, req)
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d, want 400", rec.Code)
+
+	body := rec.Body.String()
+	if strings.Contains(body, "<script>alert(1)</script>") {
+		t.Fatalf("the machine code was interpolated into the page unescaped: %s", body)
+	}
+	if !strings.Contains(body, "&lt;script&gt;") {
+		t.Errorf("the machine code is not on the page at all, escaped or otherwise: %s", body)
+	}
+}
+
+// The one assertion that matters most on this page, and the one a tag-presence
+// check misses: the <img src> has to carry the image.
+//
+// html/template rewrites a data: URI it considers unsafe to "#ZgotmplZ". The
+// page still compiles, still contains an <img, still passes a tag check — and
+// shows the buyer a broken frame where the QR code should be.
+func TestTheCallbackPageCarriesTheImageItself(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "code.png")
+	png := []byte("\x89PNG\r\n\x1a\n" + strings.Repeat("x", 64))
+	if err := os.WriteFile(path, png, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	code := LoadPaymentCode(path, "aiwomeishi", "")
+	page, err := code.Render(pageAuthorized, "install-1")
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+
+	body := string(page)
+	if strings.Contains(body, "#ZgotmplZ") {
+		t.Fatal("the image src was filtered out by html/template; the page would show a broken frame")
+	}
+	if !strings.Contains(body, `src="data:image/png;base64,`) {
+		t.Errorf("the image is not inlined as a data URI: %s", body)
+	}
+	if !strings.Contains(body, base64.StdEncoding.EncodeToString(png)) {
+		t.Error("the inlined image is not the bytes that were read from disk")
+	}
+	// The seller's contact details travel with it.
+	if !strings.Contains(body, "aiwomeishi") {
+		t.Errorf("the page lost the seller's contact details: %s", body)
+	}
+}
+
+// A deployment with no payment code must say so. An empty frame where the QR
+// should be reads as a broken page; a sentence reads as a temporary condition.
+func TestTheCallbackPageSaysWhenNoPaymentCodeIsConfigured(t *testing.T) {
+	t.Parallel()
+
+	code := LoadPaymentCode("", "aiwomeishi", "")
+	if code.Configured() {
+		t.Fatal("an empty path reported itself configured")
+	}
+	page, err := code.Render(pageAuthorized, "install-1")
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	if !bytes.Contains(page, []byte("尚未配置")) {
+		t.Errorf("an unconfigured payment code rendered without saying so: %s", page)
+	}
+	if bytes.Contains(page, []byte("<img")) {
+		t.Errorf("an unconfigured payment code rendered an image element: %s", page)
+	}
+}
+
+// A WeChat id the seller typed can be mistyped by the buyer, so the QR is the
+// better primary path — but it cannot be generated from the id, and a
+// deployment without one still has to reach the buyer through the text.
+func TestTheContactBlockFallsBackToTheTextWhenNoQrisConfigured(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	payment := filepath.Join(dir, "pay.png")
+	if err := os.WriteFile(payment, []byte("\x89PNG\r\n\x1a\n"+strings.Repeat("x", 32)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	code := LoadPaymentCode(payment, "aiwomeishi", "")
+	page, err := code.Render(pageAuthorized, "install-1")
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+
+	body := string(page)
+	if !strings.Contains(body, "aiwomeishi") {
+		t.Errorf("with no contact QR the buyer still has to be able to add the seller: %s", body)
+	}
+	if strings.Count(body, "<img") != 1 {
+		t.Errorf("expected only the payment image; the contact block added another or dropped one: %s", body)
+	}
+}
+
+// A path that is set but is not an image is a typo. It must be loud and it must
+// be survivable: the operator sees it in the startup log and on the page, and
+// the service still logs people in. Failing startup instead would let a missing
+// receipt image take down the whole auth flow — which is the one thing this
+// page's failure notice exists to prevent.
+func TestAnUnusableImageIsReportedButNotFatal(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "code.jpg")
+	if err := os.WriteFile(path, []byte("<html>not an image</html>"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	code := LoadPaymentCode(path, "aiwomeishi", "")
+	if code.Configured() {
+		t.Error("a file that is not an image was accepted as a payment code")
+	}
+	problems := code.Problems()
+	if len(problems) != 1 || !strings.Contains(problems[0], "not an image") {
+		t.Errorf("Problems() = %v, want one that names the file and says it is not an image", problems)
+	}
+
+	// And it still renders: the page a buyer gets has to say what is wrong.
+	page, err := code.Render(pageAuthorized, "install-1")
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	if !strings.Contains(string(page), "尚未配置") {
+		t.Errorf("an unusable image produced neither a picture nor an explanation: %s", page)
+	}
+}
+
+// The two kinds of "no image" are different, and only one of them is a fault.
+// An empty path means nobody configured it, which is a normal state; a path
+// that was set and is not there means the operator believes a file is in a
+// place it is not, and that is a typo worth a line in the log. Both leave the
+// service running.
+func TestAnUnsetImageIsSilentButAMissingOneIsAProblem(t *testing.T) {
+	t.Parallel()
+
+	unset := LoadPaymentCode("", "aiwomeishi", "")
+	if problems := unset.Problems(); len(problems) != 0 {
+		t.Errorf("an unset path reported %v; nobody configuring an optional image is not a fault", problems)
+	}
+	if unset.Configured() {
+		t.Error("an unset path reported itself configured")
+	}
+
+	missing := LoadPaymentCode(filepath.Join(t.TempDir(), "nope.png"), "aiwomeishi", "")
+	problems := missing.Problems()
+	if len(problems) != 1 || !strings.Contains(problems[0], "nope.png") {
+		t.Errorf("Problems() = %v, want one naming the path that was configured but is not there", problems)
+	}
+	if missing.Configured() {
+		t.Error("a missing file reported itself configured")
 	}
 }
 

@@ -86,14 +86,30 @@ func run() error {
 		return fmt.Errorf("token issuer: %w", err)
 	}
 
+	// The seller's payment QR and contact QR, read once. Neither is required and
+	// neither can fail startup — see LoadPaymentCode for why an absent image must
+	// not be allowed to take login down with it. Problems are logged loudly
+	// instead, and the page degrades to saying what is missing.
+	paymentCode := auth.LoadPaymentCode(cfg.PaymentCodePath, cfg.SellerWeChat, cfg.ContactQRPath)
+	for _, w := range paymentCode.Problems() {
+		logger.Warn("payment image not usable; the callback page will say so",
+			"problem", w)
+	}
+	if paymentCode.Configured() {
+		logger.Info("payment code ready", "wechat", cfg.SellerWeChat)
+	} else {
+		logger.Warn("no payment code configured; the callback page will say so")
+	}
+
 	authService, err := auth.NewService(
 		auth.Config{
 			PublicBaseURL:  cfg.PublicBaseURL,
 			AuthSessionTTL: cfg.AuthSessionTTL,
 		},
 		auth.Options{
-			Store:  st,
-			Issuer: issuer,
+			Store:   st,
+			Issuer:  issuer,
+			Payment: paymentCode,
 			WeChat: wechat.NewClient(wechat.Config{
 				AppID:     cfg.WeChatAppID,
 				AppSecret: cfg.WeChatAppSecret,

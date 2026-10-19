@@ -216,33 +216,65 @@ func (s *Service) handleCallback(c *gin.Context) {
 	code := c.Query("code")
 	state := c.Query("state")
 
-	if _, err := s.HandleCallback(c.Request.Context(), code, state); err != nil {
+	result, err := s.HandleCallback(c.Request.Context(), code, state)
+	if err != nil {
+		// Every status code here is the one this handler answered before the
+		// body became a page, and none of them moved. 503 in particular is not
+		// a detail: it is how a WeChat outage becomes an alert rather than a
+		// silence, and a browser renders a 503's body perfectly well.
 		switch {
 		case IsInvalidState(err):
 			// 400, and deliberately uninformative. Whether the state was
 			// forged, already spent or simply expired is not something the
 			// caller needs to know to act, and telling them which it was
 			// hands an attacker a probe.
-			httpx.Fail(c, httpx.BadRequest("授权状态无效，请重新扫码。"))
+			s.renderCallbackPage(c, pageInvalidState, "", http.StatusBadRequest)
 		case IsInvalidCode(err):
-			httpx.Fail(c, httpx.BadRequest("授权码无效或已使用，请重新扫码。"))
+			s.renderCallbackPage(c, pageInvalidCode, "", http.StatusBadRequest)
 		case IsUpstreamUnavailable(err):
 			// The ticket is untouched and the browser gets a retryable answer.
 			// It will not retry on its own, but it does not destroy anything
 			// by getting this, which a false "expired" would.
-			httpx.Fail(c, httpx.Unavailable("微信服务暂时不可用，请稍后重试。"))
+			s.renderCallbackPage(c, pageUpstreamDown, "", http.StatusServiceUnavailable)
 		default:
-			httpx.Fail(c, httpx.Internal(err))
+			s.renderCallbackPage(c, pageFailed, "", http.StatusInternalServerError)
 		}
 		return
 	}
 
-	// §15.1 step 7, in full: 200, empty body, no redirect. A redirect here is
-	// the reflexive browser-shaped answer and it breaks the flow, because the
-	// destination is a page in a browser the desktop process has never heard
-	// of. The client's channel is the poll, and this handler's only remaining
-	// job is to end without damaging anything.
-	c.Status(http.StatusOK)
+	// §15.1 step 7, still true and still the reason for this handler existing:
+	// the reply is 200 and it is not a redirect. The redirect target would be a
+	// page in a browser the desktop process has never heard of, and the client's
+	// channel is the poll. What that rule does *not* say is that the body must
+	// be empty — an empty 200 renders as a blank white page, which is the one
+	// thing the person who just scanned most needs to be told is not happening.
+	// So: same status, no redirect, and a page that says what to do next.
+	s.renderCallbackPage(c, pageAuthorized, result.InstallID, http.StatusOK)
+}
+
+// renderCallbackPage writes one outcome as an HTML page instead of a JSON
+// envelope.
+//
+// The change is the body and only the body. Every status code, and the reason
+// for it, is inherited unchanged from the JSON handler this replaced — the
+// codes carry meaning to monitoring and to the frozen contract, and a page did
+// not become a different outcome by acquiring a <html> tag.
+func (s *Service) renderCallbackPage(c *gin.Context, kind pageKind, installID string, status int) {
+	page, err := s.payment.Render(kind, installID)
+	if err != nil {
+		// The template is compiled at init, so this is a write failure rather
+		// than a render bug. Fall back to plain text that still says something:
+		// the buyer is holding this page.
+		c.Data(http.StatusInternalServerError, "text/plain; charset=utf-8",
+			[]byte("授权页渲染失败，请回到电脑端重试。"))
+		return
+	}
+
+	// No-store: this page carries a machine code and a payment instruction, and
+	// the browser that came back from WeChat should not keep it in a disk cache
+	// that a shared machine would outlive the purchase.
+	c.Header("Cache-Control", "no-store")
+	c.Data(status, "text/html; charset=utf-8", page)
 }
 
 func (s *Service) handleRefresh(c *gin.Context) {

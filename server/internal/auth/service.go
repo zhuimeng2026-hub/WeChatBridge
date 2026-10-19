@@ -68,6 +68,10 @@ type Service struct {
 	wechat  *wechat.Client
 	issuer  *token.Issuer
 	handoff Handoff
+	// payment is what the callback page shows once a scan is authorised. It is
+	// never nil — an unconfigured deployment gets a page that says the code is
+	// not configured — so the handler has no nil case to forget.
+	payment *PaymentCode
 	log     *slog.Logger
 	now     func() time.Time
 
@@ -86,6 +90,9 @@ type Options struct {
 	WeChat  *wechat.Client
 	Issuer  *token.Issuer
 	Handoff Handoff
+	// Payment is the seller's payment code. Optional: nil renders a callback
+	// page that says the code is not configured.
+	Payment *PaymentCode
 	Logger  *slog.Logger
 	// Now defaults to the wall clock. Tests set it so a ticket can be aged
 	// out without sleeping.
@@ -118,6 +125,12 @@ func NewService(cfg Config, opts Options) (*Service, error) {
 	if opts.Logger == nil {
 		opts.Logger = slog.Default()
 	}
+	if opts.Payment == nil {
+		// Not an error. See LoadPaymentCode: a deployment with no payment code
+		// still logs people in, and the page it returns says why it cannot take
+		// their money instead of showing an empty frame.
+		opts.Payment = &PaymentCode{}
+	}
 	if opts.Now == nil {
 		opts.Now = func() time.Time { return time.Now().UTC() }
 	}
@@ -138,6 +151,7 @@ func NewService(cfg Config, opts Options) (*Service, error) {
 		wechat:      opts.WeChat,
 		issuer:      opts.Issuer,
 		handoff:     opts.Handoff,
+		payment:     opts.Payment,
 		log:         opts.Logger,
 		now:         opts.Now,
 		outstanding: make(map[string][]time.Time),
@@ -423,6 +437,11 @@ func (s *Service) authorized(ctx context.Context, session store.AuthSession) (Po
 type CallbackResult struct {
 	AccountID string
 	ChainID   string
+	// InstallID is the machine code this scan belongs to, echoed so the page
+	// the browser gets back can print it as the transfer note. It comes from
+	// the ticket the client opened, so it is the same string the desktop
+	// window is showing — not a value the page had to be told.
+	InstallID string
 }
 
 // HandleCallback completes a scan. The order is not negotiable and each step
@@ -550,7 +569,7 @@ func (s *Service) HandleCallback(ctx context.Context, code, state string) (Callb
 		"account", token.Fingerprint(account.ID),
 		"chain", token.Fingerprint(creds.ChainID))
 
-	return CallbackResult{AccountID: account.ID, ChainID: creds.ChainID}, nil
+	return CallbackResult{AccountID: account.ID, ChainID: creds.ChainID, InstallID: session.InstallID}, nil
 }
 
 // validateState is step 1. It rejects everything that is not a live,
