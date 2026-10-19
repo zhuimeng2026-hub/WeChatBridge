@@ -61,7 +61,7 @@ func TestAuthorizeURLCarriesEveryParameterWechatNeeds(t *testing.T) {
 		{"appid", "wxappid0001"},
 		{"redirect_uri", redirect},
 		{"response_type", "code"},
-		{"scope", "snsapi_userinfo"},
+		{"scope", "snsapi_login"},
 		{"state", "ticket-abc"},
 	} {
 		if got := q.Get(tc.name); got != tc.want {
@@ -69,11 +69,14 @@ func TestAuthorizeURLCarriesEveryParameterWechatNeeds(t *testing.T) {
 		}
 	}
 
-	// scope must be snsapi_userinfo and not snsapi_login: the narrower scope
-	// leaves nickname and avatar empty, so the client would have nothing to
-	// show for the account that just signed in.
-	if q.Get("scope") != Scope {
-		t.Errorf("scope = %q, want %q", q.Get("scope"), Scope)
+	// Spelled out as a literal, not as `Scope`. The table above already pins
+	// the literal; asserting scope == Scope on top of it proves only that the
+	// constant matches itself, and it sailed through the exact commit that
+	// broke sign-in for everyone. If you are about to "fix" this back to
+	// snsapi_userinfo, read the Scope doc comment first — the app answers
+	// 42003 for it, and the failure surfaces only on a phone screen.
+	if Scope != "snsapi_login" {
+		t.Errorf("Scope = %q; the live app rejects it with 42003", Scope)
 	}
 	// A secret in the browser-facing URL would be a secret in a browser
 	// history.

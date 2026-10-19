@@ -34,15 +34,34 @@ import (
 
 // Scope is the scope the website app's QR sign-in uses.
 //
-// It is snsapi_userinfo, not snsapi_login. The original choice was snsapi_login
-// because that scope avoided a second consent screen, and a login flow that can
-// ask for consent is a login flow that can be refused. The trade is reversed
-// now: the avatar and nickname are how the console proves "the buyer is the
-// person who scanned the code", and snsapi_login leaves both fields empty so
-// the proof is never there. The consent screen stays — the screen is the cost
-// of a credential that proves something, not just a sign-in that grants
-// nothing.
-const Scope = "snsapi_userinfo"
+// It is snsapi_login, and 7a16d19 tried to make it snsapi_userinfo for good
+// reasons that are still true. The narrower scope leaves nickname and avatar
+// empty, and the avatar and nickname are how the console proves "the buyer is
+// the person who scanned the code" — snsapi_login leaves both fields empty so
+// the proof is never there. That trade was taken for granted, and it was
+// wrong: it assumed the app was certified for snsapi_userinfo.
+//
+// It is not. Probed 2026-10-19 against the live appid, same redirect_uri,
+// only the scope differing:
+//
+//	snsapi_login     -> 43,810 bytes, embeds a uuid, renders the QR
+//	snsapi_userinfo  ->    892 bytes, "Scope 参数错误或没有 Scope 权限" (42003)
+//
+// So snsapi_userinfo is not a nicer default here, it is the difference between
+// signing in and not. Read this before "fixing" it back: the way to earn
+// snsapi_userinfo is 微信认证 on the open platform account, not a code change.
+// Until then the avatar and nickname are empty and the admin console falls back
+// to identifying accounts by OpenID.
+//
+// Note the shape of the failure, because it is invisible in the logs and
+// repeats: AuthorizeURL only builds a string and the QR is rendered locally.
+// The server never calls WeChat to render the code, so 42003 comes back as a
+// page on the phone's browser, not as a status in the service. No callback is
+// ever made either, because there is no code to carry, so the only trace is
+// repeated 201s on POST /v1/auth/session and then silence. FetchProfile's
+// tolerance for 42003 (see below) cannot help: it degrades after the token
+// exchange, and this fails before it.
+const Scope = "snsapi_login"
 
 // redirectFragment is not decoration. Without it WeChat renders a blank page
 // instead of the QR image, and the symptom is a scan that "does nothing"
@@ -253,12 +272,14 @@ type Session struct {
 	UnionID      string
 }
 
-// Profile is the person, as far as WeChat is willing to say. Under
-// snsapi_userinfo both fields are populated; under the old snsapi_login they
-// were routinely empty. Empty today is still a normal answer, not a failure —
-// a server that refused to sign in because WeChat would not volunteer a
-// nickname would be a server that signs fewer people in than its contract
-// allows.
+// Profile is the person, as far as WeChat is willing to say.
+//
+// Both fields are empty today and not by accident: Scope is snsapi_login
+// because the app is not certified for snsapi_userinfo (see above). So
+// FetchProfile returns a zero Profile on the happy path, not by error. Empty is
+// still a normal answer, not a failure — a server that refused to sign in
+// because WeChat would not volunteer a nickname would be a server that signs
+// fewer people in than its contract allows.
 type Profile struct {
 	Nickname  string
 	AvatarURL string
