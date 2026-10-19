@@ -500,6 +500,121 @@ public sealed class AccountServiceTests
     }
 
     // -----------------------------------------------------------------------
+    // Me — the "am I still signed in?" read
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public async Task MeAsyncSendsTheBearerTokenAlongTheActivationPath()
+    {
+        using var config = new TempLicenseConfig();
+        var store = new AuthTokenStore(config.Root, config.Protector);
+        store.Save(FreshTokens());
+        var transport = new FakeActivationTransport();
+        transport.Reply(200, AccountJson());
+        using var service = Service(transport, config);
+
+        var outcome = await service.MeAsync(CancellationToken.None);
+
+        Assert.True(outcome.Succeeded, outcome.Detail);
+        var request = transport.Single();
+        Assert.Equal("GET", request.Method);
+        Assert.Equal(ActivationEndpoint.MePath, request.Path);
+        Assert.Equal("mock_at_1", request.BearerToken);
+    }
+
+    [Fact]
+    public async Task MeAsyncUpdatesTheCachedProfileFromServer()
+    {
+        using var config = new TempLicenseConfig();
+        var store = new AuthTokenStore(config.Root, config.Protector);
+        store.Save(FreshTokens());
+        var transport = new FakeActivationTransport();
+        // Server now says the nickname has changed since login and the user last
+        // signed in yesterday afternoon. The cached profile on disk should pick
+        // both up, because a UI showing yesterday's last-login is the kind of
+        // thing a customer notices first.
+        transport.Reply(200,
+            $"{{\"id\":\"acc_demo0001\",\"nickname\":\"演示买家（新）\",\"avatarUrl\":\"https://example.com/p.png\"," +
+            $"\"plan\":\"buyout\",\"createdAt\":\"{TestTime.IssuedAt:O}\"," +
+            $"\"lastLoginAt\":\"{TestTime.Now.AddHours(-1):O}\",\"wechatBound\":true}}");
+        using var service = Service(transport, config);
+
+        var outcome = await service.MeAsync(CancellationToken.None);
+
+        Assert.True(outcome.Succeeded, outcome.Detail);
+        Assert.NotNull(outcome.Tokens);
+        Assert.Equal("演示买家（新）", outcome.Tokens!.Account.Nickname);
+        Assert.Equal("https://example.com/p.png", outcome.Tokens.Account.AvatarUrl);
+        // The write-through is the part that matters most: next launch should
+        // see this fresh profile without going back to the service.
+        var stored = store.Load();
+        Assert.NotNull(stored);
+        Assert.Equal("演示买家（新）", stored!.Account.Nickname);
+    }
+
+    /// <summary>
+    /// A 401 from /v1/account is the server telling us, on the record, that the
+    /// stored credential is dead. Carrying it forward to the next launch is the
+    /// mistake that turns a short session break into a customer insisting the
+    /// app "used to remember me". Drop the local copy here so the caller can
+    /// prompt for a fresh scan.
+    /// </summary>
+    [Fact]
+    public async Task MeAsyncSignsOutLocallyOnA401()
+    {
+        using var config = new TempLicenseConfig();
+        var store = new AuthTokenStore(config.Root, config.Protector);
+        store.Save(FreshTokens());
+        var transport = new FakeActivationTransport();
+        transport.Reply(401, "{\"error\":{\"code\":\"unauthorized\",\"message\":\"访问令牌无效或已过期。\",\"request_id\":\"\"}}");
+        using var service = Service(transport, config);
+
+        var outcome = await service.MeAsync(CancellationToken.None);
+
+        Assert.False(outcome.Succeeded);
+        Assert.Equal(LoginFailure.SessionExpired, outcome.Failure);
+        Assert.False(service.IsSignedIn);
+        Assert.Null(service.Current);
+        Assert.Null(store.Load());
+    }
+
+    [Fact]
+    public async Task MeAsyncWithoutALocalSessionIsNotANetworkCall()
+    {
+        using var config = new TempLicenseConfig();
+        var transport = new FakeActivationTransport();
+        using var service = Service(transport, config);
+
+        var outcome = await service.MeAsync(CancellationToken.None);
+
+        Assert.False(outcome.Succeeded);
+        Assert.Equal(LoginFailure.SessionExpired, outcome.Failure);
+        // The transport was never asked. A "signed out" client has no bearer to
+        // hand the service, and making the call anyway is a 401 it would cause.
+        Assert.Empty(transport.Requests);
+    }
+
+    [Fact]
+    public async Task MeAsyncReadsAServerRefusalAsUnreachable()
+    {
+        using var config = new TempLicenseConfig();
+        var store = new AuthTokenStore(config.Root, config.Protector);
+        store.Save(FreshTokens());
+        var transport = new FakeActivationTransport();
+        transport.Reply(503, "{\"error\":{\"code\":\"internal\",\"message\":\"服务暂时不可用，请稍后重试。\",\"request_id\":\"\"}}");
+        using var service = Service(transport, config);
+
+        var outcome = await service.MeAsync(CancellationToken.None);
+
+        Assert.False(outcome.Succeeded);
+        Assert.Equal(LoginFailure.Unreachable, outcome.Failure);
+        // A 5xx is not the server saying the credential is dead — the cached
+        // session must survive a service blip, otherwise paying customers get
+        // logged out over a database hiccup.
+        Assert.True(service.IsSignedIn);
+    }
+
+    // -----------------------------------------------------------------------
     // The stored session
     // -----------------------------------------------------------------------
 

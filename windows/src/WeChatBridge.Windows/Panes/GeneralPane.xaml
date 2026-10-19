@@ -158,6 +158,11 @@
                     <TextBlock x:Name="MachineCodeHint" Margin="0,4,0,0" FontSize="12"
                                Foreground="{StaticResource InkTertiaryColor}"
                                TextWrapping="Wrap" Visibility="Collapsed" />
+                    <!-- 仅在 MeAsync 成功后出现："会话：演示买家 · 上次活跃 2 小时前"。
+                         失败 / 未登录 / 网络挂 都保持 Collapsed，不打扰用户。 -->
+                    <TextBlock x:Name="SessionInfoText" Margin="0,4,0,0" FontSize="12"
+                               Foreground="{StaticResource InkTertiaryColor}"
+                               TextWrapping="Wrap" Visibility="Collapsed" />
                 </StackPanel>
             </Border>
         </StackPanel>

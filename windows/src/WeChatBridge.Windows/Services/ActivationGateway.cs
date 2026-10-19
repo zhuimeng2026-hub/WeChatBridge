@@ -219,6 +219,16 @@ internal sealed class ActivationGateway : IDisposable
     }
 
     /// <summary>
+    /// Asks the service whether the cached session is still alive and who it
+    /// belongs to. Picked out of <see cref="Account"/> on purpose: a UI that needs
+    /// the freshest profile does not want to construct a transport itself, and the
+    /// service the gateway already holds is the only one this build is allowed to
+    /// talk to.
+    /// </summary>
+    public Task<LoginOutcome> MeAsync(CancellationToken cancellationToken) =>
+        Account.MeAsync(cancellationToken);
+
+    /// <summary>
     /// Re-reads the licence file after one was written, so the gate sees the change
     /// without a restart.
     /// </summary>
