@@ -21,12 +21,25 @@
 > 把 `authorizeUrl` 交给系统浏览器；en.json 文案全部就地改为「链接」语义，`{0}` 索引与 LocalizationTests
 > 断言对齐；dotnet build/test 双形态绿（Perpetual 581+55、Subscription 580+55）。
 > 真机端到端验证仍待与另两台树的联调周期一起跑。
+>
+> 2026-10-19 11:30 再校准：**C-① 真机端到端闭环 ✅**。
+> 一键脚本 `.artifacts/probe-e2e.{bat,cjs}`：建 ticket → chromium 拉起 `authorizeUrl` →
+> 用户手机微信扫屏幕上的码 + 点确认 → 浏览器跳走 → 轮询拿 token → fetch envelope →
+> 用客户端编译期公钥 `LicensePublicKeys.PlaceholderKeyV1`（Node P1363 字段验签，与
+> .NET `LicenseVerifier.Verify` 等价）验签。**`verify: true`**，canonical 107 字节，
+> envelope 实测：v=1 / sub=ins_test_20261019_a / plan=buyout / iat=1792371295 /
+> nbf=1792371295 / exp=null / ent=[PRO]。证明 PlaceholderKeyV1 确为服务端现役私钥
+> 的另一半、canonical 客户端/服务端逐字节一致、raw r‖s 64 字节拆分正确——三条件全成立。
+> 端到端六步（建票→扫码→回调→双令牌→激活→验签）全跑通。脚本首跑踩坑：envelope.iat
+> 是 unix 秒数字，直接喂 `new Date()` 会被当毫秒解析为 1970，canonical 字节数被截到
+> 101；修正为类型分支后通过。脚本与产物（envelope.json / tokens.json / probe-e2e.log）
+> 在 `.artifacts/` 留底，可随时重跑。
 
 ## 任务表
 
 | # | 任务 | 状态 | commit | 备注 |
 |---|---|---|---|---|
-| C-① | 微信登录（session → 浏览器授权链接 → 轮询 → 存双令牌） | ✅ | `98061ea` `7942e84` | 客户端已切换为系统浏览器打开 `authorizeUrl`（`7942e84`）；二维码渲染链路与 `FetchQrAsync` 调用从 `AccountController`/`LoginWindow` 移除；本地化文案同步 `en.json` |
+| C-① | 微信登录（session → 浏览器授权链接 → 轮询 → 存双令牌） | ✅ | `98061ea` `7942e84` 当前 commit | 客户端已切换为系统浏览器打开 `authorizeUrl`（`7942e84`）；二维码渲染链路与 `FetchQrAsync` 调用从 `AccountController`/`LoginWindow` 移除；本地化文案同步 `en.json`；**真机端到端六步全跑通**（当前 commit，verify: true） |
 | C-② | 机器码展示（installId 主键 + 硬件锚摘要辅证） | ✅ | `7232d39` | 购买窗内的可复制机器码 + 锚摘要；通用页另有一行常驻显示 |
 | C-③ | 购买（收款码静态图 + 登记 + 轮询 + 取票） | ⏳ | `7232d39` | `PurchaseWindow` 已写；**待产品方补齐收款码与开发者微信** |
 | C-④ | 启动门禁集成（未登录→登录页；已登录未授权→引导购买） | ✅ | `2d994b0` | `ActivationGate`；**不锁任何功能**，见下 |
@@ -110,10 +123,11 @@
 |---|---|
 | `dotnet build -c Release -p:WeChatBridgeEdition=Perpetual` | ✅ 0 警告 0 错误 |
 | `dotnet build -c Release -p:WeChatBridgeEdition=Subscription` | ✅ 0 警告 0 错误 |
-| `dotnet test -p:WeChatBridgeEdition=Perpetual` | ✅ 580 + 55 通过 |
-| `dotnet test -p:WeChatBridgeEdition=Subscription` | ✅ 579 + 55 通过（少一条为 edition 条件测试） |
+| `dotnet test -p:WeChatBridgeEdition=Perpetual` | ✅ 581 + 55 通过（比上次 +1：LocalizationTests 也跑了） |
+| `dotnet test -p:WeChatBridgeEdition=Subscription` | ✅ 580 + 55 通过（少一条为 edition 条件测试） |
 | `Test-NoNetworkCode.ps1 -Edition Perpetual` | ✅ 白名单内的 `System.Net.Http` 仍是 only Redeem 例外 |
 | `WeChatBridge.Windows.exe --background` 实跑 12 秒 | ✅ 常驻不崩，托盘注册成功；`--background` 不开窗，符合设计 |
+| **真机端到端六步**（`.artifacts/probe-e2e.bat`） | ✅ 11:25 跑通：建票→扫码→回调→双令牌→激活→**用 `PlaceholderKeyV1` 验签通过**（canonical 107 字节，envelope v=1/buyout/exp=null/ent=[PRO]） |
 
 测试数从 497 + 45 → 580 + 55：新增 80 项（C-1 回归 3、退避 10、契约 29、登录 25、激活 16），
 AppTests 45 → 55 是 `git log` 之外同期落地的部分，勿回退。
@@ -167,13 +181,19 @@ C# raw string literal 保留文件里的行尾，所以 Windows 检出的字面�
 
 - [x] `dotnet build/test` 通过（两形态均绿，见上）
 - [ ] 对着 mock 走通：扫码登录 → 机器码展示 → 登记 → 确认 → 取票 → 验签缓存
-- [ ] 真服务端签名对下的终态验证（任务 17，走 `AppTests` 已有的 `TestLicenseIssuer`）
+- [x] 真服务端签名对下的终态验证（2026-10-19 11:25，`.artifacts/probe-e2e.bat`）
+  —— 真签 envelope `v=1 / sub=ins_test_20261019_a / plan=buyout / ent=[PRO]`，canonical 107 字节，
+  用 `LicensePublicKeys.PlaceholderKeyV1` + ECDSA P-256 SHA-256 P1363 验签通过。
+  **等价性**：脚本用 Node 端 P1363 字段编码（与 .NET `LicenseVerifier.Verify` 的
+  `DSASignatureFormat.IeeeP1363FixedFieldConcatenation` 等价），跑的是客户端编译期
+  公钥、服务端真签发的 envelope、客户端 `LicenseCanonicalPayload.Canonical` 重建
+  字节——三条件全成立。与 `AppTests.TestLicenseIssuer` 同源链路不同进程；后者在
+  AppTests 55 项里也独立通过，但那是 fixture 自签。
 
-未勾选两项都是 **需要人或另一台树** 才能完成的，不是代码缺口：
+未勾的一项需要**另一台树**才能完成，不是代码缺口：
 
 - mock 全流程要 `server/mock/server.js`，而它**不在这棵树上**（本 worktree 的 `server/`
   只有 `internal/`、`migrations/`，没有 `mock/`），得借主检出或机器 A 的侧鳍。
-- 终态验证要 `LicensePublicKeys.PlaceholderKeyV1` 换成真公钥（见下方阻塞项）。
 
 ## 红线（禁改）
 
