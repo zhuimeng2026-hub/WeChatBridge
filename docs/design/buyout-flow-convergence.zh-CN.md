@@ -461,6 +461,18 @@ POST /v1/admin/reject    { requestId }   → {}   // 拒绝一单：不签发、
 - **修复（2026-10-19）**：`admin/http.go` 的 `requestItem` 增 `LicenseID string \`json:"licenseId"\`` 并在 `handleRequests` 填 `v.LicenseID`；`server/mock/server.js` 的 `adminRequests` 同步该字段（空串表示未签发，与真服务端 `license_id NOT NULL DEFAULT ''` 同形）；`admin-console/js/app.js` 的 `ledgerRow` 改为 `it.licenseId || localLicenseForRequest(it.requestId)`，顺序不可颠倒（理由写在该函数注释里）。`ConfirmedAt` **未捎带**：它会让 mock 与前端列一起变宽，不在最小修复范围内，留作独立项。
 - **遗留**：`admin-console/test/browser.mjs` 第 6 步原标题即「本地日志补许可证号列」，其断言对新路径仍然成立（未锚定），但用例名已与实际数据来源不符，建议后续改写。`smoke.mjs` 的 `/^lic_[0-9a-f]{12}$/` 是**锚定**断言，而真服务端 `newLicenseID()` 用 12 字节产出 24 个 hex 字符（mock 才是 12），对着真服务端必红——与本条无关，属 mock/真实分叉，另记。
 
-#### 流程补记
+#### M-3 扫码登录 scope 回滚 snsapi_userinfo → snsapi_login（2026-10-19）
+
+- **背景**：`wechat/client.go` 的 `Scope` 曾从 `snsapi_login` 改到 `snsapi_userinfo`，理由是后者的头像与昵称是后台「证明买家就是扫码的人」的凭据，而前者两个字段恒空。本条把它**改回去**。
+- **回滚原因**：`snsapi_userinfo` 会在扫码与重定向之间插入一个授权确认页。桌面端把这个页面开在自己管不了的浏览器标签里，既不能等也不能观察——用户以为扫成功了，实际停在一个没人回来的标签页上。**授权页不是被拒绝的边角情况，而是每次登录的必经之路**，于是扫码登录整体不可用。这正是原注释里「能要授权的登录流程就能被拒绝」的更坏形态：不是拒绝，是根本走不完。
+- **代价（知情的取舍）**：新账号没有昵称、没有头像，卖家后台按 `open_id` 显示。不涉及凭据——「买家就是扫码的人」这一点由 code 换 OpenID 独立确立，昵称从来不是它。
+- **影响面已核对，不是推断**：
+  - `upsertAccountSQL` 的 `CASE WHEN EXCLUDED.nickname <> '' … ELSE accounts.nickname END` 保证**已有账号的昵称与头像不被空值抹掉**，这是一次性损失且只落在新账号上。
+  - `FetchProfile` 对 42003 返回 `Profile{}, nil` 而非错误，登录链路照常签发令牌；`service.go` 的「profile unavailable」日志只在真错时打，不会因为每次登录都空而刷屏。
+  - `admin-console` 的台账列早已容忍空昵称（服务端字段缺失时降级为 `—`），无需改动。
+- **契约影响**：无。scope 是发往微信的出站参数，不在 §11.3 冻结的端点、字段、状态码或错误码体系内；`envelope`、license canonical 均不涉及。`server/mock/server.js` 的二维码 URL 本就写着 `snsapi_login`，本次回滚让它重新与真实实现一致。
+- **配套改动**：仅注释与测试断言的措辞（`wechat/client.go` 三处、`wechat/client_test.go` 两处、`auth/service_test.go` 两处、`auth/fakestore_test.go` 一处），并把「42003 是降级路径」的叙述改成「42003 是当前 scope 下的常规路径」——留着旧措辞，下一个人会以为空 profile 是一种故障而去"修"它。
+- **定级**：🔴 活跃（扫码登录不可用）→ ✅ 已修复。回归风险低：`go build/vet/test ./...` 10 包全绿。
+
 
 本册建立本身即验证了同步协议 §5 的价值：C 发现缺陷后**守规矩未私改**、按 message 上报；A 的验证修正了其中一条的定级（C-2 从「发行炸弹」降为「契约违背」）——这正是「先登记、后修复」要达成的效果：缺陷不丢，定级不失真。
