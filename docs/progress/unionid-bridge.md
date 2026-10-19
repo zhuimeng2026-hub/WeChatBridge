@@ -10,14 +10,16 @@
 
 代码域（待开工）：`server/internal/wechat/mp.go`（新增公众号客户端）+ `server/internal/auth`（回调接桥接）+ `server/internal/config`（新增 env 校验）。
 
-服务端代码**尚未开始**。当前阶段 = **等待用户从后台收集凭证与接口权限**（清单见 `docs/design/unionid-bridge-inputs.zh-CN.md`）。
+服务端代码**尚未开始**。当前阶段 = **输入已齐（U-② ✅），等开工**——开工第一步不是写代码，
+而是把 envctl 共享层的 `wechat-mp` 接到部署机 env（inputs §7.2）。⚠️ 键名对不上：
+共享层是 `WX_MP_APPID`，服务端要 `WCB_MP_APP_ID`，`envctl sync` **不会**改名，两行必须先声明进 `.env` 才受管。
 
 ## 任务表
 
 | # | 任务 | 状态 | commit | 备注 |
 |---|---|---|---|---|
 | U-① | 列清 unionid 桥接所需凭证与权限清单 | ✅ | 本 commit | `docs/design/unionid-bridge-inputs.zh-CN.md`，5 类待收集项 + 2 个坑预警 |
-| U-② | 用户从后台收集并确认 5 类输入 | ⬜ | — | AppID（可明文）/ AppSecret（仅部署机 env）/ 同开放平台绑定 / user/getid 可用。见 inputs 文档 §7 状态表 |
+| U-② | 用户从后台收集并确认 5 类输入 | ✅ | 本 commit | 5 项全就位。**公众号凭据不用现取**——`/opt/envctl` 共享层 `wechat-mp` 组已有（AppID `wxde10b66d0c930b78`），网站应用侧交叉核对为 `wx0ebd7da2e72e6be2`。其中"已认证 / 同开放平台绑定 / getid 可用"三条为**用户口述、机器无法验证**，最终以 U-④ 真机日志为准。见 inputs 文档 §7、§7.1 |
 | U-③ | 公众号客户端 `mp.go`（AppID/Secret + access_token 中控） | ⬜ | — | 7200s 过期、2000 次/日上限、单飞刷新；env `WCB_MP_APP_ID` / `WCB_MP_APP_SECRET` |
 | U-④ | `HandleCallback` 接桥接：unionid → getid → user/info → 落库 | ⬜ | — | 写 `store.Account.Nickname/AvatarURL`；失败降级只落 openid+unionid，不阻断登录 |
 | U-⑤ | `config.go` 新增 env 必填校验 | ⬜ | — | 与现有网站应用 `WCB_WECHAT_*` 并列 |
