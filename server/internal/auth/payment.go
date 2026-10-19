@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
+	"time"
 )
 
 // PaymentCode is the seller's payment QR as the callback page shows it.
@@ -35,6 +37,15 @@ type PaymentCode struct {
 	// is no way to mint one here, so this is a file the seller exports.
 	contact picture
 	weChat  string
+
+	// The paths are kept so a changed file is picked up without a restart. See
+	// refresh.
+	payPath     string
+	contactPath string
+
+	// mu guards the cached pictures. The callback page is rendered from
+	// concurrent requests, and refresh writes to both slots.
+	mu sync.Mutex
 }
 
 // LoadPaymentCode reads the images and pairs them with the seller's WeChat id.
@@ -63,34 +74,101 @@ type PaymentCode struct {
 // the seller changes price and forgets this file. The page points at the image
 // instead of restating it.
 func LoadPaymentCode(path, weChat, contactPath string) *PaymentCode {
-	p := &PaymentCode{weChat: strings.TrimSpace(weChat)}
-	p.pay = readImage(path, "payment code")
-	p.contact = readImage(contactPath, "contact code")
+	p := &PaymentCode{
+		weChat:      strings.TrimSpace(weChat),
+		payPath:     strings.TrimSpace(path),
+		contactPath: strings.TrimSpace(contactPath),
+	}
+	p.refreshLocked()
 	return p
 }
 
+// refresh re-reads the configured images if they changed on disk.
+//
+// It runs per request, which is what lets an operator replace the payment code
+// by dropping a file in and nothing else — no restart, and therefore no window
+// where the service is down to publish a new price.
+//
+// Three things keep that cheap and safe:
+//
+//   - It stats first and skips the read when size and mtime are unchanged. The
+//     expensive part is the trim, which walks every pixel, so doing that per
+//     request would be waste for a page that is served a handful of times a day.
+//
+//   - **A failed reload keeps the last good image.** An editor that truncates
+//     before writing, an upload caught mid-flight, a permissions slip: any of
+//     these must not blank the page a buyer is looking at. The failure is
+//     recorded and reported, but the bytes that worked are still served, and
+//     the next request tries again — so it heals by itself once the file
+//     settles, without anyone restarting anything.
+//
+//   - A file that stays broken is reported once, not once per request. Otherwise
+//     a misconfigured path becomes a log flood that trains people to ignore it.
+func (p *PaymentCode) refresh() {
+	if p == nil {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.refreshLocked()
+}
+
+// refreshLocked does the work of refresh; the caller holds p.mu.
+func (p *PaymentCode) refreshLocked() {
+	p.pay = loadPicture(p.payPath, "payment code", p.pay)
+	p.contact = loadPicture(p.contactPath, "contact code", p.contact)
+}
+
+// fileVersion identifies a file version cheaply. Size plus mtime is enough: a real
+// edit to an image changes both, and a same-size write within the same
+// filesystem timestamp granularity is not a thing an operator does by hand.
+type fileVersion struct {
+	size    int64
+	modTime time.Time
+	set     bool
+}
+
 // picture is one configured image and whatever went wrong reading it.
-// Exactly one of URI and Problem is ever set.
+//
+// Exactly one of URI and Problem is ever set — except after a failed reload,
+// where URI deliberately keeps its previous value. See loadPicture.
 type picture struct {
 	URI     string
 	Problem string
+	version fileVersion
 }
 
 func (p picture) usable() bool { return p.URI != "" }
 
-// readImage loads one picture, or explains why it could not.
-func readImage(path, what string) picture {
+// loadPicture returns the current image, re-reading only if the file changed,
+// and never returning worse than what already worked.
+func loadPicture(path, what string, prev picture) picture {
 	path = strings.TrimSpace(path)
 	if path == "" {
 		return picture{}
 	}
 
+	// Keep the last good bytes across a failed load. This is the whole reason
+	// prev is carried in.
+	keep := func(problem string) picture {
+		return picture{URI: prev.URI, Problem: problem, version: prev.version}
+	}
+
+	info, err := os.Stat(path)
+	if err != nil {
+		return keep(fmt.Sprintf("%s: %v", path, err))
+	}
+	now := fileVersion{size: info.Size(), modTime: info.ModTime(), set: true}
+	if prev.version == now && (prev.URI != "" || prev.Problem != "") {
+		return prev
+	}
+
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		return picture{Problem: fmt.Sprintf("%s: %v", path, err)}
+		return keep(fmt.Sprintf("%s: %v", path, err))
 	}
 	if len(raw) == 0 {
-		return picture{Problem: fmt.Sprintf("%s: empty file", path)}
+		return keep(fmt.Sprintf("%s: empty file", path))
 	}
 
 	// Sniffed rather than taken from the extension. The file the seller drops
@@ -99,17 +177,20 @@ func readImage(path, what string) picture {
 	// good image — which reads as a broken page, not a wrong file.
 	kind := http.DetectContentType(raw)
 	if !strings.HasPrefix(kind, "image/") {
-		return picture{Problem: fmt.Sprintf("%s: %s, not an image", path, kind)}
+		return keep(fmt.Sprintf("%s: %s, not an image", path, kind))
 	}
 
-	trimmed, err := trimMargins(raw)
-	if err == nil {
+	trimmed, terr := trimMargins(raw)
+	if terr == nil {
 		raw = trimmed
 	}
 	// A trim failure is not worth reporting: the untrimmed image still renders,
 	// just with more whitespace around it than it needs.
 
-	return picture{URI: "data:" + kind + ";base64," + base64.StdEncoding.EncodeToString(raw)}
+	return picture{
+		URI:     "data:" + kind + ";base64," + base64.StdEncoding.EncodeToString(raw),
+		version: now,
+	}
 }
 
 // Problems lists why a configured image could not be loaded, for the startup
@@ -229,6 +310,10 @@ type pageModel struct {
 // would otherwise be running script on this origin, which is the same origin
 // the buyer types credentials into.
 func (p *PaymentCode) Render(kind pageKind, installID string) ([]byte, error) {
+	// Re-read before rendering: this is the point of the whole mechanism, and it
+	// has to happen before the fields below are copied out.
+	p.refresh()
+
 	c := pageCopy[kind]
 
 	m := pageModel{
