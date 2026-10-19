@@ -397,9 +397,19 @@ func TestRequestsItemIsTheContractShape(t *testing.T) {
 
 	// Newest first: the row seeded second (no amount stated) leads, the one
 	// with the amount follows.
+	//
+	// licenseId joined the shape under design §11.7 M-2. It was absent for the
+	// life of this handler even though the store always carried it, and the
+	// console spent that time keeping its own copy of the value in localStorage
+	// — which meant a confirmed row the console could not recall had no revoke
+	// button at all. The key list is exact on purpose: it is the guard that
+	// makes the next silent drop fail here instead of in a seller's browser.
 	newest, _ := items[0].(map[string]any)
-	if got, want := keysOf(newest), []string{"amountFen", "anchorDigest", "createdAt", "installId", "nickname", "requestId", "status"}; strings.Join(got, ",") != strings.Join(want, ",") {
+	if got, want := keysOf(newest), []string{"amountFen", "anchorDigest", "createdAt", "installId", "licenseId", "nickname", "requestId", "status"}; strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Errorf("item keys %v, want %v", got, want)
+	}
+	if got, ok := newest["licenseId"]; !ok || got != "" {
+		t.Errorf("licenseId = %v (present: %v), want \"\" — the seller has not confirmed this row", got, ok)
 	}
 	if got, _ := newest["requestId"].(string); got != "act_2" {
 		t.Errorf("newest item is %q, want act_2", got)
@@ -494,6 +504,24 @@ func TestConfirmSignsAndStoresTheEnvelope(t *testing.T) {
 	}
 	if binding.AccountID != buyerAccountID {
 		t.Errorf("binding account %q, want the buyer's", binding.AccountID)
+	}
+
+	// And the list now hands the same number back (design §11.7 M-2). This is
+	// the assertion the console's ledger column rests on: it is the only reason
+	// a seller opening the console on a machine they have never used before can
+	// still revoke. Without it the value lives in exactly one reply, and the
+	// console has to have been the browser that asked.
+	_, out = doJSON(t, engine, http.MethodGet, "/v1/admin/requests", nil)
+	items, _ := out["items"].([]any)
+	if len(items) != 1 {
+		t.Fatalf("got %d items, want 1", len(items))
+	}
+	row, _ := items[0].(map[string]any)
+	if got, _ := row["licenseId"].(string); got != licenseID {
+		t.Errorf("listed licenseId %q, want the confirm reply's %q", got, licenseID)
+	}
+	if got, _ := row["status"].(string); got != string(store.ActivationConfirmed) {
+		t.Errorf("listed status %q, want confirmed", got)
 	}
 }
 

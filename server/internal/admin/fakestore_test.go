@@ -169,6 +169,18 @@ func (f *fakeStore) RevokeChain(context.Context, string, time.Time) error {
 	return fmt.Errorf("fakeStore: RevokeChain is not exercised by admin tests")
 }
 
+// The two handoff methods arrived with the store-backed sign-in bridge (9cdb894).
+// They are unreachable from admin's handlers the same way the methods above are,
+// so they answer loudly rather than storing anything: a test that reached one
+// has found a dependency nobody knew about.
+func (f *fakeStore) PutAuthHandoff(context.Context, store.AuthHandoff) error {
+	return fmt.Errorf("fakeStore: PutAuthHandoff is not exercised by admin tests")
+}
+
+func (f *fakeStore) TakeAuthHandoff(context.Context, string) (store.AuthHandoff, bool, error) {
+	return store.AuthHandoff{}, false, fmt.Errorf("fakeStore: TakeAuthHandoff is not exercised by admin tests")
+}
+
 // ---------------------------------------------------------------------------
 // store.ActivationStore
 // ---------------------------------------------------------------------------

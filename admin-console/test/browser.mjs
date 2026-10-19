@@ -95,16 +95,32 @@ async function main() {
     await page.waitForSelector(".toast-ok >> nth=1", { timeout: 8000 });
     check("重签成功 toast", (await page.textContent(".toast-ok >> nth=1")).includes("已换机重签"));
 
-    console.log("\n[6] 已签发台账（本地日志补许可证号列）");
+    console.log("\n[6] 已签发台账（许可证号由服务端返回，§11.7 M-2）");
     await page.click("#tab-ledger");
     await page.waitForFunction(() => document.querySelectorAll("#ledger-body tr:not(.row-empty)").length > 0, null, { timeout: 8000 });
     const ledgerText = await page.textContent("#ledger-table");
-    check("台账含本机签发的许可证号", /lic_[0-9a-f]{12}/.test(ledgerText), ledgerText.slice(0, 200));
+    check("台账含已签发的许可证号", /lic_[0-9a-f]{12}/.test(ledgerText), ledgerText.slice(0, 200));
     check("本地操作日志已记录 2 条（确认 + 重签）", (await page.locator("#action-log li").count()) === 2);
     check("日志含两类动作标签",
       (await page.textContent("#action-log")).includes("确认签发") &&
       (await page.textContent("#action-log")).includes("换机重签"));
     await page.screenshot({ path: path.join(here, "shot-ledger.png") });
+
+    // 修复的核心回归：清掉本机日志再刷新。修复之前，这一步会让台账的
+    // 许可证号列整体退化成「—」，且作废按钮随之消失——而服务端从头到尾
+    // 都知道那个号。旧实现下这条断言必然失败，所以它真的在守着什么。
+    console.log("\n[6b] 清空本机日志后许可证号仍在（这条在修复前必然失败）");
+    await page.evaluate(() => {
+      try { localStorage.removeItem("wcb_admin_action_log"); } catch (_) {}
+    });
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await page.waitForSelector("#tab-ledger", { timeout: 8000 });
+    await page.click("#tab-ledger");
+    await page.waitForFunction(() => document.querySelectorAll("#ledger-body tr:not(.row-empty)").length > 0, null, { timeout: 8000 });
+    const ledgerAfterWipe = await page.textContent("#ledger-table");
+    check("日志被清空后台账仍有许可证号", /lic_[0-9a-f]{12}/.test(ledgerAfterWipe), ledgerAfterWipe.slice(0, 200));
+    check("台账行仍有作废按钮",
+      (await page.locator("#ledger-body button", { hasText: "作废" }).count()) > 0);
 
     console.log("\n[7] 页面无 JS 异常");
     check("无 pageerror", pageErrors.length === 0, pageErrors.join("; "));

@@ -495,6 +495,10 @@ async function adminRequests(req, res, url) {
         amountFen: r.amountFen,
         createdAt: stamp(r.createdAt),
         status: r.status,
+        // 设计文档 §11.7 M-2。真服务端此前不返回这个字段，控制台只好
+        // 用本机 localStorage 记自己签发过的许可证号。空串是「尚未签发」，
+        // 与真服务端 store 里 license_id NOT NULL DEFAULT '' 的形状一致。
+        licenseId: r.licenseId || "",
       };
     });
   sendJSON(res, 200, { items });

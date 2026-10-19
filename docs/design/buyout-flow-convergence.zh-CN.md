@@ -341,7 +341,8 @@ GET /v1/activation/licence
 
 ```
 GET  /v1/admin/requests?status=pending
-  resp: { items: [{ requestId, installId, anchorDigest, nickname, amountFen, createdAt, status }] }
+  resp: { items: [{ requestId, installId, anchorDigest, nickname, amountFen, createdAt, status, licenseId }] }
+      // licenseId：这张登记已经铸出的许可证号；未签发时为空串（§11.7 M-2 新增）
 
 POST /v1/admin/confirm   { requestId }   → { licenseId }
 POST /v1/admin/reissue   { installId }   → { licenseId }   // 换机重签：作废旧绑定、签新票
@@ -444,6 +445,19 @@ POST /v1/admin/revoke    { licenseId }   → {}
 - **② `?status=` 未知值**：mock 宽容过滤（未知值当空列表）；真实 handler 返 400。依据：卖家把 "comfirmed" 打错时，「没有待确认」是本 API 唯一不能给的错答案——空列表会被读成"今天没人买"。
 - **影响**：分支 2 的 console（B-⑤）若按 mock 的 always-200 实现，对无记录机器重签会见到 404。这是正确行为，console 应显示「该机器没有购买记录」而非静默成功。
 - **定级**：🟢 实现记录（mock 在真实 handler 全量落地后删除，分歧自然消解）。
+
+#### M-2 卖家后台台账拿不到许可证号（契约投影层漏字段，2026-10-19 修复）
+
+- **上报**：本次授权码链路盘点（worktree 分析）发现。`GET /v1/admin/requests` 的响应里没有 `licenseId`，而 §11.3 冻结的响应体里也没有——但**这不是契约禁止，是实现漏投影**。
+- **验证**：store 侧一直带着这个值。`store.ActivationRequest.LicenseID`（`server/internal/store/store.go`）是字段，`ListActivationRequests` 返回的 `ActivationRequestView` 内嵌它，因此 SQL 与查询成本都是零。丢在 HTTP 投影层：`admin/http.go` 的 `requestItem` 只有七个字段，逐字段拷贝时把这个（连同 `ConfirmedAt`）静默丢掉了。
+- **影响面**：卖家后台只能靠自己浏览器里的 localStorage 操作日志反查许可证号——**服务端权威事实被复制进一份浏览器缓存**。三处真实故障：
+  1. 一行已签发记录若本机日志里没有它，UI **连「作废」按钮都不渲染**，只显示「许可证号未知，请用手动操作区」。换浏览器、清站点数据、隐私模式即永久落入此态——卖家看得见有票，签得出来，却杀不掉。
+  2. 换机重签后，日志记的是重签**之前**那个号（`app.js` 的 reissue 分支未写结构化 `licenseId`），台账继续显示已作废的旧票，且「作废」按钮指向的正是它。
+  3. `patchLastLog` 取 `entries[0]` 作「刚写的那条」，而 `appendLog` 的 localStorage 写失败被 `catch (_) {}` 吞掉；此时它可能覆盖**上一台机器**的对应关系，让那一行退化成 `—`。
+- **修复归属**：A 分支（Go 域）+ 分支 2（`admin-console/` 域）。方案：契约与投影同步补 `licenseId`，控制台改为**优先读服务端字段**、本机日志降为兜底。不涉及 `ListBindings`，不改冻结的错误码体系。
+- **定级**：🔴 活跃（卖家无法作废本机之外的许可证）→ ✅ 已修复。
+- **修复（2026-10-19）**：`admin/http.go` 的 `requestItem` 增 `LicenseID string \`json:"licenseId"\`` 并在 `handleRequests` 填 `v.LicenseID`；`server/mock/server.js` 的 `adminRequests` 同步该字段（空串表示未签发，与真服务端 `license_id NOT NULL DEFAULT ''` 同形）；`admin-console/js/app.js` 的 `ledgerRow` 改为 `it.licenseId || localLicenseForRequest(it.requestId)`，顺序不可颠倒（理由写在该函数注释里）。`ConfirmedAt` **未捎带**：它会让 mock 与前端列一起变宽，不在最小修复范围内，留作独立项。
+- **遗留**：`admin-console/test/browser.mjs` 第 6 步原标题即「本地日志补许可证号列」，其断言对新路径仍然成立（未锚定），但用例名已与实际数据来源不符，建议后续改写。`smoke.mjs` 的 `/^lic_[0-9a-f]{12}$/` 是**锚定**断言，而真服务端 `newLicenseID()` 用 12 字节产出 24 个 hex 字符（mock 才是 12），对着真服务端必红——与本条无关，属 mock/真实分叉，另记。
 
 #### 流程补记
 

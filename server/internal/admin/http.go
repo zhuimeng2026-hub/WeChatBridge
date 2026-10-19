@@ -33,6 +33,20 @@ type requestItem struct {
 	AmountFen    *int64 `json:"amountFen"`
 	CreatedAt    string `json:"createdAt"`
 	Status       string `json:"status"`
+	// LicenseID is the licence this row produced, and the empty string for a
+	// row the seller has not confirmed yet.
+	//
+	// It was missing here for as long as this handler existed, and the console
+	// spent that time keeping its own copy of it in localStorage — a browser's
+	// recollection of what the server already knew. The cost was not cosmetic:
+	// a confirmed row whose licence number the console could not recall had no
+	// revoke button at all, so a seller could see that a licence existed and be
+	// unable to kill it. Opening a second browser, or clearing site data, was
+	// enough to put it there permanently.
+	//
+	// The store has always carried the value (ActivationRequest.LicenseID); only
+	// this projection dropped it. Added under design §11.7 M-2.
+	LicenseID string `json:"licenseId"`
 }
 
 type requestsResponse struct {
@@ -87,6 +101,7 @@ func (s *Service) handleRequests(c *gin.Context) {
 			AmountFen:    v.AmountFen,
 			CreatedAt:    v.CreatedAt.UTC().Format(time.RFC3339),
 			Status:       string(v.Status),
+			LicenseID:    v.LicenseID,
 		})
 	}
 	httpx.OK(c, http.StatusOK, requestsResponse{Items: items})

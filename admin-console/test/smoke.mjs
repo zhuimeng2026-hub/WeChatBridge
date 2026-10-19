@@ -129,8 +129,10 @@ async function main() {
     check("全部为 pending 且按时间倒序",
       items.every((i) => i.status === "pending") &&
       items.every((i, idx) => idx === 0 || new Date(items[idx - 1].createdAt) >= new Date(i.createdAt)));
-    check("item 字段齐全（requestId/installId/anchorDigest/nickname/amountFen/createdAt）",
-      items.every((i) => i.requestId && i.installId && "anchorDigest" in i && "nickname" in i && "amountFen" in i && i.createdAt));
+    check("item 字段齐全（requestId/installId/anchorDigest/nickname/amountFen/createdAt/licenseId）",
+      items.every((i) => i.requestId && i.installId && "anchorDigest" in i && "nickname" in i && "amountFen" in i && i.createdAt && "licenseId" in i));
+    check("未签发的行 licenseId 为空串（§11.7 M-2）",
+      items.every((i) => i.licenseId === ""), JSON.stringify(items.map((i) => i.licenseId)));
 
     // ---------- 确认签发（含幂等） ----------
     console.log("\n[4] 确认签发");
@@ -141,6 +143,13 @@ async function main() {
 
     const again = await api.admin.confirm(target.requestId);
     check("重复 confirm 幂等（同一 licenseId）", again.licenseId === confirmed.licenseId);
+
+    // 签发之后重新拉列表，服务端必须自己把号带回来（§11.7 M-2）。
+    // 这条是本修复的核心断言：控制台台账列不再依赖本机 localStorage。
+    const afterConfirm = (await api.admin.listRequests("")).items || [];
+    check("confirmed 行的 licenseId 由服务端返回",
+      afterConfirm.some((i) => i.requestId === target.requestId && i.licenseId === confirmed.licenseId),
+      "目标 " + target.requestId + "，期望 " + confirmed.licenseId);
 
     await expectApiError("confirm 未知 requestId → 404 not_found",
       () => api.admin.confirm("act_deadbeef"), 404, "not_found");

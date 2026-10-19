@@ -599,7 +599,14 @@
   }
 
   function ledgerRow(it) {
-    var licenseId = localLicenseForRequest(it.requestId);
+    // 服务端给的许可证号是权威答案（设计文档 §11.7 M-2）。本机日志只作为
+    // 兜底：对着一次早于该修复的部署时，它仍然是唯一记得这个号的地方。
+    //
+    // 顺序不能反过来。本机日志记的是「这台浏览器点过确认时服务端回了什么」，
+    // 换机重签之后那条记录就过期了——而重签的返回值当时只落进了 detail 字段，
+    // 没有任何结构化字段让这里能认出来。先读日志会让台账显示一张已经被替换掉
+    // 的旧票，并让「作废」按钮指向它。
+    var licenseId = it.licenseId || localLicenseForRequest(it.requestId);
     var tr = document.createElement("tr");
 
     var tdTime = document.createElement("td");
