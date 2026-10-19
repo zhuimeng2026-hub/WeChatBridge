@@ -41,7 +41,7 @@
  <StackPanel>
  <TextBlock Style="{StaticResource Heading}" Text="{loc:Loc Key='扫码登录'}" />
  <TextBlock x:Name="IntroText" Style="{StaticResource Body}" Margin="0,8,0,0"
- Text="{loc:Loc Key='用微信扫描下方二维码即可登录。登录只用于把这次购买记在你名下，不会读取你的聊天记录。'}" />
+ Text="{loc:Loc Key='点击下方按钮获取登录链接。'}" />
  </StackPanel>
 
  <!-- The sign-in link card. The QR image is gone: the server-rendered code is
@@ -72,11 +72,11 @@
  <Grid Grid.Row="3" Margin="0,18,0,0">
  <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
  <TextBlock x:Name="CountdownText" Style="{StaticResource Body}" FontSize="12" VerticalAlignment="Center"
- Foreground="{StaticResource InkTertiaryColor}" Text="{loc:Loc Key='二维码有效期 5 分钟'}" />
+ Foreground="{StaticResource InkTertiaryColor}" Text="{loc:Loc Key='登录链接有效期 5 分钟'}" />
  <StackPanel Orientation="Horizontal" Grid.Column="1">
  <Button x:Name="FinishButton" Style="{StaticResource GatePrimary}" Content="{loc:Loc Key='完成'}"
  Click="OnFinishClicked" IsDefault="True" Visibility="Collapsed" Margin="0,0,8,0" />
- <Button x:Name="StartButton" Style="{StaticResource GatePrimary}" Content="{loc:Loc Key='获取二维码'}"
+ <Button x:Name="StartButton" Style="{StaticResource GatePrimary}" Content="{loc:Loc Key='获取登录链接'}"
  Click="OnStartClicked" IsDefault="True" IsEnabled="False" />
  </StackPanel>
  </Grid>

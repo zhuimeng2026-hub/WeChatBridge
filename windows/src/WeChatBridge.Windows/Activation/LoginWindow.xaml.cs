@@ -41,6 +41,11 @@ public partial class LoginWindow : Window
 
         _controller.Changed += Render;
         Closed += OnClosed;
+
+        // First paint. The button starts disabled in XAML; without this call it
+        // stays disabled until the controller happens to raise Changed, which on
+        // a quiet Idle stage is never — the "button does nothing" bug.
+        Render();
     }
 
     /// <summary>True when the user closed the window without finishing, not 取消.</summary>

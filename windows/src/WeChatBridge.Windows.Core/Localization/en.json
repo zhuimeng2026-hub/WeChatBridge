@@ -902,7 +902,6 @@
   "正在获取登录链接…": "Fetching the sign-in link…",
   "登录链接有效期 5 分钟": "The sign-in link is good for 5 minutes",
   "登录链接剩余 {0} 秒": "Sign-in link expires in {0}s",
-  "点击下方按钮，用微信扫码登录。": "Press the button below to sign in with WeChat.",
   "点击下方按钮获取登录链接。": "Press the button below to get a sign-in link.",
   "请在浏览器中打开以下链接，用微信扫码完成授权。": "Open the link below in your browser and authorize with WeChat.",
   "已登录：{0}": "Signed in as {0}",

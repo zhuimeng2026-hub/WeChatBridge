@@ -64,7 +64,7 @@ public sealed class AccountController : IDisposable
     public LoginStage Stage { get; private set; } = LoginStage.Idle;
 
     /// <summary>One line, in the user's language, saying what is happening.</summary>
-    public string StatusMessage { get; private set; } = L10n.Text("点击下方按钮，用微信扫码登录。");
+    public string StatusMessage { get; private set; } = L10n.Text("点击下方按钮获取登录链接。");
 
     /// <summary>
     /// The URL to open in a desktop browser. WeChat renders the real sign-in code
