@@ -39,6 +39,26 @@ public sealed class AccountServiceTests
     private static string Pending() =>
         $"{{\"status\":\"{AuthStatus.Pending}\",\"expiresAt\":\"{TestTime.Now.AddMinutes(5):O}\"}}";
 
+    [Fact]
+    public void SessionChangesNotifyAfterTheStoreAndMemoryAgree()
+    {
+        using var config = new TempLicenseConfig();
+        var store = new AuthTokenStore(config.Root, config.Protector);
+        using var service = Service(new FakeActivationTransport(), config);
+        var observed = new List<AuthTokens?>();
+        service.Changed += () =>
+        {
+            Assert.Equal(service.Current, store.Load());
+            observed.Add(service.Current);
+        };
+
+        var tokens = FreshTokens();
+        service.SignIn(tokens);
+        service.SignOutLocally();
+
+        Assert.Equal(new AuthTokens?[] { tokens, null }, observed);
+    }
+
     private static AccountService Service(
         FakeActivationTransport transport,
         TempLicenseConfig config,
@@ -538,6 +558,8 @@ public sealed class AccountServiceTests
             $"\"plan\":\"buyout\",\"createdAt\":\"{TestTime.IssuedAt:O}\"," +
             $"\"lastLoginAt\":\"{TestTime.Now.AddHours(-1):O}\",\"wechatBound\":true}}");
         using var service = Service(transport, config);
+        AuthTokens? notified = null;
+        service.Changed += () => notified = store.Load();
 
         var outcome = await service.MeAsync(CancellationToken.None);
 
@@ -550,6 +572,7 @@ public sealed class AccountServiceTests
         var stored = store.Load();
         Assert.NotNull(stored);
         Assert.Equal("演示买家（新）", stored!.Account.Nickname);
+        Assert.Equal(stored, notified);
     }
 
     /// <summary>
@@ -568,6 +591,8 @@ public sealed class AccountServiceTests
         var transport = new FakeActivationTransport();
         transport.Reply(401, "{\"error\":{\"code\":\"unauthorized\",\"message\":\"访问令牌无效或已过期。\",\"request_id\":\"\"}}");
         using var service = Service(transport, config);
+        var changes = 0;
+        service.Changed += () => changes++;
 
         var outcome = await service.MeAsync(CancellationToken.None);
 
@@ -576,6 +601,7 @@ public sealed class AccountServiceTests
         Assert.False(service.IsSignedIn);
         Assert.Null(service.Current);
         Assert.Null(store.Load());
+        Assert.Equal(1, changes);
     }
 
     [Fact]

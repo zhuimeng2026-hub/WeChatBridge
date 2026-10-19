@@ -49,6 +49,8 @@ internal sealed class ActivationGateway : IDisposable
 
     public static ActivationGateway Current { get; } = new(LicensingBootstrap.Current, null, null);
 
+    public event Action? Changed;
+
     /// <summary>Builds a gateway over a specific licensing stack, for tests.</summary>
     internal static ActivationGateway Create(
         LicensingBootstrap licensing,
@@ -140,11 +142,15 @@ internal sealed class ActivationGateway : IDisposable
             lock (_gate)
             {
                 ObjectDisposedException.ThrowIf(_disposed, this);
-                return _account ??= new AccountService(
+                if (_account is not null)
+                    return _account;
+                _account = new AccountService(
                     Transport(),
                     TokenStore,
                     PollSchedule.Login,
                     log: _log);
+                _account.Changed += OnAccountChanged;
+                return _account;
             }
         }
     }
@@ -232,7 +238,13 @@ internal sealed class ActivationGateway : IDisposable
     /// Re-reads the licence file after one was written, so the gate sees the change
     /// without a restart.
     /// </summary>
-    public void RefreshLicence() => _licensing.Refresh();
+    public void RefreshLicence()
+    {
+        _licensing.Refresh();
+        Changed?.Invoke();
+    }
+
+    private void OnAccountChanged() => Changed?.Invoke();
 
     public void Dispose()
     {
@@ -242,6 +254,8 @@ internal sealed class ActivationGateway : IDisposable
                 return;
             _disposed = true;
         }
+        if (_account is not null)
+            _account.Changed -= OnAccountChanged;
         _transport?.Dispose();
     }
 

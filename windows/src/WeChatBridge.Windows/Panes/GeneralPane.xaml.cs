@@ -10,18 +10,22 @@ namespace WeChatBridge.Windows.Panes;
 /// <summary>通用 pane: status, retention window, version.</summary>
 public partial class GeneralPane : UserControl
 {
-    public GeneralPane()
+    private readonly Services.ActivationGate _gate;
+    private Window? _owner;
+    private bool _sessionProbed;
+
+    public GeneralPane() : this(Services.ActivationGate.Current) { }
+
+    internal GeneralPane(Services.ActivationGate gate)
     {
+        _gate = gate;
         InitializeComponent();
         var informational = Assembly.GetExecutingAssembly()
             .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
         VersionText.Text = L10n.Format($"当前版本 {ShortVersion(informational)}");
         RenderLicenceState();
-        // Fires once when the pane is first added to the visual tree; we read the
-        // session then. Subsequent re-entries do not re-probe — a stale "上次活跃"
-        // is honest, a hammering probe is not, and the user can always restart if
-        // they want a fresh read.
         Loaded += OnLoaded;
+        Unloaded += OnUnloaded;
     }
 
     /// <summary>
@@ -35,7 +39,7 @@ public partial class GeneralPane : UserControl
     /// </summary>
     private void RenderLicenceState()
     {
-        var gate = Services.ActivationGate.Current;
+        var gate = _gate;
         LicenceStatusText.Text = gate.StatusText;
 
         var installId = gate.Snapshot.InstallId;
@@ -48,6 +52,11 @@ public partial class GeneralPane : UserControl
         // goes rather than opening a window that says "you are already done".
         OpenActivationButton.Visibility = gate.CanOpenFromSettings ? Visibility.Visible : Visibility.Collapsed;
         OpenPaidButton.Visibility = gate.CanOpenFromSettings ? Visibility.Visible : Visibility.Collapsed;
+
+        var tokens = gate.StoredTokens;
+        var account = tokens is not null && tokens.IsUsableAt(DateTimeOffset.UtcNow) ? tokens.Account : null;
+        SessionInfoText.Text = account is null ? string.Empty : FormatSessionLine(account);
+        SessionInfoText.Visibility = account is null ? Visibility.Collapsed : Visibility.Visible;
     }
 
     private void OpenActivation_Click(object sender, RoutedEventArgs e)
@@ -55,7 +64,7 @@ public partial class GeneralPane : UserControl
         if (Window.GetWindow(this) is not { } window)
             return;
 
-        Services.ActivationGate.Current.OpenManually(window);
+        _gate.OpenManually(window);
 
         // The page may have taken the licence it was opened to fetch.
         RenderLicenceState();
@@ -66,7 +75,7 @@ public partial class GeneralPane : UserControl
         if (Window.GetWindow(this) is not { } window)
             return;
 
-        Services.ActivationGate.Current.OpenAlreadyPaid(window);
+        _gate.OpenAlreadyPaid(window);
 
         // The page may have taken the licence it was opened to fetch.
         RenderLicenceState();
@@ -74,11 +83,50 @@ public partial class GeneralPane : UserControl
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
-        // Fire-and-forget is safe here: RefreshSessionAsync swallows everything
-        // except OperationCanceledException, and a missing-session 401 lands as
-        // LoginFailure.SessionExpired rather than an unobserved exception.
-        _ = RefreshSessionAsync();
+        _gate.Changed -= OnStateChanged;
+        _gate.Changed += OnStateChanged;
+        if (_owner is not null)
+            _owner.Activated -= OnWindowActivated;
+        _owner = Window.GetWindow(this);
+        if (_owner is not null)
+            _owner.Activated += OnWindowActivated;
+        RenderLicenceState();
+
+        // Re-entering the pane only re-renders local state. The server probe runs
+        // once; subsequent login/profile updates arrive through Changed.
+        if (!_sessionProbed)
+        {
+            _sessionProbed = true;
+            _ = RefreshSessionAsync();
+        }
     }
+
+    private void OnUnloaded(object sender, RoutedEventArgs e)
+    {
+        _gate.Changed -= OnStateChanged;
+        if (_owner is not null)
+            _owner.Activated -= OnWindowActivated;
+        _owner = null;
+    }
+
+    private void OnStateChanged()
+    {
+        if (!Dispatcher.CheckAccess())
+        {
+            Dispatcher.BeginInvoke(new Action(OnStateChanged));
+            return;
+        }
+        if (IsLoaded)
+            RenderLicenceState();
+    }
+
+    /// <summary>
+    /// Pane-level re-read on owner focus. A ShowDialog closing — LoginWindow,
+    /// PurchaseWindow, or any future modal the gate opens — necessarily
+    /// re-activates the owner; that's the natural moment to fetch the latest
+    /// snapshot without a restart.
+    /// </summary>
+    private void OnWindowActivated(object? sender, EventArgs e) => RenderLicenceState();
 
     /// <summary>
     /// One network read on pane load: asks the licence service whether the
@@ -87,24 +135,19 @@ public partial class GeneralPane : UserControl
     /// status — a customer who restarts after a month should see at a glance
     /// whether the app still remembers them.
     /// <para>
-    /// Network failure, no local session, and a 401 all leave the line hidden.
-    /// That is the quietest behaviour that does not lie: a failed probe is not a
-    /// "you're signed out", and the existing UI already says the right thing for
-    /// the unsigned-out case via <see cref="RenderLicenceState"/>.
+    /// Network failure preserves the cached identity. A missing session or a 401
+    /// hides it, and both labels are rendered from the resulting local state.
     /// </para>
     /// </summary>
     private async Task RefreshSessionAsync()
     {
         try
         {
-            var outcome = await Services.ActivationGate.Current
+            await _gate
                 .MeAsync(CancellationToken.None)
                 .ConfigureAwait(true);
-            if (!outcome.Succeeded || outcome.Tokens is null)
-                return;
-
-            SessionInfoText.Text = FormatSessionLine(outcome.Tokens.Account);
-            SessionInfoText.Visibility = Visibility.Visible;
+            if (IsLoaded)
+                RenderLicenceState();
         }
         catch (OperationCanceledException)
         {

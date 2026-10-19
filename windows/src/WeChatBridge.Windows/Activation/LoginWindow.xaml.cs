@@ -113,6 +113,14 @@ public partial class LoginWindow : Window
     /// <summary>The only place this window decides what it looks like.</summary>
     private void Render()
     {
+        // AccountService polls without capturing the UI context. Its progress
+        // callback must return to the dispatcher before touching WPF controls.
+        if (!Dispatcher.CheckAccess())
+        {
+            Dispatcher.BeginInvoke(new Action(Render));
+            return;
+        }
+
         StatusText.Text = _controller.StatusMessage;
 
         var url = _controller.AuthorizeUrl;

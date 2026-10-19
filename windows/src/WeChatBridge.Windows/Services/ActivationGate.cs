@@ -50,7 +50,7 @@ internal sealed class ActivationGate : IDisposable
     private readonly Action<string>? _log;
     private bool _disposed;
 
-    private ActivationGate(ActivationGateway gateway, AppSettingsStore settings, Action<string>? log)
+    internal ActivationGate(ActivationGateway gateway, AppSettingsStore settings, Action<string>? log)
     {
         _gateway = gateway;
         _settings = settings;
@@ -58,6 +58,14 @@ internal sealed class ActivationGate : IDisposable
     }
 
     public static ActivationGate Current { get; } = new(ActivationGateway.Current, new AppSettingsStore(), null);
+
+    public event Action? Changed
+    {
+        add => _gateway.Changed += value;
+        remove => _gateway.Changed -= value;
+    }
+
+    public AuthTokens? StoredTokens => _gateway.StoredTokens;
 
     /// <summary>Everything the gate knows, as one value.</summary>
     public GateSnapshot Snapshot => _gateway.Snapshot();

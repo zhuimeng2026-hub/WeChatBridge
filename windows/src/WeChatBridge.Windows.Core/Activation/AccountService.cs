@@ -91,6 +91,9 @@ public sealed class AccountService : IDisposable
     /// <summary>The live session, or null. Never reads from disk again.</summary>
     public AuthTokens? Current => _current;
 
+    /// <summary>Raised after the session or profile is persisted; may run on a worker thread.</summary>
+    public event Action? Changed;
+
     /// <summary>The access token to authorise a call with, or null when signed out.</summary>
     public string? BearerToken => _current?.AccessToken;
 
@@ -102,6 +105,7 @@ public sealed class AccountService : IDisposable
         ArgumentNullException.ThrowIfNull(tokens);
         _current = tokens;
         _store?.Save(tokens);
+        Changed?.Invoke();
         _log?.Invoke($"account: signed in as {tokens.Account.DisplayName}");
     }
 
@@ -113,8 +117,7 @@ public sealed class AccountService : IDisposable
     public async Task SignOutAsync(CancellationToken cancellationToken)
     {
         var refresh = _current?.RefreshToken;
-        _current = null;
-        _store?.Clear();
+        SignOutLocally();
 
         if (refresh is null)
             return;
@@ -352,6 +355,7 @@ public sealed class AccountService : IDisposable
     {
         _current = null;
         _store?.Clear();
+        Changed?.Invoke();
     }
 
     /// <summary>
@@ -405,6 +409,7 @@ public sealed class AccountService : IDisposable
             }
             _current = _current with { Account = account };
             _store?.Save(_current);
+            Changed?.Invoke();
             return LoginOutcome.Success(_current);
         }
         catch (JsonException)
