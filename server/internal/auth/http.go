@@ -64,6 +64,7 @@ func (s *Service) RegisterRoutes(r gin.IRouter) {
 	group.GET("/wechat/callback", s.handleCallback)
 
 	r.GET("/v1/account", s.RequireAuth(), s.handleAccount)
+	r.GET("/v1/accounts/:id/avatar", s.handleAvatar)
 }
 
 // RequireAuth is the bearer middleware. It verifies the signature and the
@@ -164,10 +165,10 @@ func (s *Service) handlePoll(c *gin.Context) {
 		httpx.Fail(c, httpx.Internal(err))
 		return
 	}
-	httpx.OK(c, http.StatusOK, toPollResponse(result))
+	httpx.OK(c, http.StatusOK, s.toPollResponse(c.Request.Context(), result))
 }
 
-func toPollResponse(r PollResult) pollResponse {
+func (s *Service) toPollResponse(ctx context.Context, r PollResult) pollResponse {
 	out := pollResponse{Status: r.Status}
 	// The tokens go out exactly once. After that the row has hashes and
 	// nothing else, and a reply claiming otherwise would be a lie the client
@@ -180,7 +181,7 @@ func toPollResponse(r PollResult) pollResponse {
 		out.ExpiresAt = newStamp(r.ExpiresAt)
 	}
 	if r.Account != nil {
-		out.Account = toAccountDTO(*r.Account)
+		out.Account = s.accountDTO(ctx, *r.Account)
 	}
 	return out
 }
@@ -390,7 +391,60 @@ func (s *Service) handleAccount(c *gin.Context) {
 		httpx.Fail(c, httpx.FromStore(err))
 		return
 	}
-	httpx.OK(c, http.StatusOK, toAccountDTO(account))
+	httpx.OK(c, http.StatusOK, s.accountDTO(c.Request.Context(), account))
+}
+
+// handleAvatar serves a stored picture.
+//
+// It is deliberately unauthenticated, and that is worth stating plainly because
+// it looks like the wrong call. A WPF Image control fetches its source through
+// the Web stack, which sends the cookies and the headers the application gave it
+// and no Authorization header this service could ask for; putting a bearer
+// requirement here means the client must either hand-roll the download or render
+// nothing. So the read is public, and the three properties that make that
+// acceptable are all deliberate:
+//
+//   - The account id in the path is a UUID. It is not an OpenID and not a
+//     handle; there is nothing to enumerate and nothing to guess.
+//   - The body is a WeChat profile picture. It was published by the person it
+//     depicts, on the same terms WeChat serves it under, to anybody holding the
+//     link — which is exactly what this endpoint is.
+//   - Nothing about the account comes with it. No nickname, no OpenID, no
+//     plan, no purchase: this returns image bytes and a content type.
+//
+// A 404 is the answer for "no such account" and "no picture for that account"
+// alike. Distinguishing them would be an existence oracle over an id the caller
+// already holds, which buys nothing — the caller cannot do anything with an id
+// it does not already have.
+func (s *Service) handleAvatar(c *gin.Context) {
+	accountID := c.Param("id")
+
+	rec, body, ok, err := s.Avatar(c.Request.Context(), accountID)
+	if err != nil {
+		httpx.Fail(c, httpx.Internal(err))
+		return
+	}
+	if !ok {
+		// 204 rather than 404: the client's decoder treats a 404 body as a
+		// picture and throws, whereas "no content" is a state it already knows
+		// how to draw as a blank.
+		c.Status(http.StatusNoContent)
+		return
+	}
+
+	// Immutable by construction: the file name is the digest of the bytes, so
+	// the contents behind this URL cannot change. A year is safe for the same
+	// reason a year is safe on a content-addressed asset URL.
+	c.Header("Cache-Control", "public, max-age=31536000, immutable")
+	// The ETag is the digest, which is both the file's name and the answer to
+	// "have these bytes changed". Sending it costs nothing and is the one thing
+	// a proxy in front of this service can use to answer a revalidation.
+	c.Header("ETag", `"`+rec.Digest+`"`)
+	// A picture is not a document. nosniff stops a browser from reading these
+	// bytes as anything they are not, which matters because this endpoint is
+	// reachable without a token.
+	c.Header("X-Content-Type-Options", "nosniff")
+	c.Data(http.StatusOK, rec.MIME, body)
 }
 
 // renderQR is the one call into the encoder, so the size this service asks for

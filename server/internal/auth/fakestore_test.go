@@ -34,6 +34,11 @@ type fakeStore struct {
 	sessions     map[string]store.Session
 
 	accounts map[string]store.Account
+	// avatars is keyed by account id and mirrors account_avatars. It is a
+	// separate map rather than fields on the account because the real store
+	// keeps it in a separate table, and a fake that merged them would let a
+	// test pass against a shape the database does not have.
+	avatars map[string]store.Avatar
 	// byOpenID resolves a WeChat identity to our account id. OpenID is not the
 	// primary key and the design document is explicit about why; the fake
 	// honours that so nothing here can come to depend on it.
@@ -69,6 +74,7 @@ func newFakeStore() *fakeStore {
 		authSessions:   make(map[string]store.AuthSession),
 		sessions:       make(map[string]store.Session),
 		accounts:       make(map[string]store.Account),
+		avatars:        make(map[string]store.Avatar),
 		byOpenID:       make(map[string]string),
 		handoffs:       make(map[string]store.AuthHandoff),
 		refreshIndex:   make(map[string]string),
@@ -182,6 +188,26 @@ func (f *fakeStore) GetAccount(_ context.Context, id store.ID) (store.Account, e
 	a, ok := f.accounts[id]
 	if !ok {
 		return store.Account{}, store.ErrNotFound
+	}
+	return a, nil
+}
+
+// PutAvatar / GetAvatar mirror the account_avatars table, including the
+// replace-on-conflict behaviour: a person changing their picture must not need
+// the caller to know whether a row already existed.
+func (f *fakeStore) PutAvatar(_ context.Context, a store.Avatar) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.avatars[a.AccountID] = a
+	return nil
+}
+
+func (f *fakeStore) GetAvatar(_ context.Context, accountID store.ID) (store.Avatar, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	a, ok := f.avatars[accountID]
+	if !ok {
+		return store.Avatar{}, store.ErrNotFound
 	}
 	return a, nil
 }

@@ -15,6 +15,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -97,6 +98,24 @@ type Config struct {
 	// self-contained; refresh is checked against the store so it can be
 	// revoked.
 	TokenSigningSecret string
+
+	// The local avatar copy. WeChat's headimgurl expires within days, so the
+	// bytes are fetched once and kept here; the account row keeps only the
+	// digest, and the client is handed an address on this service that does not
+	// expire.
+	//
+	// AvatarDir empty means avatars are not cached at all — a deployment that
+	// would rather not hold user pictures on disk leaves it unset and the
+	// client gets the remote URL, which is what it always did.
+	AvatarDir string
+	// AvatarMaxBytes caps a single fetch. WeChat's avatars are well under a
+	// hundred kilobytes; the cap exists so a misconfigured URL cannot fill the
+	// disk, not because the number is meaningful.
+	AvatarMaxBytes int
+	// AvatarRefreshTTL is how old a cached copy may get before a sign-in
+	// fetches a new one. Below WeChat's own expiry it is wasted traffic; well
+	// above it the client shows a stale picture.
+	AvatarRefreshTTL time.Duration
 }
 
 // IsProd reports whether production checks apply.
@@ -139,6 +158,8 @@ func Load() (Config, error) {
 		PaymentCodePath: strings.TrimSpace(os.Getenv("WCB_PAYMENT_CODE_PATH")),
 		SellerWeChat:    strings.TrimSpace(os.Getenv("WCB_SELLER_WECHAT")),
 		ContactQRPath:   strings.TrimSpace(os.Getenv("WCB_CONTACT_QR_PATH")),
+
+		AvatarDir: strings.TrimSpace(os.Getenv("WCB_AVATAR_DIR")),
 	}
 
 	var err error
@@ -150,6 +171,7 @@ func Load() (Config, error) {
 		{&c.AuthSessionTTL, "WCB_AUTH_SESSION_TTL", 5 * time.Minute},
 		{&c.AccessTokenTTL, "WCB_ACCESS_TOKEN_TTL", time.Hour},
 		{&c.RefreshTokenTTL, "WCB_REFRESH_TOKEN_TTL", 90 * 24 * time.Hour},
+		{&c.AvatarRefreshTTL, "WCB_AVATAR_REFRESH_TTL", 24 * time.Hour},
 	} {
 		if *f.dst, err = duration(f.name, f.def); err != nil {
 			return c, err
@@ -162,6 +184,7 @@ func Load() (Config, error) {
 		def  int
 	}{
 		{&c.BuyoutLicenseDays, "WCB_BUYOUT_LICENSE_DAYS", 0},
+		{&c.AvatarMaxBytes, "WCB_AVATAR_MAX_BYTES", 2 << 20},
 	} {
 		if *f.dst, err = integer(f.name, f.def); err != nil {
 			return c, err
@@ -231,6 +254,26 @@ func (c Config) validate() error {
 	}
 	if len(c.TokenSigningSecret) < 32 {
 		add("WCB_TOKEN_SIGNING_SECRET must be at least 32 bytes of entropy")
+	}
+	// The avatar settings are only checked when avatars are actually cached. A
+	// deployment that left WCB_AVATAR_DIR empty must not be told its unused
+	// size cap is nonsense — the feature is off, and an error about an off
+	// feature is an error that trains operators to ignore this function.
+	if c.AvatarDir != "" {
+		if !filepath.IsAbs(c.AvatarDir) {
+			// The service's working directory is not something an operator
+			// should have to know to find a file it wrote. A relative path here
+			// resolves differently under systemd, under a container and under
+			// a hand-typed shell, and the symptom is avatars that vanish
+			// between restarts.
+			add("WCB_AVATAR_DIR must be an absolute path, got %q", c.AvatarDir)
+		}
+		if c.AvatarMaxBytes <= 0 {
+			add("WCB_AVATAR_MAX_BYTES must be positive, got %d", c.AvatarMaxBytes)
+		}
+		if c.AvatarRefreshTTL <= 0 {
+			add("WCB_AVATAR_REFRESH_TTL must be positive, got %s", c.AvatarRefreshTTL)
+		}
 	}
 
 	if len(problems) > 0 {

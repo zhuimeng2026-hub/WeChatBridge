@@ -86,7 +86,14 @@ type accountDTO struct {
 	WechatBound bool   `json:"wechatBound"`
 }
 
-func toAccountDTO(a store.Account) *accountDTO {
+// toAccountDTO renders the account for the client.
+//
+// avatarURL is passed in rather than derived from the account, because the
+// address the client should use is this service's own — the one that keeps
+// answering after WeChat's lease on its CDN URL runs out — and that is a
+// function of where this service is publicly reachable, which the store does
+// not know.
+func toAccountDTO(a store.Account, avatarURL string) *accountDTO {
 	plan := string(a.Plan)
 	if plan == "" {
 		// A plan the client does not know about is a plan it must not treat
@@ -95,9 +102,13 @@ func toAccountDTO(a store.Account) *accountDTO {
 		plan = ""
 	}
 	return &accountDTO{
-		ID:          a.ID,
-		Nickname:    a.Nickname,
-		AvatarURL:   a.AvatarURL,
+		ID:       a.ID,
+		Nickname: a.Nickname,
+		// Empty rather than the remote URL when this deployment caches
+		// nothing: a URL that is known to stop working in a few days is worse
+		// than none, because the client caches it either way and the empty
+		// string at least tells it there was nothing to cache.
+		AvatarURL:   avatarURL,
 		Plan:        plan,
 		CreatedAt:   newStamp(a.CreatedAt),
 		LastLoginAt: newStamp(a.LastLoginAt),
