@@ -28,7 +28,7 @@ public partial class PurchaseWindow : Window
 {
     private readonly ActivationController _controller;
 
-    public PurchaseWindow(ActivationController controller)
+    public PurchaseWindow(ActivationController controller, bool autoRegister = false)
     {
         _controller = controller ?? throw new ArgumentNullException(nameof(controller));
         InitializeComponent();
@@ -41,6 +41,12 @@ public partial class PurchaseWindow : Window
 
         _controller.Changed += Render;
         Closed += OnClosed;
+
+        // When opened from the "我已付款" entry, the click already asserted payment,
+        // so ask for the authorization code (the request id) the moment the window
+        // appears instead of waiting for a second press.
+        if (autoRegister)
+            Loaded += (_, _) => _ = RegisterAsync();
     }
 
     /// <summary>True when the licence is on disk, so the gate can be re-read.</summary>

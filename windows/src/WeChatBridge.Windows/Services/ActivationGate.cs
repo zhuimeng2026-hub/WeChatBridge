@@ -126,15 +126,28 @@ internal sealed class ActivationGate : IDisposable
     public GatePage OpenManually(Window owner, Action<string>? log = null) =>
         Open(owner, Decide(Snapshot), log ?? _log);
 
-    private GatePage Open(Window owner, GatePage page, Action<string>? log)
+    /// <summary>
+    /// The "我已付款" entry. Opens the purchase page and, for the login/purchase
+    /// states, immediately sends the "I have paid" request so the server issues an
+    /// authorization code (the activation request id) without a second press. The
+    /// contact-seller state falls back to the normal page.
+    /// </summary>
+    public GatePage OpenAlreadyPaid(Window owner, Action<string>? log = null)
+    {
+        var page = Decide(Snapshot);
+        return Open(owner, page, log ?? _log,
+            autoRegister: page is GatePage.Login or GatePage.Purchase);
+    }
+
+    private GatePage Open(Window owner, GatePage page, Action<string>? log, bool autoRegister = false)
     {
         switch (page)
         {
             case GatePage.Login:
-                return ShowLogin(owner, log);
+                return ShowLogin(owner, log, autoRegister);
 
             case GatePage.Purchase:
-                return ShowPurchase(owner, log);
+                return ShowPurchase(owner, log, autoRegister);
 
             case GatePage.ContactSeller:
                 // A window here would offer nothing to click. Say it once, plainly.
@@ -151,11 +164,11 @@ internal sealed class ActivationGate : IDisposable
         }
     }
 
-    private GatePage ShowLogin(Window owner, Action<string>? log)
+    private GatePage ShowLogin(Window owner, Action<string>? log, bool autoRegister = false)
     {
         using var controller = new AccountController(_gateway.Account, _gateway.InstallId, log);
         new LoginWindow(controller) { Owner = owner }.ShowDialog();
-        return controller.IsSignedIn ? ContinueAfterLogin(owner, log) : GatePage.Login;
+        return controller.IsSignedIn ? ContinueAfterLogin(owner, log, autoRegister) : GatePage.Login;
     }
 
     /// <summary>
@@ -166,7 +179,7 @@ internal sealed class ActivationGate : IDisposable
     /// the next step themselves.
     /// </para>
     /// </summary>
-    private GatePage ContinueAfterLogin(Window owner, Action<string>? log)
+    private GatePage ContinueAfterLogin(Window owner, Action<string>? log, bool autoRegister = false)
     {
         var session = _gateway.EnsureSessionAsync(CancellationToken.None).GetAwaiter().GetResult();
         if (!session.Succeeded)
@@ -175,10 +188,10 @@ internal sealed class ActivationGate : IDisposable
             return GatePage.Login;
         }
 
-        return ShowPurchase(owner, log);
+        return ShowPurchase(owner, log, autoRegister);
     }
 
-    private GatePage ShowPurchase(Window owner, Action<string>? log)
+    private GatePage ShowPurchase(Window owner, Action<string>? log, bool autoRegister = false)
     {
         using var controller = new ActivationController(
             _gateway.Activation,
@@ -187,7 +200,7 @@ internal sealed class ActivationGate : IDisposable
             onLicensed: _gateway.RefreshLicence,
             log: log);
 
-        var window = new PurchaseWindow(controller) { Owner = owner };
+        var window = new PurchaseWindow(controller, autoRegister) { Owner = owner };
         window.ShowDialog();
 
         // The gate caches its answer, so a licence written while this window was open

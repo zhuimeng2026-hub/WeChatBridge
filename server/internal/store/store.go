@@ -77,6 +77,28 @@ type Account struct {
 	InstallID string
 }
 
+// Avatar is the account's picture, held locally.
+//
+// Account.AvatarURL is what WeChat said; this is what was actually fetched from
+// it and verified. The split exists because the remote URL is a promise with an
+// expiry, and a client that cached the promise got a broken image a week later.
+type Avatar struct {
+	AccountID ID
+	// Digest is the lowercase hex SHA-256 of the stored bytes. It is also the
+	// file name under the avatar directory and the ETag served to the client.
+	Digest string
+	// MIME is what the bytes were sniffed to be, never what the server claimed.
+	MIME string
+	// ByteSize is the length as written. Fetched to enforce the size cap and
+	// kept because a truncated read is otherwise invisible.
+	ByteSize int
+	// SourceURL is where the bytes came from, kept so a refresh can be retried
+	// against the same origin and so an operator can tell "never fetched" from
+	// "fetched, then deleted from disk".
+	SourceURL string
+	FetchedAt time.Time
+}
+
 // Plan is what an account is entitled to.
 type Plan string
 
@@ -189,6 +211,16 @@ type AuthStore interface {
 	// the caller can tell a first sign-in from a return visit.
 	UpsertAccountByOpenID(ctx context.Context, openID, unionID, nickname, avatar string) (Account, bool, error)
 	GetAccount(ctx context.Context, id ID) (Account, error)
+
+	// PutAvatar records the local copy of an account's picture. It is an
+	// unconditional upsert rather than an insert-or-fail, because the same
+	// person changing their WeChat avatar is the expected case and not a
+	// conflict: the newest digest simply replaces the old one.
+	PutAvatar(ctx context.Context, a Avatar) error
+	// GetAvatar returns the recorded copy, or ErrNotFound when this account has
+	// none. ErrNotFound is a normal answer here — not every deployment fetches
+	// avatars, and not every sign-in produces one.
+	GetAvatar(ctx context.Context, accountID ID) (Avatar, error)
 
 	// CreateSession installs the account's one live session. A second call
 	// for the same account replaces the first: that is the machine-change path.

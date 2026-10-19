@@ -155,7 +155,7 @@ public sealed class ActivationService
             var requestId = document.RootElement.GetProperty("requestId").GetString() ?? "";
             var status = document.RootElement.TryGetProperty("status", out var s) ? s.GetString() ?? "" : ActivationState.Pending;
             _log?.Invoke($"activation: registered {requestId} for install {installId}");
-            return ActivationOutcome.Failed(ActivationFailure.None, true, $"已登记，等待卖家确认（单号 {requestId}）。", requestId);
+            return ActivationOutcome.Failed(ActivationFailure.None, true, $"已登记，授权码 {requestId}，等待卖家确认。", requestId);
         }
         catch (JsonException)
         {

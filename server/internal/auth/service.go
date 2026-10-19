@@ -35,10 +35,12 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/freestylefly/WeChatBridge/server/internal/avatar"
 	"github.com/freestylefly/WeChatBridge/server/internal/store"
 	"github.com/freestylefly/WeChatBridge/server/internal/token"
 	"github.com/freestylefly/WeChatBridge/server/internal/wechat"
@@ -58,6 +60,10 @@ type Config struct {
 	// MaxOutstandingTickets caps unconsumed tickets per install id, so that
 	// hammering "refresh the QR" does not pile up rows.
 	MaxOutstandingTickets int
+	// AvatarRefreshTTL is how old a stored picture may get before a sign-in
+	// fetches a new one. WeChat's own URL expires within days, so a value well
+	// above that would leave the client looking at a stale picture for a week.
+	AvatarRefreshTTL time.Duration
 }
 
 // Service is the flow. It is safe for concurrent use; the client holds one for
@@ -72,8 +78,12 @@ type Service struct {
 	// never nil — an unconfigured deployment gets a page that says the code is
 	// not configured — so the handler has no nil case to forget.
 	payment *PaymentCode
-	log     *slog.Logger
-	now     func() time.Time
+	// avatarCache holds the local copy of a person's picture. It may be nil or
+	// disabled, which is a deployment that kept the remote URL; nothing here
+	// treats that as a fault, because it is the behaviour that shipped before.
+	avatarCache *avatar.Cache
+	log         *slog.Logger
+	now         func() time.Time
 
 	// outstanding tracks live tickets per install id. It is an in-process
 	// approximation, not an authoritative count — the store has no listing
@@ -93,6 +103,11 @@ type Options struct {
 	// Payment is the seller's payment code. Optional: nil renders a callback
 	// page that says the code is not configured.
 	Payment *PaymentCode
+	// Avatars is the local copy of each person's WeChat picture. Optional: nil
+	// or a disabled cache means the client keeps receiving WeChat's own URL,
+	// which is what it has always received and what it will render until that
+	// URL expires.
+	Avatars *avatar.Cache
 	Logger  *slog.Logger
 	// Now defaults to the wall clock. Tests set it so a ticket can be aged
 	// out without sleeping.
@@ -152,6 +167,7 @@ func NewService(cfg Config, opts Options) (*Service, error) {
 		issuer:      opts.Issuer,
 		handoff:     opts.Handoff,
 		payment:     opts.Payment,
+		avatarCache: opts.Avatars,
 		log:         opts.Logger,
 		now:         opts.Now,
 		outstanding: make(map[string][]time.Time),
@@ -173,6 +189,20 @@ func QRImagePath(ticket string) string { return "/v1/auth/session/" + ticket + "
 // against.
 func (s *Service) QRImageURL(ticket string) string {
 	return s.cfg.PublicBaseURL + QRImagePath(ticket)
+}
+
+// AvatarPath is where one account's picture lives on this service.
+func AvatarPath(accountID string) string { return "/v1/accounts/" + accountID + "/avatar" }
+
+// AvatarURL is the absolute address the client is given for a picture.
+//
+// The client is handed this rather than WeChat's own URL for one reason: the
+// remote URL stops working within days and the client keeps it. This one does
+// not expire, it answers 404 when there is no picture — which is a state the
+// client can draw — and it is the same address across every deployment, so
+// nothing in the client has to know where WeChat put anything.
+func (s *Service) AvatarURL(accountID string) string {
+	return s.cfg.PublicBaseURL + AvatarPath(accountID)
 }
 
 // ---------------------------------------------------------------------------
@@ -501,9 +531,9 @@ func (s *Service) HandleCallback(ctx context.Context, code, state string) (Callb
 		return CallbackResult{}, fmt.Errorf("auth: upsert account: %w", err)
 	}
 
-	// The profile is a nicety. Under snsapi_login WeChat will not hand one
-	// over, and a sign-in that fails because a display name is unavailable
-	// would be a strictly worse product.
+	// The profile is a nicety. A sign-in that fails because a display name is
+	// unavailable would be a strictly worse product, so every failure below is
+	// logged and stepped over.
 	profile, err := s.wechat.FetchProfile(ctx, sess.AccessToken, sess.OpenID)
 	if err != nil {
 		if wechat.IsTransient(err) {
@@ -523,6 +553,13 @@ func (s *Service) HandleCallback(ctx context.Context, code, state string) (Callb
 			account = refreshed
 		}
 	}
+
+	// The picture, unlike the nickname, is worth a network round trip: WeChat's
+	// URL expires within days and the client keeps whatever URL it was handed,
+	// so a copy taken now is the difference between a picture and a broken
+	// image next week. A failure here still leaves the sign-in intact — the
+	// account row keeps WeChat's URL and the client falls back to it.
+	s.refreshAvatar(ctx, account.ID, profile.AvatarURL)
 
 	creds, err := s.issuer.Issue(account.ID, "")
 	if err != nil {
@@ -570,6 +607,118 @@ func (s *Service) HandleCallback(ctx context.Context, code, state string) (Callb
 		"chain", token.Fingerprint(creds.ChainID))
 
 	return CallbackResult{AccountID: account.ID, ChainID: creds.ChainID, InstallID: session.InstallID}, nil
+}
+
+// ---------------------------------------------------------------------------
+// The local avatar copy
+// ---------------------------------------------------------------------------
+
+// refreshAvatar makes sure accountID has a local copy of its picture, if this
+// deployment keeps one and if the copy it has is not still fresh.
+//
+// Every failure path returns without an error, because none of them is a reason
+// to fail a sign-in. The worst outcome is a client that falls back to WeChat's
+// URL — the behaviour it shipped with — and the caller has no way to make that
+// choice better by being told.
+//
+// The three reasons not to fetch, in the order they are checked:
+//
+//   - Avatars is off. Nothing to do.
+//   - WeChat gave no URL. Nothing to fetch.
+//   - The copy is younger than AvatarRefreshTTL. The person signed in again
+//     yesterday; their picture has not had time to change, and re-downloading
+//     it on every sign-in would make sign-in cost a request to a CDN for no
+//     change anybody can observe.
+func (s *Service) refreshAvatar(ctx context.Context, accountID, sourceURL string) {
+	if s.avatarCache.Disabled() || strings.TrimSpace(sourceURL) == "" {
+		return
+	}
+	if !s.avatarIsStale(ctx, accountID) {
+		return
+	}
+
+	res, err := s.avatarCache.Fetch(ctx, sourceURL)
+	if err != nil {
+		if errors.Is(err, avatar.ErrDisabled) {
+			return
+		}
+		// Unsupported and too-large are worth a warning; the rest is an
+		// upstream having a minute. Neither stops anything.
+		if errors.Is(err, avatar.ErrUnsupported) || errors.Is(err, avatar.ErrTooLarge) {
+			s.log.Warn("avatar not stored", "account", token.Fingerprint(accountID), "error", err)
+		} else {
+			s.log.Info("avatar fetch failed, the client keeps the remote URL",
+				"account", token.Fingerprint(accountID), "error", err)
+		}
+		return
+	}
+
+	if err := s.store.PutAvatar(ctx, store.Avatar{
+		AccountID: accountID,
+		Digest:    res.Digest,
+		MIME:      res.MIME,
+		ByteSize:  res.ByteSize,
+		SourceURL: sourceURL,
+		FetchedAt: s.now(),
+	}); err != nil {
+		// The bytes are on disk but unrecorded. That is the safe direction: an
+		// orphaned file costs disk, while a row pointing at a missing file
+		// would be a 404 the client cannot explain.
+		s.log.Warn("avatar fetched but not recorded",
+			"account", token.Fingerprint(accountID), "error", err)
+		return
+	}
+	s.log.Info("avatar stored",
+		"account", token.Fingerprint(accountID),
+		"mime", res.MIME,
+		"bytes", res.ByteSize)
+}
+
+// avatarIsStale reports whether the copy on record is old enough to be worth
+// replacing. A missing row, a zero timestamp or a read failure all answer true:
+// the cost of a redundant fetch is one request, and the cost of skipping a
+// needed one is a client showing a picture of who somebody used to be.
+func (s *Service) avatarIsStale(ctx context.Context, accountID string) bool {
+	ttl := s.cfg.AvatarRefreshTTL
+	if ttl <= 0 {
+		ttl = 24 * time.Hour
+	}
+	existing, err := s.store.GetAvatar(ctx, accountID)
+	if err != nil {
+		return true
+	}
+	return s.now().Sub(existing.FetchedAt) >= ttl
+}
+
+// Avatar returns the stored picture for an account, and whether one exists.
+//
+// The bool is false for a deployment with no cache, an account that never
+// fetched one, and a row whose file has been swept off the disk. All three
+// mean the same thing to a client drawing a picture: there is nothing to show.
+func (s *Service) Avatar(ctx context.Context, accountID string) ([]byte, string, bool, error) {
+	if s.avatarCache.Disabled() {
+		return nil, "", false, nil
+	}
+	rec, err := s.store.GetAvatar(ctx, accountID)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return nil, "", false, nil
+		}
+		return nil, "", false, err
+	}
+	body, err := s.avatarCache.Open(rec.Digest, rec.MIME)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			// The row outlived its file. Answer "no avatar" rather than an
+			// error: the client draws a blank either way, and a 500 on an image
+			// URL is a broken image with a worse story.
+			s.log.Warn("avatar record without a file; the client will draw a blank",
+				"account", token.Fingerprint(accountID), "digest", rec.Digest[:12])
+			return nil, "", false, nil
+		}
+		return nil, "", false, err
+	}
+	return body, rec.MIME, true, nil
 }
 
 // validateState is step 1. It rejects everything that is not a live,

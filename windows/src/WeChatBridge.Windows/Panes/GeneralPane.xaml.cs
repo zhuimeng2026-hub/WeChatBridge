@@ -41,6 +41,7 @@ public partial class GeneralPane : UserControl
         // Nothing to open for a licensed machine or a portable stick, so the button
         // goes rather than opening a window that says "you are already done".
         OpenActivationButton.Visibility = gate.CanOpenFromSettings ? Visibility.Visible : Visibility.Collapsed;
+        OpenPaidButton.Visibility = gate.CanOpenFromSettings ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void OpenActivation_Click(object sender, RoutedEventArgs e)
@@ -49,6 +50,17 @@ public partial class GeneralPane : UserControl
             return;
 
         Services.ActivationGate.Current.OpenManually(window);
+
+        // The page may have taken the licence it was opened to fetch.
+        RenderLicenceState();
+    }
+
+    private void OpenPaid_Click(object sender, RoutedEventArgs e)
+    {
+        if (Window.GetWindow(this) is not { } window)
+            return;
+
+        Services.ActivationGate.Current.OpenAlreadyPaid(window);
 
         // The page may have taken the licence it was opened to fetch.
         RenderLicenceState();

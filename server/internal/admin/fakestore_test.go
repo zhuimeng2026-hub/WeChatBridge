@@ -181,6 +181,18 @@ func (f *fakeStore) TakeAuthHandoff(context.Context, string) (store.AuthHandoff,
 	return store.AuthHandoff{}, false, fmt.Errorf("fakeStore: TakeAuthHandoff is not exercised by admin tests")
 }
 
+// PutAvatar / GetAvatar arrived with the local avatar copy. The console reads
+// a person's picture through the auth package's own endpoint, so these are
+// unreachable from admin's handlers the same way the methods above are, and
+// they answer loudly for the same reason.
+func (f *fakeStore) PutAvatar(context.Context, store.Avatar) error {
+	return fmt.Errorf("fakeStore: PutAvatar is not exercised by admin tests")
+}
+
+func (f *fakeStore) GetAvatar(context.Context, store.ID) (store.Avatar, error) {
+	return store.Avatar{}, fmt.Errorf("fakeStore: GetAvatar is not exercised by admin tests")
+}
+
 // ---------------------------------------------------------------------------
 // store.ActivationStore
 // ---------------------------------------------------------------------------

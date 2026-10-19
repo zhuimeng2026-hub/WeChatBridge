@@ -61,7 +61,7 @@ func TestAuthorizeURLCarriesEveryParameterWechatNeeds(t *testing.T) {
 		{"appid", "wxappid0001"},
 		{"redirect_uri", redirect},
 		{"response_type", "code"},
-		{"scope", "snsapi_login"},
+		{"scope", "snsapi_userinfo"},
 		{"state", "ticket-abc"},
 	} {
 		if got := q.Get(tc.name); got != tc.want {
@@ -69,9 +69,9 @@ func TestAuthorizeURLCarriesEveryParameterWechatNeeds(t *testing.T) {
 		}
 	}
 
-	// scope must be snsapi_login and not snsapi_userinfo: the latter makes
-	// WeChat show a second consent screen, and a login flow that can be
-	// refused is not a login flow.
+	// scope must be snsapi_userinfo and not snsapi_login: the narrower scope
+	// leaves nickname and avatar empty, so the client would have nothing to
+	// show for the account that just signed in.
 	if q.Get("scope") != Scope {
 		t.Errorf("scope = %q, want %q", q.Get("scope"), Scope)
 	}
@@ -297,8 +297,9 @@ func TestErrorsNeverCarryTheSecret(t *testing.T) {
 func TestFetchProfileToleratesAMissingScope(t *testing.T) {
 	t.Parallel()
 
-	// 42003 is the expected answer under snsapi_login, not a fault. Failing a
-	// sign-in over a missing display name would be a bad trade.
+	// 42003 is still a possible answer — a user who refuses the profile consent,
+	// or an app whose scope was changed after sign-in — and it is not a fault.
+	// Failing a sign-in over a missing display name would be a bad trade.
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"errcode":42003,"errmsg":"insufficient scope"}`))
 	}))

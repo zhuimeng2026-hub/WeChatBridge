@@ -194,6 +194,20 @@ func scanLicenceBindingView(row rowScanner) (store.LicenceBindingView, error) {
 	return v, nil
 }
 
+// scanAvatar reads the account_avatars projection. source_url is nullable in
+// the sense that it defaults to empty, and text() flattens that so the domain
+// type stays a plain string rather than a *string every caller must check.
+func scanAvatar(row rowScanner) (store.Avatar, error) {
+	var a store.Avatar
+	var source pgtype.Text
+	if err := row.Scan(&a.AccountID, &a.Digest, &a.MIME, &a.ByteSize, &source, &a.FetchedAt); err != nil {
+		return store.Avatar{}, err
+	}
+	a.SourceURL = text(source)
+	a.FetchedAt = utc(a.FetchedAt)
+	return a, nil
+}
+
 // rowScanner is pgx.Row without the query: scanners need to work on both a
 // single row and the first row of a result set.
 type rowScanner interface {
