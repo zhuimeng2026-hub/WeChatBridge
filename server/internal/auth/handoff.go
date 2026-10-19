@@ -117,12 +117,12 @@ func NewStoreHandoff(s store.AuthStore, now func() time.Time) *StoreHandoff {
 
 func (h *StoreHandoff) Put(_ context.Context, ticket string, creds Credentials, ttl time.Duration) {
 	if err := h.store.PutAuthHandoff(context.Background(), store.AuthHandoff{
-		Ticket:           ticket,
-		AccessToken:      creds.AccessToken,
-		RefreshToken:     creds.RefreshToken,
-		AccessExpiresAt:  creds.AccessExpiresAt,
-		AccountID:        creds.Account.ID,
-		ExpiresAt:        h.now().Add(ttl),
+		Ticket:          ticket,
+		AccessToken:     creds.AccessToken,
+		RefreshToken:    creds.RefreshToken,
+		AccessExpiresAt: creds.AccessExpiresAt,
+		AccountID:       creds.Account.ID,
+		ExpiresAt:       h.now().Add(ttl),
 	}); err != nil {
 		// A handoff we cannot persist is a scan the user will never collect; the
 		// poller surfaces the miss as a retryable failure rather than a freeze.

@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"context"
 	"errors"
 	"io"
 	"net/http"
@@ -305,7 +306,7 @@ func (s *Service) handleRefresh(c *gin.Context) {
 			AccessToken:  result.AccessToken,
 			RefreshToken: result.RefreshToken,
 			ExpiresAt:    newStamp(result.ExpiresAt),
-			Account:      accountOrNil(result.Account),
+			Account:      s.accountOrNil(c.Request.Context(), result.Account),
 		})
 
 	case store.RefreshTransient:
@@ -325,11 +326,15 @@ func (s *Service) handleRefresh(c *gin.Context) {
 	}
 }
 
-func accountOrNil(a *store.Account) *accountDTO {
+// accountOrNil resolves through the service so the refresh reply carries the
+// same avatar the poll does. Passing "" here would have been the one-line fix
+// and it is the wrong one: the client would show an avatar until it refreshed
+// and then no avatar at all, which reads as the account losing its picture.
+func (s *Service) accountOrNil(ctx context.Context, a *store.Account) *accountDTO {
 	if a == nil {
 		return nil
 	}
-	return toAccountDTO(*a)
+	return s.accountDTO(ctx, *a)
 }
 
 func (s *Service) handleRevoke(c *gin.Context) {

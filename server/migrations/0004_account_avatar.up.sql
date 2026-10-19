@@ -1,4 +1,4 @@
--- 0003_account_avatar.up.sql — a local copy of the WeChat avatar.
+-- 0004_account_avatar.up.sql — a local copy of the WeChat avatar.
 --
 -- Why this table exists at all, given accounts already has avatar_url:
 --
