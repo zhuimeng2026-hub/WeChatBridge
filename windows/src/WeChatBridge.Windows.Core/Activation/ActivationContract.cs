@@ -23,16 +23,13 @@ namespace WeChatBridge.Windows.Core.Activation;
 public static class ActivationEndpoint
 {
     /// <summary>
-    /// Where the licence service is expected to live.
-    /// <para>
-    /// A reserved placeholder, deliberately and loudly: <c>.invalid</c> is reserved
-    /// by RFC 2606 and can never resolve, so a build that ships this default cannot
-    /// accidentally reach a stranger's server. It is a compile-time constant for the
-    /// same reason <c>RedeemEndpoint.BaseAddress</c> is — the shipped default is not
+    /// Where the licence service lives: the production host behind
+    /// <c>ocbot.aixifs.com</c>, which is also the domain registered as the WeChat
+    /// OAuth callback. The address stays a compile-time constant for the same
+    /// reason <c>RedeemEndpoint.BaseAddress</c> is — the shipped default is not
     /// something a settings file should be able to change silently.
-    /// </para>
     /// </summary>
-    public const string DefaultBaseAddress = "https://api.wechatbridge.invalid/";
+    public const string DefaultBaseAddress = "https://ocbot.aixifs.com/";
 
     /// <summary>Environment variable that points a dev build at a local server.</summary>
     public const string BaseAddressEnvironmentVariable = "WECHATBRIDGE_LICENSE_SERVER";

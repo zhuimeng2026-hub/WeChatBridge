@@ -269,14 +269,14 @@ public sealed class ActivationContractTests
     }
 
     /// <summary>
-    /// The default address is the reserved <c>.invalid</c> placeholder: a build that
-    /// ships it fails at the first call instead of reaching a stranger's host, and
-    /// the environment variable is the only supported override.
+    /// The default address is the production host, which is also the domain the
+    /// WeChat OAuth callback is registered on. The environment variable remains
+    /// the only supported override for dev builds.
     /// </summary>
     [Fact]
-    public void TheDefaultAddressIsTheReservedPlaceholder()
+    public void TheDefaultAddressIsTheProductionHost()
     {
-        Assert.EndsWith(".invalid/", ActivationEndpoint.DefaultBaseAddress, StringComparison.Ordinal);
+        Assert.Equal("https://ocbot.aixifs.com/", ActivationEndpoint.DefaultBaseAddress);
         Assert.Equal("WECHATBRIDGE_LICENSE_SERVER", ActivationEndpoint.BaseAddressEnvironmentVariable);
         Assert.Equal(TimeSpan.FromSeconds(30), ActivationEndpoint.DefaultTimeout);
     }
