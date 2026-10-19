@@ -856,7 +856,6 @@
   "注册失败。请重启微信后再试一次。": "Registration failed. Restart WeChat and try again.",
   "U 盘位置变了，分享入口需要重新注册": "The drive moved, so the share entry needs registering again",
   "插入 U 盘的位置变了，分享菜单会指向旧路径。请重新注册后再重启微信。": "The drive is now at a different location and the share menu still points at the old path. Register again, then restart WeChat.",
-  "无法检查分享入口状态": "Could not determine the share entry's status",
   "系统没有返回可判断的结果，可以稍后再检查一次。": "Windows did not return a usable answer. You can check again later.",
   "便携版不能开机自启：开机项里记的是 U 盘路径，拔了盘就是一条失效的记录。": "The portable build cannot start at sign-in: the startup entry would name a path on the drive, which is a dead record once the drive is unplugged.",
   "版本 {0} · Windows · {1}": "Version {0} · Windows · {1}",
@@ -877,9 +876,7 @@
   "获取登录链接": "Get sign-in link",
   "换一个登录链接": "New sign-in link",
   "购买授权": "Buy a licence",
-  "微信流买断版一次买断，永久离线可用。确认后显示收款码，付款后回到这里点「我已付款」，卖家核对到账后即可激活。": "The buy-out licence is paid for once and works offline forever. Confirm to see the payment code, pay, then come back and press \"I have paid\" — the seller activates it once they see it arrive.",
   "本机机器码": "This machine's code",
-  "复制": "Copy",
   "复制机器码": "Copy the machine code",
   "这是许可证的绑定凭据。重装或换机会失效，找卖家重签。": "This is what the licence is bound to. Reinstalling or changing machine invalidates it — ask the seller to re-issue.",
   "硬件锚摘要": "Hardware anchor digest",
@@ -906,5 +903,11 @@
   "这台机器上的许可证属于另一台机器，需要卖家重新签发。请联系开发者。": "The licence on this machine belongs to another one. The seller has to re-issue it — please contact the developer.",
   "本机有一份无法验证的许可证。请联系开发者处理。": "This machine has a licence that does not verify. Please contact the developer.",
   "尚未登录。登录后才能购买许可证。": "Not signed in. A licence has to be bought while signed in.",
-  "本机机器码：{0}": "This machine's code: {0}"
+  "本机机器码：{0}": "This machine's code: {0}",
+  "收款码在你刚才扫码用的那个浏览器窗口里，请切回去扫码支付。": "The payment code is in the browser window you scanned from. Switch back to it to pay.",
+  "那个窗口已经关掉的话，回登录页重新扫码一次就能再打开。": "If you closed that window, go back to the sign-in page and scan again to reopen it.",
+  "微信流买断版一次买断，永久离线可用。确认后按提示在浏览器里扫码付款，付完回到这里点「我已付款」，卖家核对到账后即可激活。": "The buy-out licence is paid for once and works offline forever. Confirm to see the payment code, pay, then come back and press \"I have paid\" — the seller activates it once they see it arrive.",
+  "确认购买": "Confirm purchase",
+  "我已付款": "I have paid",
+  "停止等待": "Stop waiting"
 }

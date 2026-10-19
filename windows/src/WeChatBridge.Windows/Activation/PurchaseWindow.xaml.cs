@@ -21,14 +21,23 @@ namespace WeChatBridge.Windows.Activation;
 public partial class PurchaseWindow : Window
 {
     /// <summary>
-    /// PLACEHOLDER — the seller's WeChat id, shown for after-sales.
+    /// The seller's WeChat id: after-sales contact, and the fallback for adding
+    /// them by hand when the code beside it will not scan.
     /// <para>
-    /// One constant rather than a value repeated across the XAML: it is a string the
-    /// product owner fills in at release, and it appears both as an after-sales
-    /// contact and in the purchase terms. Replace this and nothing else.
+    /// The payment code itself is not in this app. WeChat's redirect lands in a
+    /// browser, so the page that came back from the scan is where the code is —
+    /// a fact about the flow, not a preference. This window still carries the
+    /// machine code and the 「我已付款」 action, because those need a real window
+    /// behind them.
+    /// </para>
+    /// <para>
+    /// This duplicates WCB_SELLER_WECHAT on the server, which prints the same id
+    /// beside the code. Two copies of one contact detail is a drift waiting to
+    /// happen: changing one means changing both, and the one that goes stale is
+    /// the one a buyer reads when the code will not scan.
     /// </para>
     /// </summary>
-    private const string SellerWeChat = "（待填写）";
+    private const string SellerWeChat = "aiwomeishi";
 
     private readonly ActivationController _controller;
 

@@ -50,7 +50,7 @@
  <StackPanel>
  <TextBlock Style="{StaticResource Heading}" Text="{loc:Loc Key='购买授权'}"/>
  <TextBlock Style="{StaticResource Body}" Margin="0,8,0,0"
- Text="{loc:Loc Key='微信流买断版一次买断，永久离线可用。确认后显示收款码，付款后回到这里点「我已付款」，卖家核对到账后即可激活。'}" />
+ Text="{loc:Loc Key='微信流买断版一次买断，永久离线可用。确认后按提示在浏览器里扫码付款，付完回到这里点「我已付款」，卖家核对到账后即可激活。'}" />
 
  <!-- What the user is buying, and who they are buying it for. Shown before the payment
       code appears on purpose: nobody should see a QR code before they have seen the
@@ -79,17 +79,25 @@
  Text="{loc:Loc Key='付款后如有疑问，加这个微信售后。'}" />
  </StackPanel></Border>
 
- <!-- The payment code itself. Hidden until 确认购买 — the single child rule applies to
-      every Border here, so the contents sit in a StackPanel. -->
+ <!-- The payment code is NOT here, and that is deliberate.
+      WeChat's redirect lands in a browser, so the page that came back from the
+      scan is where the code is — a fact about the flow, not a choice. Showing a
+      second copy here would mean two surfaces that must be replaced together,
+      and this one was still an empty placeholder while the real one worked.
+      Hidden until 确认购买 — the single child rule applies to every Border here,
+      so the contents sit in a StackPanel. -->
  <Border x:Name="PaymentCard" Style="{StaticResource Card}" Margin="0,16,0,0" Visibility="Collapsed"><StackPanel>
  <TextBlock Style="{StaticResource Body}" Foreground="{StaticResource InkColor}" HorizontalAlignment="Center"
  Text="{loc:Loc Key='扫码付款'}"/>
- <Image Source="/WeChatBridge.Windows;component/Assets/PaymentCodePlaceholder.png" Width="220" Height="220"
- Stretch="Uniform" Margin="0,12,0,0" RenderOptions.BitmapScalingMode="HighQuality"
- AutomationProperties.Name="{loc:Loc Key='收款码'}"/>
+ <TextBlock Style="{StaticResource Body}" Margin="0,12,0,0" TextAlignment="Center" TextWrapping="Wrap"
+ Text="{loc:Loc Key='收款码在你刚才扫码用的那个浏览器窗口里，请切回去扫码支付。'}"/>
+ <TextBlock Style="{StaticResource Body}" FontSize="12" Margin="0,8,0,0" TextAlignment="Center"
+ Foreground="{StaticResource InkTertiaryColor}" TextWrapping="Wrap"
+ Text="{loc:Loc Key='那个窗口已经关掉的话，回登录页重新扫码一次就能再打开。'}"/>
  <!-- The note is what makes a manual transfer matchable: the seller reads it against
       the machine code they are shown above, and it is the only link between a WeChat
-      payment and a licence. -->
+      payment and a licence. It is repeated here on purpose — the browser page shows
+      it too, and this is the window the buyer can copy from. -->
  <TextBlock Style="{StaticResource Body}" Margin="0,14,0,0" HorizontalAlignment="Center" TextAlignment="Center"
  Text="{loc:Loc Key='转账请备注：'}" x:Name="PaymentNotePrefix"/>
  <TextBlock x:Name="PaymentNoteText" Style="{StaticResource Body}" FontFamily="Consolas, Courier New" FontSize="15"
