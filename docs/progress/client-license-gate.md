@@ -128,6 +128,7 @@
 | `Test-NoNetworkCode.ps1 -Edition Perpetual` | ✅ 白名单内的 `System.Net.Http` 仍是 only Redeem 例外 |
 | `WeChatBridge.Windows.exe --background` 实跑 12 秒 | ✅ 常驻不崩，托盘注册成功；`--background` 不开窗，符合设计 |
 | **真机端到端六步**（`.artifacts/probe-e2e.bat`） | ✅ 11:25 跑通：建票→扫码→回调→双令牌→激活→**用 `PlaceholderKeyV1` 验签通过**（canonical 107 字节，envelope v=1/buyout/exp=null/ent=[PRO]） |
+| **客户端二进制实跑**（沙箱内 PowerShell `Start-Process`） | ✅ 11:35 双形态：<br/>**`--background` 模式**（pid 2164，5s alive，80.5 MB，14 线程，无前台窗，符合"不开窗常驻"设计）<br/>**前台模式**（pid 16656，6s alive，138.9 MB，42 线程，**主窗 `title='微信流'` + handle 7604280** ≠ 0）|
 
 测试数从 497 + 45 → 580 + 55：新增 80 项（C-1 回归 3、退避 10、契约 29、登录 25、激活 16），
 AppTests 45 → 55 是 `git log` 之外同期落地的部分，勿回退。
