@@ -25,11 +25,11 @@ public enum LoginStage
 /// <summary>
 /// The login flow as a state machine, with no WPF type in sight.
 /// <para>
-/// Shaped after <c>RedeemController</c>: the window owns no logic, subscribes to
-/// <see cref="Changed"/>, and renders whatever this says. The alternative — an
-/// <c>async void</c> click handler that awaits three calls and then pokes at named
-/// controls — makes the interesting part (what happens when the poll fails, or the
-/// ticket expires mid-wait) untestable and unresumable.
+/// The window owns no logic, subscribes to <see cref="Changed"/>, and renders
+/// whatever this says. The alternative — an <c>async void</c> click handler that
+/// awaits three calls and then pokes at named controls — makes the interesting part
+/// (what happens when the poll fails, or the ticket expires mid-wait) untestable and
+/// unresumable.
 /// </para>
 /// <para>
 /// <b>Cancellation is terminal.</b> Closing the window cancels the wait and that

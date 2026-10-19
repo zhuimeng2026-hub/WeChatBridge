@@ -1,9 +1,10 @@
 using System.IO;
+using System.Security.Cryptography;
+using System.Text;
 using WeChatBridge.Windows.Activation;
 using WeChatBridge.Windows.Core;
 using WeChatBridge.Windows.Core.Activation;
 using WeChatBridge.Windows.Core.Licensing;
-using WeChatBridge.Windows.Core.Redeem;
 
 namespace WeChatBridge.Windows.Services;
 
@@ -73,7 +74,11 @@ internal sealed class ActivationGateway : IDisposable
         {
             try
             {
-                return RedeemMachineIdentity.DigestOf(RegistryMachineFacts.CreateDefault().Read());
+                var anchor = RegistryMachineFacts.CreateDefault().Read();
+                // base64url over SHA-256 of the anchor's canonical text. A digest, never
+                // the anchor itself: the seller gets evidence two requests are from the
+                // same machine without ever seeing the MAC addresses.
+                return Base64Url.Encode(SHA256.HashData(Encoding.UTF8.GetBytes(anchor.Canonical)));
             }
             catch (IOException)
             {

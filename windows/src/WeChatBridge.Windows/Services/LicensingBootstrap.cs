@@ -75,10 +75,9 @@ internal sealed class LicensingBootstrap
     public AppLayout Layout { get; }
 
     /// <summary>
-    /// The signed licence file's home, so a redeem page can write an envelope and then
-    /// call <see cref="Refresh"/>. Exposed rather than a save method because the
-    /// Redeem layer owns the whole acceptance flow and duplicating half of it here
-    /// would give two places to change.
+    /// The signed licence file's home, so any pane that wants to write an envelope
+    /// can call <see cref="Refresh"/> afterwards. Exposed rather than wrapped in a
+    /// save method because acceptance is the pane's job, not this one's.
     /// </summary>
     public LicenseStore Store { get; }
 

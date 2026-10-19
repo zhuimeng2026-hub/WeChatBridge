@@ -12,9 +12,8 @@ namespace WeChatBridge.Windows.Activation;
 /// <para>
 /// No logic lives here beyond rendering what the controller says. The state comes
 /// from the controller's <c>Changed</c> event and is applied by the single
-/// <see cref="Render"/> at the bottom, which is the same shape as <c>RedeemWindow</c>
-/// — one place where the window's appearance is decided, so there is never a second
-/// button handler quietly enabling something.
+/// <see cref="Render"/> at the bottom — one place where the window's appearance is
+/// decided, so there is never a second button handler quietly enabling something.
 /// </para>
 /// <para>
 /// <b>What the user sees.</b> A button to get a sign-in link, a clickable link that
