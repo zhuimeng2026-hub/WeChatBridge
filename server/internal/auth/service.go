@@ -692,19 +692,23 @@ func (s *Service) avatarIsStale(ctx context.Context, accountID string) bool {
 
 // Avatar returns the stored picture for an account, and whether one exists.
 //
+// The record comes back as well as the bytes because the digest is the ETag the
+// handler must send, and recomputing a hash of a body in order to build a header
+// that describes how the body was named is a step that can be got wrong.
+//
 // The bool is false for a deployment with no cache, an account that never
 // fetched one, and a row whose file has been swept off the disk. All three
 // mean the same thing to a client drawing a picture: there is nothing to show.
-func (s *Service) Avatar(ctx context.Context, accountID string) ([]byte, string, bool, error) {
+func (s *Service) Avatar(ctx context.Context, accountID string) (store.Avatar, []byte, bool, error) {
 	if s.avatarCache.Disabled() {
-		return nil, "", false, nil
+		return store.Avatar{}, nil, false, nil
 	}
 	rec, err := s.store.GetAvatar(ctx, accountID)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
-			return nil, "", false, nil
+			return store.Avatar{}, nil, false, nil
 		}
-		return nil, "", false, err
+		return store.Avatar{}, nil, false, err
 	}
 	body, err := s.avatarCache.Open(rec.Digest, rec.MIME)
 	if err != nil {
@@ -714,11 +718,11 @@ func (s *Service) Avatar(ctx context.Context, accountID string) ([]byte, string,
 			// URL is a broken image with a worse story.
 			s.log.Warn("avatar record without a file; the client will draw a blank",
 				"account", token.Fingerprint(accountID), "digest", rec.Digest[:12])
-			return nil, "", false, nil
+			return store.Avatar{}, nil, false, nil
 		}
-		return nil, "", false, err
+		return store.Avatar{}, nil, false, err
 	}
-	return body, rec.MIME, true, nil
+	return rec, body, true, nil
 }
 
 // validateState is step 1. It rejects everything that is not a live,
@@ -909,6 +913,34 @@ func (s *Service) Account(ctx context.Context, accountID string) (store.Account,
 		return store.Account{}, err
 	}
 	return account, nil
+}
+
+// accountDTO renders an account the way the client should see it, including the
+// address of its picture.
+//
+// The picture is only advertised when this deployment actually holds one. That
+// costs a store read per account read, which is why it is not done by folding a
+// flag into the account row: the account projection is read by every query in
+// this package and this is the only place that needs the answer.
+//
+// An account with no stored picture gets an empty string rather than WeChat's
+// URL. The remote URL is not wrong — it works today — but it is a lease, and a
+// client that caches it will show a broken image when the lease ends, having no
+// way to learn that the picture it was told about is gone.
+func (s *Service) accountDTO(ctx context.Context, a store.Account) *accountDTO {
+	if s.avatarCache.Disabled() {
+		return toAccountDTO(a, "")
+	}
+	if _, err := s.store.GetAvatar(ctx, a.ID); err != nil {
+		if !errors.Is(err, store.ErrNotFound) {
+			// A database problem must not turn into a 500 on the account
+			// read; the account is right there and the picture is a nicety.
+			s.log.Warn("avatar lookup failed; sending the account without one",
+				"account", token.Fingerprint(a.ID), "error", err)
+		}
+		return toAccountDTO(a, "")
+	}
+	return toAccountDTO(a, s.AvatarURL(a.ID))
 }
 
 // ---------------------------------------------------------------------------
