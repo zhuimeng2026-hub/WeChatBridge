@@ -199,6 +199,13 @@ type AuthStore interface {
 	// or creates the account for the OpenID.
 	CompleteAuthSession(ctx context.Context, ticket, openID, unionID, nickname, avatar, installID string) (Account, error)
 
+	// DeleteAuthSession retires a ticket nobody will finish with. The state
+	// guard is the point of the method rather than an optimisation: it may only
+	// remove a *pending* row, so a sign-in that has already been authorised
+	// survives even if the caller is wrong about which ticket that is. It
+	// reports whether a row was removed.
+	DeleteAuthSession(ctx context.Context, ticket string) (bool, error)
+
 	// PutAuthHandoff records the credentials minted by a completed scan. It is
 	// the shared half of the sign-in bridge; see AuthHandoff.
 	PutAuthHandoff(ctx context.Context, h AuthHandoff) error

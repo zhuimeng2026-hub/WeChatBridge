@@ -18,6 +18,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/freestylefly/WeChatBridge/server/internal/store"
 	"github.com/freestylefly/WeChatBridge/server/internal/token"
 	"github.com/freestylefly/WeChatBridge/server/internal/wechat"
 )
@@ -231,13 +232,109 @@ func TestTheQREndpoint404sForATicketThatDoesNotExist(t *testing.T) {
 	}
 }
 
+func TestTheQREndpointEncodesTheCodeWechatActuallyRecognises(t *testing.T) {
+	t.Parallel()
+
+	// The regression this guards is invisible from the outside: encoding the
+	// authorize URL also answers 200 with a perfectly valid PNG under the byte
+	// limit. It is just a picture a phone cannot finish a sign-in with — it
+	// reads the URL as a link and lands on a page built for a desktop. So the
+	// assertion cannot be about the response; it is about what got rendered.
+	h, engine := newTestServer(t)
+	created := createTicket(t, engine, "install-1")
+	ticket := created["ticket"].(string)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/auth/session/"+ticket+"/qr", nil)
+	rec := httptest.NewRecorder()
+	engine.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body %s", rec.Code, rec.Body.String())
+	}
+
+	saw := h.sawAuthorizeURLs()
+	if len(saw) != 1 {
+		t.Fatalf("the resolver was called %d times, want once", len(saw))
+	}
+	// The ticket's own authorize URL — not some other one. A resolver handed
+	// the wrong state resolves a login code that lands the callback on a ticket
+	// this poller is not watching, and the symptom is a scan that authorizes
+	// nobody.
+	if !strings.HasPrefix(saw[0], "https://open.weixin.qq.com/connect/qrconnect?") {
+		t.Errorf("the resolver was handed %q, want this session's authorize URL", saw[0])
+	}
+	if !strings.Contains(saw[0], "state="+ticket) {
+		t.Errorf("the authorize URL %q does not carry this ticket", saw[0])
+	}
+}
+
+func TestTheQREndpointStillServesAPngWhenWechatCannotBeReached(t *testing.T) {
+	t.Parallel()
+
+	// A WeChat outage must not become a login page that says 「二维码加载失败」
+	// in a loop. The image on screen in this state is the one that does not
+	// work, and that is the deliberate trade — the browser link above it is
+	// still a way in. The endpoint's contract (200, image/png, within the
+	// client's byte limit) does not move for it.
+	h, engine := newTestServer(t)
+	h.failQR(errors.New("wechat: scannable qr: context deadline exceeded"))
+
+	created := createTicket(t, engine, "install-1")
+	ticket := created["ticket"].(string)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/auth/session/"+ticket+"/qr", nil)
+	rec := httptest.NewRecorder()
+	engine.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: a failed resolve is not a failed request", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "image/png" {
+		t.Errorf("Content-Type = %q, want image/png", ct)
+	}
+	if !wechat.IsPNG(rec.Body.Bytes()) {
+		t.Error("the fallback response is not a PNG")
+	}
+	if len(rec.Body.Bytes()) > wechat.MaxQRBytes {
+		t.Errorf("the PNG is %d bytes, over the client's %d byte limit", len(rec.Body.Bytes()), wechat.MaxQRBytes)
+	}
+}
+
+func TestTheOutstandingTicketLimitIsNotSomethingARefreshCanHit(t *testing.T) {
+	t.Parallel()
+
+	// Every page load mints a ticket, so this used to be the shape of a seller
+	// who refreshed four times inside one ticket lifetime: 429, 「待处理的二维码
+	// 过多」, and no way forward until the TTL ran out. The oldest ticket is
+	// retired instead, so the newest request always wins.
+	_, engine := newTestServer(t)
+	for n := 0; n < 8; n++ {
+		rec, body := doJSON(t, engine, http.MethodPost, "/v1/auth/session",
+			map[string]any{"installId": "install-1"}, nil)
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("refresh %d: status = %d, want 201: %v", n, rec.Code, body)
+		}
+		if body["ticket"] == "" {
+			t.Fatalf("refresh %d: no ticket in the response", n)
+		}
+	}
+}
+
 func TestTooManyOutstandingTicketsAnswers429(t *testing.T) {
 	t.Parallel()
 
-	_, engine := newTestServer(t)
+	// The 429 still exists, and it is now narrower: it is only reachable when
+	// every live ticket is an authorised sign-in. The 429's own shape — the
+	// error code and the Retry-After the client backs off with — is unchanged.
+	h, engine := newTestServer(t)
+	var tickets []string
 	for n := 0; n < 3; n++ {
-		createTicket(t, engine, "install-1")
+		tickets = append(tickets, createTicket(t, engine, "install-1")["ticket"].(string))
 	}
+	for _, ticket := range tickets {
+		h.store.forceAuthSessionState(ticket, store.AuthAuthorized)
+	}
+
 	rec, body := doJSON(t, engine, http.MethodPost, "/v1/auth/session",
 		map[string]any{"installId": "install-1"}, nil)
 	if rec.Code != http.StatusTooManyRequests {

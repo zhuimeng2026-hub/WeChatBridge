@@ -191,6 +191,15 @@ func (s *Service) toPollResponse(ctx context.Context, r PollResult) pollResponse
 // handing it to a decoder, so an HTML error page here would surface deep
 // inside WPF as an UnsupportedException; the content type and the byte count
 // are both checked before anything is written.
+//
+// What is encoded matters as much as the encoding. The obvious choice — the
+// session's authorize URL — produces a picture nobody can finish a sign-in
+// with: a phone reads that URL as an ordinary link and opens the open
+// platform's own page in-app, where a desktop login cannot be completed, and
+// the callback never comes. The code that does work is the /connect/qrcode/
+// <uuid> WeChat mints for that page, one hop deeper and issued by WeChat
+// itself. So the image is rendered from that, and the browser link on the
+// login page becomes the fallback it should have been all along.
 func (s *Service) handleQRCode(c *gin.Context) {
 	ticket := c.Param("ticket")
 	session, err := s.store.GetAuthSession(c.Request.Context(), ticket)
@@ -206,7 +215,25 @@ func (s *Service) handleQRCode(c *gin.Context) {
 		return
 	}
 
-	png, err := renderQR(session.AuthorizeURL)
+	body := session.AuthorizeURL
+	if scannable, err := s.scannableQR(c.Request.Context(), body); err == nil {
+		body = scannable
+	} else {
+		// Falling back rather than failing is a deliberate choice and it has a
+		// cost: the image on screen becomes one that does not work. It is
+		// still the better of the two, because the alternative is a 500 that
+		// the page renders as 「二维码加载失败，请点刷新重试」 — and a seller
+		// refreshing into an upstream outage never gets a picture at all,
+		// whereas this leaves the browser link above it as a live way in.
+		//
+		// The warning is therefore the only trace this decision leaves, which
+		// is exactly why it is a warning and not a debug line: "the QR on the
+		// login page stopped working" has no other symptom anywhere.
+		s.log.Warn("qr: falling back to the authorize URL, which does not scan",
+			"ticket", ticket, "err", err)
+	}
+
+	png, err := renderQR(body)
 	if err != nil {
 		httpx.Fail(c, httpx.Internal(err))
 		return

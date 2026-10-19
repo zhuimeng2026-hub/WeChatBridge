@@ -7,6 +7,7 @@ import (
 	"html/template"
 	"net/http"
 	"os"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -221,6 +222,23 @@ func (p *PaymentCode) Configured() bool { return p != nil && p.pay.usable() }
 // page.
 const maxInstallIDShown = 128
 
+// adminConsoleInstallID matches the install id the seller console mints.
+//
+// admin-console/js/app.js generates it as "wcbadmin-" + 32 hex chars, and the
+// whole point of matching it is so a *seller's* sign-in does not land on the
+// buyer's payment page: from 2026-10-20 the console authenticates through the
+// same frozen endpoints as the client, and that means the console's ticket
+// comes back here on the same redirect_uri. Showing a seller a payment QR is
+// not a cosmetic mismatch — it reads as "you owe someone money" at the exact
+// moment they are trying to get into their own dashboard.
+//
+// The pattern is anchored and exact rather than a prefix test, so a buyer who
+// picks an install_id starting with wcbadmin- still gets the payment page.
+// Nothing here is a security boundary either way: both pages render the same
+// template with the same escaping, and the only field this branch withholds is
+// the seller's own payment code.
+var adminConsoleInstallID = regexp.MustCompile(`^wcbadmin-[0-9a-f]{32}$`)
+
 // pageKind is which of the callback's outcomes a page is for.
 //
 // They are separate kinds rather than a message string because the three mean
@@ -293,6 +311,10 @@ type pageModel struct {
 	// html/template would otherwise rewrite to "#ZgotmplZ".
 	Contact template.URL
 	WeChat  string
+	// Console turns the authorized page into "you are logged in, close this
+	// tab" instead of "here is how to pay". Set from the ticket's install id,
+	// never from the query string — see adminConsoleInstallID.
+	Console bool
 }
 
 // Render builds the page for one outcome.
@@ -316,6 +338,26 @@ func (p *PaymentCode) Render(kind pageKind, installID string) ([]byte, error) {
 
 	c := pageCopy[kind]
 
+	var buf bytes.Buffer
+
+	if kind == pageAuthorized && adminConsoleInstallID.MatchString(installID) {
+		// A console sign-in: no payment is owed, so the page carries no
+		// machine code, no payment code and no contact block. Only the body
+		// changes — the status code, and the fact that this is a 200 page and
+		// not a redirect, are the same as a buyer's.
+		m := pageModel{
+			Kind:    kind,
+			Title:   "登录成功",
+			Detail:  "卖家后台 · 微信流",
+			Hint:    "回到卖家后台那一页，它已经自动登录完成。这个标签页可以关掉。",
+			Console: true,
+		}
+		if err := pageTemplate.Execute(&buf, m); err != nil {
+			return nil, fmt.Errorf("auth: render callback page: %w", err)
+		}
+		return buf.Bytes(), nil
+	}
+
 	m := pageModel{
 		Kind:   kind,
 		Title:  c.title,
@@ -334,7 +376,6 @@ func (p *PaymentCode) Render(kind pageKind, installID string) ([]byte, error) {
 		}
 	}
 
-	var buf bytes.Buffer
 	if err := pageTemplate.Execute(&buf, m); err != nil {
 		return nil, fmt.Errorf("auth: render callback page: %w", err)
 	}
@@ -418,6 +459,9 @@ var pageTemplate = template.Must(template.New("callback").Parse(`<!DOCTYPE html>
     <p class="detail">{{.Detail}}</p>
 
     {{if eq .Kind 0}}
+      {{if .Console}}
+        <p class="hint">{{.Hint}}</p>
+      {{else}}
       {{if .Image}}
         <figure><img src="{{.Image}}" alt="微信收款码"></figure>
         <p class="note">请使用微信扫描上方二维码支付。金额以收款码内显示为准。</p>
@@ -446,6 +490,7 @@ var pageTemplate = template.Must(template.New("callback").Parse(`<!DOCTYPE html>
       {{end}}
 
       <p class="hint">{{.Hint}}</p>
+      {{end}}
     {{else}}
       <p class="hint">{{.Hint}}</p>
     {{end}}

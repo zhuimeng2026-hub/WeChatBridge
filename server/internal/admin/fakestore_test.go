@@ -149,6 +149,10 @@ func (f *fakeStore) CompleteAuthSession(context.Context, string, string, string,
 	return store.Account{}, fmt.Errorf("fakeStore: CompleteAuthSession is not exercised by admin tests")
 }
 
+func (f *fakeStore) DeleteAuthSession(context.Context, string) (bool, error) {
+	return false, fmt.Errorf("fakeStore: DeleteAuthSession is not exercised by admin tests")
+}
+
 func (f *fakeStore) UpsertAccountByOpenID(context.Context, string, string, string, string) (store.Account, bool, error) {
 	return store.Account{}, false, fmt.Errorf("fakeStore: UpsertAccountByOpenID is not exercised by admin tests")
 }
