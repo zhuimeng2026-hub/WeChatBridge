@@ -98,8 +98,17 @@
  Foreground="{StaticResource InkTertiaryColor}" Text="{loc:Loc Key='付款后回到这里点「我已付款」。没备注的转账需要人工核对，会慢一些。'}" />
  </StackPanel></Border>
 
+ <!-- 「我已付款」在流程里，不在角落里。
+      它是把一次转账变成一条登记单的那一下点击 —— 不点，卖家后台永远看不到任何
+      东西，钱到了也白到。放在底部按钮行里它和「完成」「重试」挤在一起，读起来
+      像一个收尾动作，而它其实是整条购买流程唯一的推进键。
+      满宽是因为这一步不该被误触，也不该被忽略。 -->
+ <Button x:Name="PaidButton" Style="{StaticResource GatePrimary}" Content="{loc:Loc Key='我已付款'}"
+ Click="OnPaidClicked" IsDefault="True" Visibility="Collapsed"
+ Margin="0,20,0,0" HorizontalAlignment="Stretch" MinWidth="0"/>
+
  <TextBlock x:Name="StatusText" Style="{StaticResource Body}" Foreground="{StaticResource InkColor}"
- Margin="0,18,0,0" TextAlignment="Center" AutomationProperties.LiveSetting="Assertive"/>
+ Margin="0,14,0,0" TextAlignment="Center" AutomationProperties.LiveSetting="Assertive"/>
  <TextBlock x:Name="DetailText" Style="{StaticResource Body}" FontSize="12" Margin="0,6,0,0" TextAlignment="Center"
  Foreground="{StaticResource InkTertiaryColor}" Visibility="Collapsed"/>
  </StackPanel>
@@ -117,8 +126,6 @@
  Click="OnRetryClicked" Margin="0,0,8,0" Visibility="Collapsed"/>
  <Button x:Name="StopButton" Style="{StaticResource GateButton}" Content="{loc:Loc Key='停止等待'}"
  Click="OnStopClicked" Margin="0,0,8,0" Visibility="Collapsed"/>
- <Button x:Name="PaidButton" Style="{StaticResource GatePrimary}" Content="{loc:Loc Key='我已付款'}"
- Click="OnPaidClicked" IsDefault="True" Visibility="Collapsed" Margin="0,0,8,0"/>
  </StackPanel>
  </Grid>
  </Grid></Border>
