@@ -19,10 +19,14 @@
 ```
 网站应用 snsapi_login 扫码
    └─ 返 openid + unionid
-        └─ 用 unionid 调公众号 cgi-bin/user/getid  →  公众号 openid
+        └─ 用 unionid 调公众号的 unionid→openid 接口  →  公众号 openid
              └─ 用公众号 openid 调 cgi-bin/user/info  →  昵称 + 头像
                   └─ 写 store.Account.Nickname / AvatarURL
 ```
+
+> ⚠️ **2026-10-20 更正**：原文把 unionid→openid 这一步写成 `cgi-bin/user/getid`。
+> 实测该路径**不存在**（见 §9），而 `cgi-bin/user/info` 这一步是**实测可用**的。
+> 中间那一步的接口路径与可用性仍待确认——**这是 U-④ 的前置条件，不是已知的**。
 
 ---
 
@@ -58,13 +62,15 @@
 
 ## 4. 接口权限确认（决定能否拿到昵称头像）
 
-| 接口 | 用途 | 需要的权限 / 条件 |
-| --- | --- | --- |
-| `cgi-bin/token` | 换公众号 access_token | 认证公众号即有 |
-| `cgi-bin/user/getid` | **unionid → 公众号 openid**（桥接核心） | 需认证服务号；在「接口权限」确认「获取用户基本信息」已开通 |
-| `cgi-bin/user/info` | openid → 昵称 / 头像 / 性别等 | 认证订阅号 / 服务号均有 |
+| 接口 | 用途 | 需要的权限 / 条件 | 2026-10-20 实测 |
+| --- | --- | --- | --- |
+| `cgi-bin/token` | 换公众号 access_token | 认证公众号即有 | ✅ 可用，`expires_in: 7200` |
+| `cgi-bin/user/info` | openid → 昵称 / 头像 / 性别等 | 认证订阅号 / 服务号均有 | ✅ 可用，接口派发并校验 openid |
+| unionid → openid | **桥接核心** | 需认证服务号 + 对应接口权限 | ❌ **未派发**（路径与可用性均待定，见 §9） |
 
-- [x] 在公众号后台「设置与开发 → 接口权限」核对 `user/getid` 是否可用；用户 2026-10-19 确认**可用**，无需申请。
+- [ ] ~~在公众号后台核对 `user/getid` 是否可用~~ —— 2026-10-19 用户确认「可用」，
+  但 2026-10-20 实测该路径不存在，且**规范路径对本公众号也未派发**。
+  这一条从未被机器验证过，现在已经知道它至少是错的。**待办见 §9.3。**
 
 ---
 
@@ -167,3 +173,66 @@ WX_MP_APP_SECRET    →  WCB_MP_APP_SECRET
 - **待你确认（不影响凭证收集，但影响代码形态）**：
   - 是否需要在 `admin-console` 暴露一个"按 unionid 查用户"的端点？还是仅在服务端内部使用？
   - 补拉是"登录时被动补全"就够，还是要有主动回填任务？
+
+---
+
+## 9. 2026-10-20 实证核查（U-③ 开工时做的）
+
+U-③ 实现公众号客户端时，接口必须用真凭据打一遍——凭据在 `/opt/envctl` 共享层的
+`wechat-mp` 组里（`WX_MP_APPID=wxde10b66d0c930b78`），不需要现取。下面是打出来的结果。
+
+### 9.1 判别器
+
+微信的「路径不存在」有两种答法，不标定就无法区分「接口改名了」与「这个应用没这个接口」：
+
+| 探法 | 答法 | 含义 |
+| --- | --- | --- |
+| `/cgi-bin/definitely/not/a/real/path` | **HTTP 404，body 空** | 连分组都不认识 |
+| `/cgi-bin/tags/zzznotreal` | **HTTP 200 + `errcode 40066`** | 分组认识，**没有这个 action** |
+| `/cgi-bin/tags/get` | HTTP 200 + 正常数据 | 真的存在 |
+
+`40066` 是「这个分组下没有这个 action」——所以它**不能**用来判断接口是否存在，
+只能用来排除路径。用它排除掉的路��约三十条。
+
+### 9.2 实测结果
+
+| 接口 | 结果 | 说明 |
+| --- | --- | --- |
+| `cgi-bin/token` | ✅ | 拿到真 token，`expires_in: 7200` |
+| `cgi-bin/user/info` | ✅ | 派发到参数校验，回 `40003 invalid openid`（说明它在校验 openid） |
+| `cgi-bin/tags/get` | ✅ | 返回标签列表 |
+| `cgi-bin/user/info/updateremark` | ✅ | 派发到参数校验 |
+| `cgi-bin/user/tag/get` | ✅ | 派发到参数校验 |
+| `cgi-bin/message/custom/send` | ✅ | 派发到参数校验 |
+| `cgi-bin/menu/create` / `qrcode/create` | ✅ | 派发到参数校验（认证权限齐） |
+| `cgi-bin/account/getaccountbasicinfo` | ✅ | `account_type: 2` = **服务号**；主体「广州萌心爱信息科技有限公司」 |
+| `cgi-bin/user/list` / `user/blacklist` | ❌ 40066 | 订阅号专属接口，服务号本就没有 |
+| `cgi-bin/user/info/get`（规范里 unionid→openid 的路径） | ❌ 40066 | **对本公众号未派发** |
+| `cgi-bin/user/getid`（本文 §0 原文写的路径） | ❌ 40066 | **该路径不存在** |
+
+公众号**是服务号**（`account_type: 2`），认证权限也齐（菜单/二维码/客服/标签都能派发），
+所以 `cgi-bin/user/info/get` 的 40066 **不是「类型不对」也不是「没认证」**。
+
+### 9.3 待办：unionid→openid 到底走哪个接口
+
+这是 U-④ 的前置。三条路，按代价排序：
+
+1. **去公众号后台开接口**（最省事，若路径本就对）。
+   打开 `wxde10b66d0c930b78` 的「设置与开发 → 接口权限」，看有没有
+   「获取用户基本信息 / 根据 unionid 获取用户信息」这一类接口，没有就申请。
+   **开通后可用 §9.1 的判别器复验**：先前是 `40066`，开通后应当变成
+   `40003`（参数校验）或直接返回 openid。
+   路径若是别的，同一次复验会一并暴露出来。
+2. **换用别的接口**：需要人工查一次官方文档确认规范路径。文档域名在当前环境
+   不可访问（`developers.weixin.qq.com` 被拦），网页检索也取不到内容——
+   这一步得由能访问文档的人做，或者在一台能访问的机器上做。
+3. **改走公众号 OAuth 二次授权**（§6 的备选）：用户在公众号网页里再授权一次，
+   拿到公众号 openid。UX 与主路径不同，且不适用于「买家只想买一次」的场景。
+
+在 1 或 2 落地之前，U-④ 只能做到「拿到 unionid 就停在那儿」——昵称头像仍然拿不到。
+
+### 9.4 已经拿到手的部分
+
+U-③（公众号客户端 + access_token 中控）**已实现并真机验证通过**，见
+`server/internal/wechat/mp.go` 与 `server/internal/wechat/mp_live_test.go`。
+其中 `cgi-bin/user/info`（openid → 昵称头像）**实测可用**，缺的只是它前面那一步。

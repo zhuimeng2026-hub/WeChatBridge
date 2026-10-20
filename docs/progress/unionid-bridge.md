@@ -20,9 +20,9 @@
 |---|---|---|---|---|
 | U-① | 列清 unionid 桥接所需凭证与权限清单 | ✅ | 本 commit | `docs/design/unionid-bridge-inputs.zh-CN.md`，5 类待收集项 + 2 个坑预警 |
 | U-② | 用户从后台收集并确认 5 类输入 | ✅ | 本 commit | 5 项全就位。**公众号凭据不用现取**——`/opt/envctl` 共享层 `wechat-mp` 组已有（AppID `wxde10b66d0c930b78`），网站应用侧交叉核对为 `wx0ebd7da2e72e6be2`。其中"已认证 / 同开放平台绑定 / getid 可用"三条为**用户口述、机器无法验证**，最终以 U-④ 真机日志为准。见 inputs 文档 §7、§7.1 |
-| U-③ | 公众号客户端 `mp.go`（AppID/Secret + access_token 中控） | ⬜ | — | 7200s 过期、2000 次/日上限、单飞刷新；env `WCB_MP_APP_ID` / `WCB_MP_APP_SECRET` |
-| U-④ | `HandleCallback` 接桥接：unionid → getid → user/info → 落库 | ⬜ | — | 写 `store.Account.Nickname/AvatarURL`；失败降级只落 openid+unionid，不阻断登录 |
-| U-⑤ | `config.go` 新增 env 必填校验 | ⬜ | — | 与现有网站应用 `WCB_WECHAT_*` 并列 |
+| U-③ | 公众号客户端 `mp.go`（AppID/Secret + access_token 中控） | ✅ | 本 commit | `server/internal/wechat/mp.go`。access_token 缓存 + 提前 5 分钟续期、**单飞刷新**（一个应用只持有一个有效 token，并发换 token 会让除最后一个外全部当场失效）、**日预算 2000 次**本地拦下、40001 后换 token 重试一次。`cgi-bin/user/info`（openid→昵称头像）**真机实测可用**。真机测试 `mp_live_test.go` 用共享层凭据实跑通过 |
+| U-④ | `HandleCallback` 接桥接：unionid → openid → user/info → 落库 | ⬜ | — | **被 unionid→openid 这一步卡住**：该接口对本公众号**未派发**（`40066`），且 §0 原文写的 `cgi-bin/user/getid` 路径根本不存在。取证过程与三条出路见 inputs §9。写 `store.Account.Nickname/AvatarURL`；失败降级只落 openid+unionid，不阻断登录 |
+| U-⑤ | `config.go` 新增 env 必填校验 | 🟡 | 本 commit | env 字段与**防填反校验**已加（`WCB_MP_APP_ID` 不得等于网站应用的 AppID——那是最静默的一种错法）。**「必填」这一条待定**：强制必填会让没配这对凭据的部署直接起不来，而桥接是增强不是命脉，留待与部署接线一起定 |
 | U-⑥ | 复用 `account_avatars` 内容寻址缓存公众号头像（非新工作） | ⬜ | — | 头像 URL 是租约，落本地 sha256 才能长久可用 |
 | U-⑦ | 可复用能力 `GetUserInfoByUnionID`（unionid→openid→user/info） | ⬜ | — | 不只登录回调内联，供补拉 / admin 查人；是否暴露端点待确认（见 inputs §8） |
 
@@ -32,8 +32,27 @@
 - 真机：网站应用扫码 → 服务端日志确认拿到 unionid → 桥接拿到昵称头像 → `store.Account` 落库非空
 - 降级路径：故意用无效 AppSecret，确认登录仍通、仅昵称头像留空
 
+### U-③ 已完成的验证
+
+- `go build/vet/test ./...` 10 包全绿（新增 `internal/wechat` 15 个用例、`internal/config` 5 个子用例）
+- **真机**：`mp_live_test.go` 用 `/opt/envctl` 共享层的公众号凭据实跑——
+  换到真 token（`expires_in: 7200`）、二次调用**复用**同一 token（没有重新换）、
+  `cgi-bin/user/info` 派发并回 `40003 invalid openid`（说明接口活着且在校验 openid）。
+  该测试 env 门控，CI 不跑。
+- **接口可用性实证**：约三十条候选路径 + 标定过的判别器（404=分组不存在，
+  40066=分组下没有这个 action），结论见 inputs §9。**原文的 `cgi-bin/user/getid`
+  路径不存在**，规范路径 `cgi-bin/user/info/get` 对本公众号未派发。
+
 ## 后续 / 风险
 
-- **先确认 `user/getid` 可用性**：微信已把该接口收敛到认证服务号，若不可用则改走公众号 OAuth（UX 不同，需用户再授权一次）。见 inputs 文档 §6。
+- **U-④ 卡在 unionid→openid 这一步**（inputs §9.3）：该接口对本公众号未派发。
+  公众号**是服务号**（`account_type: 2`）、认证权限也齐（菜单/二维码/客服/标签都能派发），
+  所以不是「类型不对」也不是「没认证」。出路三条：去后台开接口（最省事，开通后用
+  §9.1 的判别器复验）／人工查一次官方文档确认规范路径（文档域名在本环境不可访问）／
+  改走公众号 OAuth 二次授权（UX 不同）。**这一条没落地前，U-④ 只能做到「拿到
+  unionid 就停在那儿」，昵称头像仍然拿不到。**
+- **U-② 里「getid 可用」是用户口述、机器无法验证的一条**——2026-10-20 实测下来
+  它至少是错的。这正是 inputs §7 那句「最终以 U-④ 真机日志为准」的意思，
+  只是真机日志先由接口探测给出了。
 - 头像租约问题见 §6，复用既有 avatar 包即可，不必新建。
 - 不破坏现有 `snsapi_login` 登录路径；桥接是"增强"不是"改造"。

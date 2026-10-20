@@ -1,5 +1,6 @@
 // Package wechat is the open-platform client for the website app's OAuth2.0
-// QR sign-in.
+// QR sign-in, and for the official account that answers what the sign-in
+// cannot.
 //
 // The client never talks to a browser. It produces a URL for a QR code, and it
 // exchanges the code that comes back on the redirect for an OpenID. Everything
@@ -17,6 +18,20 @@
 //     branches on the status code alone will read an error as a success and
 //     then fail on a missing field much further downstream. Every call here
 //     parses the body before believing it.
+//
+// The package holds two clients because WeChat holds two applications. The
+// website app (Client) signs people in and returns an OpenID and a UnionID.
+// The official account (MPClient) is where a nickname and an avatar live, and
+// it is reached by a different credential against a different set of
+// interfaces. They are kept in one package because they share the error
+// taxonomy, the redaction rules and the "a 200 is not a success" discipline —
+// and because keeping them apart is what would let one of them grow a
+// different idea of what an error is.
+//
+// The two AppIDs must not be confused. The service's configuration refuses to
+// start when the official account's AppID is the website app's, because that
+// mistake is silent everywhere except in the answers: the sign-in works, and
+// the nickname is fetched from the wrong application.
 package wechat
 
 import (
