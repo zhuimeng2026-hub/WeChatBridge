@@ -80,6 +80,9 @@ func TestAuthorizeURLCarriesEveryParameterWechatNeeds(t *testing.T) {
 	// the request outright, before a QR code is even rendered), and where a
 	// grant does exist it still inserts a consent screen between the scan and
 	// the redirect that the desktop client has no way to complete or observe.
+	//
+	// Nickname and avatar do not come from a wider login scope; they come from
+	// the unionid → public-account bridge (see client.go).
 	if Scope != "snsapi_login" {
 		t.Errorf("Scope = %q, want website login scope snsapi_login", Scope)
 	}

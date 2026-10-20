@@ -67,6 +67,12 @@
  <Run x:Name="AuthorizeRun" Text=" " />
  </Hyperlink>
  </TextBlock>
+ <!-- Sibling of the link for users whose default browser is wedged or whose
+      link target was hijacked. Copies the URL verbatim; nothing to fetch. -->
+ <Button x:Name="CopyButton" Style="{StaticResource GateButton}"
+ Content="{loc:Loc Key='复制链接'}" Click="OnCopyClicked" IsEnabled="False"
+ HorizontalAlignment="Center" Margin="0,8,0,0"
+ ToolTip="{loc:Loc Key='把登录链接复制到剪贴板'}" />
  </StackPanel>
 
  <Grid Grid.Row="3" Margin="0,18,0,0">

@@ -22,13 +22,14 @@ namespace WeChatBridge.Windows.Core.Activation;
 public sealed record PollSchedule(TimeSpan First, TimeSpan Ceiling, double Multiplier)
 {
     /// <summary>
-    /// For the QR login. Five minutes is the server's ticket TTL, and the schedule
-    /// reaches the ceiling in about thirty seconds — so by the time a user has
-    /// finished fumbling with their phone, the app has settled into one request every
-    /// ten seconds instead of hammering.
+    /// For the QR login. Five minutes is the server's ticket TTL. The user is staring
+    /// at a QR code in another window, so the first poll has to be fast and the steady
+    /// state has to be quick too — a 10s wait between polls turns "扫码确认" into
+    /// "I clicked the link, did anything happen?" The first poll lands at 500ms, and
+    /// the cadence settles at 3s in under ten attempts.
     /// </summary>
     public static PollSchedule Login { get; } =
-        new(TimeSpan.FromSeconds(1.5), TimeSpan.FromSeconds(10), 1.5);
+        new(TimeSpan.FromMilliseconds(500), TimeSpan.FromSeconds(3), 1.5);
 
     /// <summary>
     /// For the activation wait, where a seller may take an hour to check a payment.
