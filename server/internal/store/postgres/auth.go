@@ -446,15 +446,11 @@ func (s *Store) RotateRefresh(ctx context.Context, oldHash, newHash, newAccessHa
 		rotated bool
 	)
 	err := s.inTx(ctx, func(tx pgx.Tx) error {
-		var (
-			accountID, chainID    string
-			currentHash, prevHash string
-			expiresAt             time.Time
-			revokedAt             pgtype.Timestamptz
-		)
-		err := tx.QueryRow(ctx, sessionMatchForUpdateSQL, oldHash).Scan(
-			&accountID, &chainID, &currentHash, &prevHash, &expiresAt, &revokedAt,
-		)
+		// The shared scanner, not a second copy of it. This path used to
+		// write its own Scan, which is how the fix for the NULL previous
+		// hash landed in the lookup and missed here: the client kept getting
+		// 503 from this half, and the error only changed its wording.
+		row, err := scanSessionRow(tx.QueryRow(ctx, sessionMatchForUpdateSQL, oldHash), oldHash)
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				// No such token. The caller must clear its session: presenting
@@ -466,14 +462,8 @@ func (s *Store) RotateRefresh(ctx context.Context, oldHash, newHash, newAccessHa
 			return wrap("rotate refresh: load token", err)
 		}
 
-		sess = store.Session{
-			ID:               accountID,
-			AccountID:        accountID,
-			RefreshTokenHash: oldHash,
-			RefreshExpiresAt: utc(expiresAt),
-			ChainID:          chainID,
-			RevokedAt:        nullTime(revokedAt),
-		}
+		sess = row.Session
+		currentHash, prevHash := row.LiveHash, row.PrevHash
 
 		// The family was revoked: sign-out everywhere, or a theft response.
 		if sess.RevokedAt != nil {
@@ -488,11 +478,11 @@ func (s *Store) RotateRefresh(ctx context.Context, oldHash, newHash, newAccessHa
 		}
 		// Expired. The client is told to re-authenticate; it is not an error,
 		// it is the answer.
-		if !expiresAt.After(now) {
+		if !sess.RefreshExpiresAt.After(now) {
 			return nil
 		}
 
-		tag, err := tx.Exec(ctx, rotateReplaceSQL, oldHash, newHash, accountID, expiresAt)
+		tag, err := tx.Exec(ctx, rotateReplaceSQL, oldHash, newHash, sess.AccountID, sess.RefreshExpiresAt)
 		if err != nil {
 			return wrap("rotate refresh: replace token", err)
 		}

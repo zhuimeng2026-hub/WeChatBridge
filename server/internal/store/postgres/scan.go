@@ -86,7 +86,34 @@ func scanAccount(row rowScanner) (store.Account, error) {
 // The other two columns of the projection are not nullable in practice:
 // refresh_expires_at and chain_id are written by the same statement that
 // writes refresh_token_hash, so a row this query can return always has them.
+// They are left strict on purpose. A NULL chain_id read as an empty string
+// would make the revoke-by-chain statement match nothing, and a session that
+// looked revocable but was not is worse than one that fails loudly.
 func scanSession(row rowScanner, presented string) (store.Session, error) {
+	r, err := scanSessionRow(row, presented)
+	if err != nil {
+		return store.Session{}, err
+	}
+	return r.Session, nil
+}
+
+// sessionRow is the token-chain projection read as one thing: the session
+// plus the two hash generations.
+//
+// It exists because two callers need the projection and one of them needed
+// the hashes, and the second one wrote its own copy of the scan. The copy
+// was the bug: one of the two was fixed and the other was not, and the
+// client kept getting 503 from the half that had been left behind. The
+// column list and its scan destinations have to be edited together, so they
+// are now edited in exactly one place.
+type sessionRow struct {
+	Session  store.Session
+	LiveHash string
+	PrevHash string
+}
+
+// scanSessionRow reads the token-chain projection off the accounts row.
+func scanSessionRow(row rowScanner, presented string) (sessionRow, error) {
 	var (
 		s       store.Session
 		live    pgtype.Text
@@ -98,7 +125,7 @@ func scanSession(row rowScanner, presented string) (store.Session, error) {
 		&s.ID, &s.ChainID, &live, &prev, &expires, &revoked,
 	)
 	if err != nil {
-		return store.Session{}, err
+		return sessionRow{}, err
 	}
 	// Session.ID is the account id: the chain lives on the accounts row, so
 	// there is no second row to name.
@@ -106,7 +133,11 @@ func scanSession(row rowScanner, presented string) (store.Session, error) {
 	s.RefreshTokenHash = presented
 	s.RefreshExpiresAt = utc(expires)
 	s.RevokedAt = nullTime(revoked)
-	return s, nil
+	return sessionRow{
+		Session:  s,
+		LiveHash: text(live),
+		PrevHash: text(prev),
+	}, nil
 }
 
 // scanActivationRequest reads the activation_requests projection. The nullable

@@ -198,3 +198,44 @@ func TestScanSessionAcceptsANullLiveHash(t *testing.T) {
 		t.Errorf("ChainID = %q, want chain-1", sess.ChainID)
 	}
 }
+
+// The rotation path is the reason scanSessionRow exists: it needs both hash
+// generations to tell a reuse from a rotation, and it used to read them with
+// its own copy of the scan. So the hashes have to survive the read — and the
+// reuse signal has to stay distinguishable from "there was no previous
+// generation".
+func TestScanSessionRowHandsBackBothGenerations(t *testing.T) {
+	expires := time.Date(2027, 1, 18, 6, 58, 22, 0, time.UTC)
+
+	t.Run("a rotated chain has both", func(t *testing.T) {
+		row := fakeRow{values: []any{
+			"acct-1", "chain-1", "live-hash", "prev-hash", expires, nil,
+		}}
+		got, err := scanSessionRow(row, "presented-hash")
+		if err != nil {
+			t.Fatalf("scanSessionRow: %v", err)
+		}
+		if got.LiveHash != "live-hash" || got.PrevHash != "prev-hash" {
+			t.Fatalf("hashes = %q / %q, want live-hash / prev-hash", got.LiveHash, got.PrevHash)
+		}
+	})
+
+	t.Run("a fresh sign-in has no previous generation", func(t *testing.T) {
+		row := fakeRow{values: []any{
+			"acct-1", "chain-1", "live-hash", nil, expires, nil,
+		}}
+		got, err := scanSessionRow(row, "presented-hash")
+		if err != nil {
+			t.Fatalf("scanSessionRow: %v", err)
+		}
+		if got.LiveHash != "live-hash" {
+			t.Errorf("LiveHash = %q, want live-hash", got.LiveHash)
+		}
+		// Empty, not the presented hash and not an error: "there was no
+		// earlier generation" is what the rotation path has to see, or it
+		// would call every fresh sign-in a reuse.
+		if got.PrevHash != "" {
+			t.Errorf("PrevHash = %q, want empty — no previous generation", got.PrevHash)
+		}
+	})
+}
