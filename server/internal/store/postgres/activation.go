@@ -179,6 +179,20 @@ const confirmInsertBindingSQL = `
 	INSERT INTO licence_bindings (license_id, install_id, account_id, request_id, issued_at)
 	VALUES ($1, $2, $3, $4, $5)`
 
+// liveBindingForInstallSQL asks the one question the confirm path needs asked
+// directly: does this machine already hold a licence nobody has taken back?
+//
+// It exists because the insert's own failure cannot answer it. The install-
+// scoped and account-scoped partial unique indexes are both violated when a
+// buyer re-registers on a machine they are already licensed for, and
+// PostgreSQL names whichever it reached first — an order the schema does not
+// declare. Naming it here makes the answer depend on the machine's state
+// rather than on the order two CREATE INDEX statements happened to run in.
+const liveBindingForInstallSQL = `
+	SELECT license_id
+	FROM licence_bindings
+	WHERE install_id = $1 AND revoked_at IS NULL`
+
 // confirmFlipSQL is the seller's answer. It is conditional on the row still
 // being pending, and the guard is not redundant with the lock: it is the line
 // a reviewer greps for, and the line that keeps the answer at one licence if
@@ -302,6 +316,25 @@ func (s *Store) ConfirmActivationRequest(ctx context.Context, requestID, license
 			// Already confirmed or rejected. The row is right there, so this
 			// is "somebody else got there first", not a miss.
 			return store.ErrConflict
+		}
+
+		// Ask the question directly instead of inferring it from the insert
+		// below. In the production shape — a buyer who registers again on a
+		// machine they already hold a licence for — the insert violates BOTH
+		// partial unique indexes at once, and PostgreSQL reports whichever it
+		// checks first, which is the order the migration happened to create
+		// them in. Nothing in the schema declares that order, so classifying
+		// by constraint name alone makes the answer depend on a coincidence:
+		// reorder those two CREATE INDEX statements and the seller is back to
+		// "somebody beat you to it, try again" about a state no retry can
+		// clear. Verified against a real server, both orders.
+		var heldLicenseID string
+		err = tx.QueryRow(ctx, liveBindingForInstallSQL, r.InstallID).Scan(&heldLicenseID)
+		switch {
+		case err == nil:
+			return store.ErrLiveBindingExists
+		case !errors.Is(err, pgx.ErrNoRows):
+			return wrap("confirm activation request: check live binding", err)
 		}
 
 		if _, err := tx.Exec(ctx, confirmInsertBindingSQL,

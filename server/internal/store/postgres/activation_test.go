@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/pashagolub/pgxmock/v3"
 
 	"github.com/freestylefly/WeChatBridge/server/internal/store"
@@ -265,6 +266,13 @@ func TestConfirmActivationRequestIsOneTransaction(t *testing.T) {
 	mock.ExpectQuery(regexp.QuoteMeta("FOR UPDATE")).
 		WithArgs("req-1").
 		WillReturnRows(activationRequestRow("pending", nil))
+	// The machine is asked directly whether it already holds a live licence,
+	// because the insert below cannot answer it: both partial unique indexes
+	// are violated in that shape and PostgreSQL names whichever it checks
+	// first. See liveBindingForInstallSQL.
+	mock.ExpectQuery(regexp.QuoteMeta("FROM licence_bindings")).
+		WithArgs("install-1").
+		WillReturnError(pgx.ErrNoRows)
 	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO licence_bindings")).
 		WithArgs("lic-new", "install-1", "acct-1", "req-1", pgxmock.AnyArg()).
 		WillReturnResult(pgxmock.NewResult("INSERT", 1))
@@ -336,22 +344,27 @@ func TestConfirmActivationRequestOnAnUnknownRowIsAMiss(t *testing.T) {
 }
 
 func TestConfirmActivationRequestCollidesOnALiveBinding(t *testing.T) {
-	// Somebody already bound a licence to this machine. The partial unique
-	// index is the machine-change policy in schema form, and the seller's press
-	// must not produce a second live binding for one install id.
+	// This machine already holds a licence nobody has taken back. The partial
+	// unique index is the machine-change policy in schema form, and the seller's
+	// press must not produce a second live binding for one install id.
 	//
 	// The store says WHICH policy fired, not merely that it fired. Only one
 	// pending request per install id may exist and the row was locked above, so
 	// this is the buyer re-registering on a machine they already licensed —
 	// a standing state, not a race.
+	//
+	// It is decided by asking the machine, not by reading the insert's error:
+	// in this shape both partial indexes are violated and PostgreSQL names
+	// whichever it checks first, which the schema does not declare. See
+	// liveBindingForInstallSQL — the real-database tests pin both orders.
 	s, mock := newMock(t)
 	mock.ExpectBegin()
 	mock.ExpectQuery(regexp.QuoteMeta("FOR UPDATE")).
 		WithArgs("req-1").
 		WillReturnRows(activationRequestRow("pending", nil))
-	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO licence_bindings")).
-		WithArgs(anyArgs(5)...).
-		WillReturnError(uniqueErr(constraintBindingLiveInstall))
+	mock.ExpectQuery(regexp.QuoteMeta("FROM licence_bindings")).
+		WithArgs("install-1").
+		WillReturnRows(pgxmock.NewRows([]string{"license_id"}).AddRow("lic-already-there"))
 	mock.ExpectRollback()
 
 	_, err := s.ConfirmActivationRequest(context.Background(), "req-1", "lic-new", nil, testNow)
@@ -360,6 +373,36 @@ func TestConfirmActivationRequestCollidesOnALiveBinding(t *testing.T) {
 	}
 	if errors.Is(err, store.ErrConflict) {
 		t.Fatal("reported as a race; that is what made this a 409 the seller could retry forever")
+	}
+}
+
+// TestConfirmActivationRequestOnAnotherMachinesConflictIsStillARace is the other
+// half, and the one that must NOT become the standing-state answer. An account
+// holding a live licence for a DIFFERENT machine trying to buy a second one is
+// a genuine collision between two pending requests, and it is a race the loser
+// re-reads — not a machine that needs a reissue.
+func TestConfirmActivationRequestOnAnotherMachinesConflictIsStillARace(t *testing.T) {
+	s, mock := newMock(t)
+	mock.ExpectBegin()
+	mock.ExpectQuery(regexp.QuoteMeta("FOR UPDATE")).
+		WithArgs("req-1").
+		WillReturnRows(activationRequestRow("pending", nil))
+	// This machine is clean...
+	mock.ExpectQuery(regexp.QuoteMeta("FROM licence_bindings")).
+		WithArgs("install-1").
+		WillReturnError(pgx.ErrNoRows)
+	// ...and the insert still trips the account-scoped index.
+	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO licence_bindings")).
+		WithArgs(anyArgs(5)...).
+		WillReturnError(uniqueErr(constraintBindingLiveAccount))
+	mock.ExpectRollback()
+
+	_, err := s.ConfirmActivationRequest(context.Background(), "req-1", "lic-new", nil, testNow)
+	if !errors.Is(err, store.ErrConflict) {
+		t.Fatalf("want store.ErrConflict, got %v", err)
+	}
+	if errors.Is(err, store.ErrLiveBindingExists) {
+		t.Fatal("a different machine's conflict was reported as this machine needing a reissue")
 	}
 }
 
@@ -373,6 +416,9 @@ func TestConfirmActivationRequestFailsWhenTheFlipChangesNothing(t *testing.T) {
 	mock.ExpectQuery(regexp.QuoteMeta("FOR UPDATE")).
 		WithArgs("req-1").
 		WillReturnRows(activationRequestRow("pending", nil))
+	mock.ExpectQuery(regexp.QuoteMeta("FROM licence_bindings")).
+		WithArgs("install-1").
+		WillReturnError(pgx.ErrNoRows)
 	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO licence_bindings")).
 		WithArgs(anyArgs(5)...).
 		WillReturnResult(pgxmock.NewResult("INSERT", 1))
