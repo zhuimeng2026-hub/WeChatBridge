@@ -79,12 +79,21 @@ func newRealDB(t *testing.T) *realDB {
 	// parallel tests is how a suite becomes order-dependent and untrustworthy.
 	bootstrap, err := New(ctx, baseDSN)
 	if err != nil {
-		t.Skipf("cannot reach the test database: %v", err)
+		// Not a skip. The operator set the variable precisely to run these,
+		// and a database that is down is a failure to report, not a test to
+		// quietly omit — see the note on saturation below.
+		t.Fatalf("cannot reach the test database (%s is set): %v", EnvRealDatabaseURL, err)
 	}
 	if _, err := bootstrap.db.Exec(ctx, "CREATE SCHEMA "+quoteIdent(schema)); err != nil {
 		_ = bootstrap.Close()
-		t.Skipf("cannot create a schema (does this role own the database?): %v", err)
+		t.Fatalf("cannot create a schema (does this role own the database?): %v", err)
 	}
+	// Close before anything else can fail. Leaving it open leaks one pool per
+	// test — and once PostgreSQL runs out of connection slots the next
+	// New() fails, which used to turn into a skip: the suite went green with
+	// the real-database tests silently not run at all. That is the exact
+	// failure mode these tests exist to prevent.
+	_ = bootstrap.Close()
 
 	dsn := withSearchPath(baseDSN, schema)
 	store, err := New(ctx, dsn)
