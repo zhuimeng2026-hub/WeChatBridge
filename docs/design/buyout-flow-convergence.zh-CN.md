@@ -475,7 +475,10 @@ POST /v1/admin/reject    { requestId }   → {}   // 拒绝一单：不签发、
   1. store 层新增 `ErrLiveBindingExists`，`bindingConflict` 按约束名分类：`live_install` → 该哨兵，`live_idx`/`live_account_idx` → 保持 `ErrConflict`。原注释里「三者都是同一件事」的断言被显式推翻并写入理由。
   2. `admin` 层把该哨兵映射为可操作的 409，文案点名 reissue；**真竞态路径保持原样**（读回赢家许可证、返回 200），有回归测试守着。
   3. 读路径按状态加权排序，confirmed 优先于 pending。**首购 happy path 不变**（首购账号没有 confirmed 行，仍如实报 pending）。因 `licence_bindings_live_account_idx` 已把「一个账号至多一张活证」写进 schema，买断版语义下这本就正确。
-- **遗留 / 未做（有意）**：**写侧没有拦**。`POST /v1/activation/request` 仍会为已授权买家开新 pending 行——改它会变更该端点的响应契约，且客户端是跨语言 C#，§11.3 冻结点不能私改。故只在读侧兜。写侧拦截的价值与代价另记。
+- **遗留 / 未做（2026-10-20 晚已补）**：`POST /v1/activation/request` 原先仍会为已授权买家开新 pending 行。现已在 `Register` 前置 `holdsLiveLicence` 拦截——问的正是 `Licence()` 问的问题（confirmed 且指向该机器未收回的 binding），**不新增字段与错误码**：同样 201、同样两个字段，只是 `status="confirmed"`、`requestId` 是客户本就持有的那一行。不发新码是刻意的：C# 的 `Classify` 不认，已付费客户会读到「登记购买失败」，把一个表面问题变成硬失败。`server/mock/server.js` 同步（客户端当初是对着 mock 写的契约参照，不同步即在一个行为上分叉），`admin-console/test/smoke.mjs` 新增 [9] 段回归。
+  - **反向对照给出的性质（值得记）**：只回退读侧修复，冒烟 [9] 全绿——写侧已不产生墓碑；只回退写侧修复，[9] 三项变红，但 `/status` 与 `/licence` 仍被读侧救回。**两处修复互为独立的安全网**，任一单独存在都能挡住本次事故。读侧仍不可省：旧版本已经写进去的墓碑行还在库里，那正是它守的场景。
+- **验证上的一个坑（已记入 OB 知识库 `09.经验沉淀`）**：pgxmock 只断言查询字符串、从不执行它；`activation` 包的测试打在 fake store 上——fake 实现什么规则就验证什么规则。**把新 SQL 改回修复前，整个包依然全绿**，即本次要修的这条查询单测覆盖率为零。已补 `store/postgres/activation_realdb_test.go`（`WCB_TEST_DATABASE_URL` 未设置则跳过，CI 无库不受影响），五个账号对真 PostgreSQL 跑，并以反向对照确认它真的会红——报出的正是事故现场 `acct-1: got act_new/pending, want act_old/confirmed`。**A-⑧ 的真库集成测试仍欠着**，这一笔只是其中一个查询。
+
 - **数据处置**：受影响的买家已用 `POST /v1/admin/reissue` 解套（旧 binding 落 `revoked_at`，新证 `lic_f999907681b655089d050d72`），并用买家 token 走通 `status` → `licence`，最后以客户端内嵌公钥**独立**验签通过（纯 Python 重写 P-256，未复用 Go 的 `license.Verify`，并加「篡改 r 必须失败」反向对照）。
 
 
