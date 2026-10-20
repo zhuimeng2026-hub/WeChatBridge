@@ -336,10 +336,14 @@ func TestConfirmActivationRequestOnAnUnknownRowIsAMiss(t *testing.T) {
 }
 
 func TestConfirmActivationRequestCollidesOnALiveBinding(t *testing.T) {
-	// Somebody else already bound a licence to this machine. The partial
-	// unique index is the machine-change policy in schema form, and the
-	// seller's press must read as a conflict rather than produce a second
-	// live binding for one install id.
+	// Somebody already bound a licence to this machine. The partial unique
+	// index is the machine-change policy in schema form, and the seller's press
+	// must not produce a second live binding for one install id.
+	//
+	// The store says WHICH policy fired, not merely that it fired. Only one
+	// pending request per install id may exist and the row was locked above, so
+	// this is the buyer re-registering on a machine they already licensed —
+	// a standing state, not a race.
 	s, mock := newMock(t)
 	mock.ExpectBegin()
 	mock.ExpectQuery(regexp.QuoteMeta("FOR UPDATE")).
@@ -350,8 +354,12 @@ func TestConfirmActivationRequestCollidesOnALiveBinding(t *testing.T) {
 		WillReturnError(uniqueErr(constraintBindingLiveInstall))
 	mock.ExpectRollback()
 
-	if _, err := s.ConfirmActivationRequest(context.Background(), "req-1", "lic-new", nil, testNow); !errors.Is(err, store.ErrConflict) {
-		t.Fatalf("want store.ErrConflict, got %v", err)
+	_, err := s.ConfirmActivationRequest(context.Background(), "req-1", "lic-new", nil, testNow)
+	if !errors.Is(err, store.ErrLiveBindingExists) {
+		t.Fatalf("want store.ErrLiveBindingExists, got %v", err)
+	}
+	if errors.Is(err, store.ErrConflict) {
+		t.Fatal("reported as a race; that is what made this a 409 the seller could retry forever")
 	}
 }
 
