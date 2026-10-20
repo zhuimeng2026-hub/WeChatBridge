@@ -83,7 +83,6 @@ func TestAuthorizeURLCarriesEveryParameterWechatNeeds(t *testing.T) {
 	if Scope != "snsapi_login" {
 		t.Errorf("Scope = %q, want website login scope snsapi_login", Scope)
 	}
-	}
 	// A secret in the browser-facing URL would be a secret in a browser
 	// history.
 	if q.Get("secret") != "" {
