@@ -19,10 +19,19 @@
 //   - The account comes from the bearer token, never from the body. A request
 //     body that named its own account would let any signed-in customer file
 //     a purchase under somebody else's name.
+//
 //   - "Confirmed" is the only state that yields a licence, and the read is
 //     keyed by the caller's account, not by a request id in the URL. A URL
 //     that carried the id would let any signed-in customer read any other
 //     customer's licence by guessing it.
+//
+//   - The account's read is not simply "the newest row". A customer who
+//     already holds a licence and registers again would otherwise wait on a
+//     registration that can never be confirmed — the tombstone of design doc
+//     §11.7 M-5 — and could never collect the licence they already paid for.
+//     The store gives the account's live licence priority; this package only
+//     has to stop treating "pending" as the only way a purchase can be
+//     waiting.
 //
 // This package was ported onto the 4-table store (activation requests and
 // licence bindings are separate rows here, not one), and one behaviour
@@ -195,6 +204,13 @@ type LicenceResult struct {
 // re-serialisation would not break verification — but the store's promise is
 // "the bytes we returned the first time", and honouring it here costs one
 // base64 encode.
+//
+// The store's read is what makes this work for a customer who registers
+// twice: it hands back the request that names the account's live licence
+// rather than the newest registration, so the licence they already paid for
+// is still collectible. The liveness check below is the other half of that
+// story and is not optional — revocation in this schema is a date on the
+// binding, and only the binding can say whether a licence is still good.
 func (s *Service) Licence(ctx context.Context, accountID string) (LicenceResult, error) {
 	r, err := s.store.LatestActivationRequest(ctx, accountID)
 	if err != nil {

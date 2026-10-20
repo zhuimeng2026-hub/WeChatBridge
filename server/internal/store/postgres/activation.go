@@ -65,10 +65,78 @@ const createActivationRequestSQL = `
 	WHERE activation_requests.account_id = $2
 	RETURNING ` + activationRequestColumns
 
+// latestActivationRequestSQL is the buyer's poller's read: the one request
+// this customer should be looking at right now.
+//
+// "The newest row" is the wrong answer for a buy-out product, and the way it
+// is wrong is a production incident (design doc §11.7 M-5). A customer who
+// already holds a licence taps "I have ordered" a second time; the
+// registration upsert only collides with a PENDING row, so the tap files a
+// second, newer row; and "newest wins" then waits on that row forever. The
+// licence the customer already paid for sits on an older row, and the
+// read never looks at it. The new row is a tombstone: it cannot be confirmed
+// (the machine's binding slot is taken) and it shadows the valid licence, so
+// there is no self-healing path.
+//
+// The tie-break is therefore the live licence, not the timestamp.
+//
+//   - The row whose licence is the machine's LIVE binding wins whenever the
+//     account holds one. "Live" means exactly what the licence endpoint means
+//     by it — the machine's unrevoked binding names this row's licence — so
+//     the row the poller waits on is the row the licence endpoint would hand
+//     out. The two reads agree by construction, and the client needs them to.
+//
+//   - Only when the account holds no live licence at all do the ordinary
+//     newest-wins rules apply.
+//
+// That second clause is what keeps a REVOKED licence honest. A customer whose
+// licence was revoked and who registers again must see their new pending
+// request, not the dead confirmed row — otherwise the same tombstone comes
+// back, this time hiding a purchase that can still be confirmed.
+//
+// Why the live licence wins at all, rather than merely tie-breaking: this is
+// a buy-out. licence_bindings_live_account_idx is UNIQUE(account_id) WHERE
+// revoked_at IS NULL, so the schema already says one account holds at most
+// one live licence, and there is no payment gateway to bill it twice. A
+// second registration is not a second purchase — it cannot become one, since
+// the binding insert would violate that same index — so letting it outrank
+// the licence the customer already holds would hide the only answer that can
+// ever progress.
+//
+// The first-time buyer is untouched: no confirmed row, no live licence, so
+// the fallback applies and their pending request surfaces as it always did.
+//
+// The (account_id, created_at DESC) index still carries the sort, and both
+// liveness probes are index lookups on licence_bindings_live_idx.
+//
+// The shape of the WHERE, in one line each: the first arm admits the row that
+// names the machine's live licence; the second arm admits everything, but
+// only for an account that holds no live licence at all.
 const latestActivationRequestSQL = `
 	SELECT ` + activationRequestColumns + `
 	FROM activation_requests
 	WHERE account_id = $1
+	  AND (
+		    (status = 'confirmed' AND license_id = (
+		        SELECT b.license_id
+		        FROM licence_bindings b
+		        WHERE b.install_id = activation_requests.install_id
+		          AND b.revoked_at IS NULL
+		    ))
+		    OR NOT EXISTS (
+		        SELECT 1
+		        FROM activation_requests c
+		        WHERE c.account_id = $1
+		          AND c.status = 'confirmed'
+		          AND EXISTS (
+		              SELECT 1
+		              FROM licence_bindings b2
+		              WHERE b2.install_id = c.install_id
+		                AND b2.license_id = c.license_id
+		                AND b2.revoked_at IS NULL
+		          )
+		    )
+	      )
 	ORDER BY created_at DESC
 	LIMIT 1`
 
@@ -156,8 +224,11 @@ func (s *Store) CreateActivationRequest(ctx context.Context, r store.ActivationR
 	return s.GetRequestByInstallID(ctx, r.InstallID)
 }
 
-// LatestActivationRequest is the buyer's own view: the most recent request
-// they made, which is the one their poller is waiting on.
+// LatestActivationRequest is the buyer's own view: the request their poller
+// is waiting on. Which row that is, when the account has more than one, is
+// the rule the query above spells out — the account's live licence wins over
+// a newer registration, and a buyer with no live licence gets the newest row
+// as before.
 func (s *Store) LatestActivationRequest(ctx context.Context, accountID store.ID) (store.ActivationRequest, error) {
 	r, err := scanActivationRequest(s.db.QueryRow(ctx, latestActivationRequestSQL, accountID))
 	if err != nil {

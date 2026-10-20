@@ -160,6 +160,15 @@ func (s *Service) handleConfirm(c *gin.Context) {
 			httpx.Fail(c, httpx.NotFound("请求的内容不存在。"))
 		case errors.Is(err, ErrRequestRejected):
 			httpx.Fail(c, httpx.Conflict("该购买请求已被拒绝，无法确认。"))
+		case errors.Is(err, ErrLiveLicenceHeld):
+			// The machine already holds a live licence from an earlier
+			// confirmed request, so this order cannot be confirmed — not now,
+			// not after a refresh, not ever by pressing this button again.
+			// The reply has to name the action that does work, in the same
+			// register as handleReject's "请改用作废": the seller's next click
+			// has to be the right button, or the buyer stays stuck on "登记中"
+			// while the console keeps offering them the wrong one.
+			httpx.Fail(c, httpx.Conflict("该机器已有有效许可证，请改用重签（reissue）。"))
 		default:
 			// Includes the lost race the service could not reconcile: the
 			// row moved again between the re-read and here.

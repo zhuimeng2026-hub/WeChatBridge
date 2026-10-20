@@ -121,6 +121,15 @@ func FromStore(err error) *APIError {
 		return Unauthorized("登录凭证已被使用，请重新登录。")
 	case errors.Is(err, store.ErrConflict):
 		return Conflict("资源状态已变化，请刷新后重试。")
+	case errors.Is(err, store.ErrLiveBindingExists):
+		// A standing state, deliberately not falling through to Internal. The
+		// store separated this from ErrConflict precisely so it stops being
+		// read as "somebody else won a race": letting it reach the default
+		// arm would answer a 500, which tells the operator their server is
+		// broken when in fact the seller simply pressed the wrong button.
+		// The confirm handler names reissue in its own words; this is the
+		// floor that keeps a future caller from reporting a fault.
+		return Conflict("该机器已有有效许可证，无法重复签发。")
 	default:
 		return Internal(err)
 	}

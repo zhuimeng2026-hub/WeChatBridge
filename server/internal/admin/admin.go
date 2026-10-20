@@ -26,6 +26,12 @@
 //     buyer a different token on every poll; the store writes the bytes once
 //     and the buyer's licence endpoint returns those bytes.
 //
+// One confirm outcome is a standing state rather than a failure: a machine
+// that already holds a live licence cannot be confirmed again, and the answer
+// names reissue — the only action that can give that buyer what they came
+// for. "Refresh and try again" would be true of neither, and it leaves the
+// buyer stuck while the seller retries a button that can never succeed.
+//
 // One behaviour is deliberately stricter than the mock this package was
 // written against: an unknown ?status= value is a 400, not an empty list.
 // The mock filters permissively, and a seller who typo'd "comfirmed" would be
@@ -60,6 +66,23 @@ var ErrRequestRejected = errors.New("admin: request was rejected")
 // other takes back something that was already granted — so the API refuses to
 // treat one as the other.
 var ErrRequestConfirmed = errors.New("admin: request is already confirmed")
+
+// ErrLiveLicenceHeld is a confirm aimed at a machine that already holds a live
+// licence.
+//
+// It is a standing state, not a lost race, and that difference is the whole
+// reason it has its own name. The store reports the two separately
+// (store.ErrLiveBindingExists) because a lost race is self-healing — the loser
+// reads back the licence the winner minted — while this one cannot change no
+// matter how many times the button is pressed: the machine's licence was
+// granted by an earlier, already-confirmed request, and the buyer has simply
+// registered the same machine again.
+//
+// The seller's way forward is a reissue, so the answer has to say so. A
+// generic "refresh and try again" is the worst possible reply here: it is
+// true of neither, it names no action, and it leaves the buyer stuck on
+// "登记中" while the seller retries forever.
+var ErrLiveLicenceHeld = errors.New("admin: machine already holds a live licence")
 
 // Service is the console's logic. It is safe for concurrent use.
 type Service struct {
@@ -220,6 +243,13 @@ func (s *Service) isAdmin(openID string) bool {
 // loser of the race reads a conflict, re-reads the row, and returns the
 // licence the winner minted. One request, one licence, whichever seller got
 // there first.
+//
+// The store's two refusals are not interchangeable, and this method keeps them
+// apart. A conflict means somebody else won a race: the loser has an answer
+// (the winner's licence) and returns it. A live binding already existing
+// means the machine holds a licence from an earlier confirmed request: there
+// is no answer to read back, no retry can change it, and the only button that
+// can give that buyer what they came for is reissue.
 func (s *Service) Confirm(ctx context.Context, requestID string) (string, error) {
 	r, err := s.activation.GetActivationRequest(ctx, requestID)
 	if err != nil {
@@ -246,6 +276,19 @@ func (s *Service) Confirm(ctx context.Context, requestID string) (string, error)
 
 	confirmed, err := s.activation.ConfirmActivationRequest(ctx, requestID, licenseID, envelopeJSON, now)
 	if err != nil {
+		// Checked before the conflict below, and deliberately not folded into
+		// it. The live-binding collision is not a race: the machine's licence
+		// was granted by an earlier request, so re-reading the row finds a
+		// request that is still pending and no licence to return. Swallowing
+		// it into the generic conflict is what made this button answer 409
+		// forever.
+		if errors.Is(err, store.ErrLiveBindingExists) {
+			s.log.Info("confirm refused: the machine already holds a live licence",
+				"request", token.Fingerprint(requestID),
+				"install_id", token.Fingerprint(r.InstallID),
+				"next_action", "reissue")
+			return "", ErrLiveLicenceHeld
+		}
 		if errors.Is(err, store.ErrConflict) {
 			// The flip refused: somebody else confirmed between our read and
 			// our write. Their licence is the answer to this button.
