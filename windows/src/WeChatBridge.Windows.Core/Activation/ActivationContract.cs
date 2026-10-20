@@ -36,6 +36,7 @@ public static class ActivationEndpoint
 
     public const string SessionPath = "v1/auth/session";
     public const string RefreshPath = "v1/auth/refresh";
+    public const string MePath = "v1/account";
     public const string ActivationRequestPath = "v1/activation/request";
     public const string ActivationStatusPath = "v1/activation/status";
     public const string ActivationLicencePath = "v1/activation/licence";

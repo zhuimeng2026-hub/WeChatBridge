@@ -36,11 +36,36 @@ var (
 	ErrNotFound = errors.New("store: not found")
 
 	// ErrConflict means the row exists but is not in the state the caller
-	// needed — a request already confirmed, a machine already licensed, a
-	// chain already revoked. It is separate from ErrNotFound because
-	// "somebody else got there first" and "that was never there" need
-	// different words in the reply.
+	// needed — a request already confirmed, a chain already revoked. It is
+	// separate from ErrNotFound because "somebody else got there first" and
+	// "that was never there" need different words in the reply.
+	//
+	// It is a RACE error, and it is deliberately no longer a catch-all for
+	// every unique-constraint violation. A unique violation can mean two
+	// very different things — "a concurrent request just beat you to it"
+	// (retryable, self-healing, the loser reads back the winner) or "a
+	// business rule has been true since before this request arrived"
+	// (never retryable, needs a human). Collapsing the second into this one
+	// is what produced a confirm button that answered 409 forever: see
+	// ErrLiveBindingExists.
 	ErrConflict = errors.New("store: conflict")
+
+	// ErrLiveBindingExists means a licence binding insert was refused because
+	// this machine already holds a live licence — not because a concurrent
+	// request won a race.
+	//
+	// It is deterministic, and that is the whole point of naming it. Within a
+	// single confirm, activation_requests_live_install_idx guarantees there is
+	// at most one PENDING request per install id, so a live-binding collision
+	// on install_id can only come from an earlier, already-confirmed request:
+	// the buyer already has a licence and has just registered again. Retrying
+	// can never succeed. The seller's action is reissue, not confirm.
+	//
+	// The account-scoped index (licence_bindings_live_account_idx) is NOT
+	// reported as this: two different machines of one account can have two
+	// pending requests, so two sellers confirming concurrently is a genuine
+	// race there, and it stays ErrConflict.
+	ErrLiveBindingExists = errors.New("store: machine already holds a live licence")
 
 	// ErrReuseDetected is its own error, not a flavour of ErrConflict, because
 	// it means the chain is being revoked: a consumed refresh token presented
@@ -198,6 +223,13 @@ type AuthStore interface {
 	// CompleteAuthSession atomically marks the ticket authorized and resolves
 	// or creates the account for the OpenID.
 	CompleteAuthSession(ctx context.Context, ticket, openID, unionID, nickname, avatar, installID string) (Account, error)
+
+	// DeleteAuthSession retires a ticket nobody will finish with. The state
+	// guard is the point of the method rather than an optimisation: it may only
+	// remove a *pending* row, so a sign-in that has already been authorised
+	// survives even if the caller is wrong about which ticket that is. It
+	// reports whether a row was removed.
+	DeleteAuthSession(ctx context.Context, ticket string) (bool, error)
 
 	// PutAuthHandoff records the credentials minted by a completed scan. It is
 	// the shared half of the sign-in bridge; see AuthHandoff.

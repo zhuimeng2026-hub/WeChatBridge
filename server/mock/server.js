@@ -13,8 +13,7 @@
 //   real  — every route, field name, status code, error envelope, timestamp
 //           layout ("2006-01-02T15:04:05Z" equivalent), base64url licence token
 //   mock  — signatures are placeholders (the licence envelope will NOT verify
-//           against the client's embedded public key), the QR PNG is a
-//           QR-shaped placeholder (valid PNG, not scannable), any non-empty
+//           against the client's embedded public key), any non-empty
 //           bearer token is accepted (buyer and admin alike — admin identity
 //           is an OpenID allowlist on the real server, see design doc §11.7)
 //
@@ -25,7 +24,6 @@
 
 const http = require("http");
 const crypto = require("crypto");
-const zlib = require("zlib");
 
 const PORT = parsePort(process.argv) ?? Number(process.env.PORT ?? 8901);
 
@@ -253,110 +251,6 @@ async function pollSession(req, res, ticket) {
   });
 }
 
-function qrPNG(ticket) {
-  // A QR-shaped placeholder: three finder patterns, timing rows, and modules
-  // seeded from the ticket. Valid PNG bytes — the client's magic-byte check
-  // passes — but it does not scan. The real QR is rendered by the real server
-  // from the WeChat authorize URL.
-  const modules = 25;
-  const scale = 8;
-  const quiet = 2;
-  const size = (modules + quiet * 2) * scale;
-  const px = Buffer.alloc(size * size * 4, 0xff);
-
-  let seed = 0;
-  for (const b of Buffer.from(ticket)) seed = (seed * 31 + b) >>> 0;
-  const rnd = () => {
-    seed = (seed * 1664525 + 1013904223) >>> 0;
-    return seed / 0xffffffff;
-  };
-
-  const at = (x, y, dark) => {
-    if (x < 0 || y < 0 || x >= modules || y >= modules) return;
-    const v = dark ? 0x00 : 0xff;
-    for (let dy = 0; dy < scale; dy++) {
-      for (let dx = 0; dx < scale; dx++) {
-        const cx = (x + quiet) * scale + dx;
-        const cy = (y + quiet) * scale + dy;
-        const i = (cy * size + cx) * 4;
-        px[i] = v;
-        px[i + 1] = v;
-        px[i + 2] = v;
-        px[i + 3] = 0xff;
-      }
-    }
-  };
-
-  const inFinder = (x, y) =>
-    (x < 7 && y < 7) || (x >= modules - 7 && y < 7) || (x < 7 && y >= modules - 7);
-
-  for (let y = 0; y < modules; y++) {
-    for (let x = 0; x < modules; x++) {
-      if (inFinder(x, y)) continue;
-      at(x, y, rnd() > 0.52);
-    }
-  }
-  for (const [ox, oy] of [
-    [0, 0],
-    [modules - 7, 0],
-    [0, modules - 7],
-  ]) {
-    for (let y = 0; y < 7; y++) {
-      for (let x = 0; x < 7; x++) {
-        const edge = x === 0 || y === 0 || x === 6 || y === 6;
-        const core = x >= 2 && x <= 4 && y >= 2 && y <= 4;
-        at(ox + x, oy + y, edge || core);
-      }
-    }
-  }
-  for (let i = 8; i < modules - 8; i++) {
-    at(i, 6, i % 2 === 0);
-    at(6, i, i % 2 === 0);
-  }
-
-  // PNG: signature + IHDR + IDAT(zlib of raw scanlines) + IEND.
-  const raw = Buffer.alloc(size * (size + 1));
-  for (let y = 0; y < size; y++) {
-    raw[y * (size + 1)] = 0;
-    px.copy(raw, y * (size + 1) + 1, y * size * 4, (y + 1) * size * 4);
-  }
-  const ihdr = Buffer.alloc(13);
-  ihdr.writeUInt32BE(size, 0);
-  ihdr.writeUInt32BE(size, 4);
-  ihdr[8] = 8; // bit depth
-  ihdr[9] = 6; // colour type RGBA
-  return Buffer.concat([
-    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
-    pngChunk("IHDR", ihdr),
-    pngChunk("IDAT", zlib.deflateSync(raw)),
-    pngChunk("IEND", Buffer.alloc(0)),
-  ]);
-}
-
-const CRC_TABLE = (() => {
-  const t = new Uint32Array(256);
-  for (let n = 0; n < 256; n++) {
-    let c = n;
-    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
-    t[n] = c >>> 0;
-  }
-  return t;
-})();
-
-function crc32(buf) {
-  let c = 0xffffffff;
-  for (const b of buf) c = CRC_TABLE[(c ^ b) & 0xff] ^ (c >>> 8);
-  return (c ^ 0xffffffff) >>> 0;
-}
-
-function pngChunk(type, data) {
-  const len = Buffer.alloc(4);
-  len.writeUInt32BE(data.length, 0);
-  const body = Buffer.concat([Buffer.from(type, "ascii"), data]);
-  const crc = Buffer.alloc(4);
-  crc.writeUInt32BE(crc32(body), 0);
-  return Buffer.concat([len, body, crc]);
-}
 
 async function revokeSession(req, res) {
   await readBody(req).catch(() => ({}));
@@ -391,12 +285,36 @@ function bearerAccount(req) {
   return state.tokens.get(m[1].trim()) ?? null;
 }
 
-function latestRequest(accountId) {
+function newestRequest(accountId) {
   const list = state.requestsByAccount.get(accountId) ?? [];
   for (let i = list.length - 1; i >= 0; i--) {
-    return state.activations.get(list[i]);
+    const r = state.activations.get(list[i]);
+    if (r) return r;
   }
   return null;
+}
+
+// liveLicenceOf 找的是「这张证还活着」的那一行：request 是 confirmed，
+// 且它指向的许可证没有被收回。与真服务端 Licence() 问的是同一个问题。
+function liveLicenceOf(accountId) {
+  const list = state.requestsByAccount.get(accountId) ?? [];
+  for (let i = list.length - 1; i >= 0; i--) {
+    const r = state.activations.get(list[i]);
+    if (!r || r.status !== "confirmed" || !r.licenseId) continue;
+    const lic = state.licences.get(r.licenseId);
+    if (lic && !lic.revoked) return r;
+  }
+  return null;
+}
+
+// §11.7 M-5：「最新一行说了算」是错的。已持证的买家再点一次「我已订购」
+// 会多出一行更新的 pending，把那张真正有效的证盖住——买家永远停在「登记中」。
+// 真服务端已改为「活证优先，否则才取最新」，这里必须跟着改，否则 mock 与
+// 真服务端在这个行为上分叉，而 mock 正是客户端当初对着写的契约参照。
+// 之所以按「活」而不只是按 confirmed：证被收回后再登记的买家，若让那行
+// 已死的 confirmed 继续压过新的 pending，墓碑就会以镜像的方式再出现一次。
+function latestRequest(accountId) {
+  return liveLicenceOf(accountId) ?? newestRequest(accountId);
 }
 
 async function activationRequest(req, res) {
@@ -407,6 +325,14 @@ async function activationRequest(req, res) {
   const body = await readBody(req).catch(() => ({}));
   if (!body.installId) {
     return sendError(res, 400, "bad_request", "请求体格式不正确。");
+  }
+  // 已经持证就不再新建行（§11.7 M-5 的写侧一半）。一个账号同时只能有一张
+  // 活证，所以这一行永远签不下来——它只会变成卖家清不掉的 pending。
+  // 契约保持不变：同样 201、同样两个字段，只是 status 为 confirmed，
+  // requestId 是客户本来就有的那一行；新错误码 C# 客户端不认。
+  const held = liveLicenceOf(accountId);
+  if (held) {
+    return sendJSON(res, 201, { requestId: held.requestId, status: "confirmed" });
   }
   const requestId = "act_" + hex(6);
   state.activations.set(requestId, {
@@ -632,6 +558,10 @@ const server = http.createServer(async (req, res) => {
   }
   const url = new URL(req.url, "http://mock.invalid");
   const path = url.pathname;
+  if (path.startsWith("/v1/auth/") || path === "/v1/account") {
+    res.setHeader("Cache-Control", "no-store");
+    res.setHeader("Referrer-Policy", "no-referrer");
+  }
 
   try {
     if (req.method === "GET" && path === "/healthz") {
@@ -642,9 +572,12 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "POST" && path === "/v1/auth/session") return await createSession(req, res);
     let m = /^\/v1\/auth\/session\/([0-9a-f]{32})\/qr$/.exec(path);
     if (req.method === "GET" && m) {
-      const png = qrPNG(m[1]);
-      res.writeHead(200, { "Content-Type": "image/png", "Content-Length": png.length });
-      return res.end(png);
+      const session = state.sessions.get(m[1]);
+      if (!session) return sendError(res, 404, "not_found", "请求的内容不存在。");
+      if (session.status !== "pending" || session.expiresAt <= now()) {
+        return sendError(res, 410, "gone", "登录会话已失效或已完成，请重新获取登录链接。");
+      }
+      return sendError(res, 409, "conflict", "请在浏览器中打开会话的 authorizeUrl，并扫描微信官方授权页的二维码完成登录。");
     }
     m = /^\/v1\/auth\/session\/([0-9a-f]{32})$/.exec(path);
     if (req.method === "GET" && m) return await pollSession(req, res, m[1]);

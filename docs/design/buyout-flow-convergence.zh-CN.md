@@ -479,6 +479,26 @@ POST /v1/admin/reject    { requestId }   → {}   // 拒绝一单：不签发、
 - **契约影响**：无。scope 是发往微信的出站参数，不在 §11.3 冻结的端点、字段、状态码或错误码体系内；`envelope`、license canonical 均不涉及。`server/mock/server.js` 的二维码 URL 本就写着 `snsapi_login`，本次回滚让它重新与真实实现一致。
 - **配套改动**：仅注释与测试断言的措辞（`wechat/client.go` 三处、`wechat/client_test.go` 两处、`auth/service_test.go` 两处、`auth/fakestore_test.go` 一处），并把「42003 是降级路径」的叙述改成「42003 是当前 scope 下的常规路径」——留着旧措辞，下一个人会以为空 profile 是一种故障而去"修"它。
 - **定级**：🔴 活跃（扫码登录不可用）→ ✅ 已修复。回归风险低：`go build/vet/test ./...` 10 包全绿。
+#### M-5 重复登记的买家被永久卡在「登记中」（唯一索引冲突被误译为竞态 + latest-wins 读遮蔽，2026-10-20 修复）
+
+- **上报**：线上反馈——买家「我已订购」后一直显示「登记中」，同时卖家后台点签发无反应。两侧都在说实话。
+- **验证（2026-10-20）——属实，且是两个缺陷叠加**：PG 实查该机（`install_id=977khOZNqm9C8bwqVwNALQ`，账号 `ccf2ab13`）有两行——`act_ef8a…`（10-19 23:36 创建，08:53 已签发，binding 的 `revoked_at IS NULL`，**证是有效的**）与 `act_ed68…`（10-20 09:36 再登记，pending）。日志里每次 `POST /v1/admin/confirm` 都是 **409**。
+  1. **写侧**：`ConfirmActivationRequest` 先插 binding，撞 `licence_bindings_live_idx`。`bindingConflict` 把三种唯一索引违反**一律映射成 `ErrConflict`**（该函数原注释即断言「三者对调用方是同一件事」），于是「这台机器早就有一张活证」被表述为「别人刚好抢在你前面」，回一句「资源状态已变化，请刷新后重试」——而刷新一万次也不会有用。**必现，非竞态**。
+  2. **读侧**：`latestActivationRequestSQL` 是 `ORDER BY created_at DESC LIMIT 1`，选中那条永远签不下来的 pending 行，把有效许可证**完全遮蔽**。买家因此永远读到「登记中」，`GET /v1/activation/licence` 永远 `ErrNotConfirmed`。
+  3. 两者合成闭环死结：新行签不了（坑位被占），老行读不到（被墓碑盖住），而**唯一出路 `reissue` 没有任何一条路径会提示**。
+- **关键推理（决定修复方案的那一步）**：单次 confirm 内 `activation_requests_live_install_idx`（`UNIQUE(install_id) WHERE status='pending'`）保证每个 install 至多一条 pending，且 confirm 已持 `FOR UPDATE` 行锁并复查 status，**故 `live_install` 冲突在数学上不可能来自并发**，只可能来自更早的已确认请求——它是确定性的业务状态。反之 `licence_bindings_live_account_idx` **仍是真竞态**（同一账号两台机器可有两条 pending，两个卖家同时确认是常态），语义不变。
+- **影响面**：🔴 活跃——**每一个已授权买家若再次点击「我已订购」即永久卡死**，且无自愈路径；卖家侧得到的是一句无法据以行动的话。买断版卖的是能力，重复登记本应是幂等的「你已经是 Pro 了」。
+- **修复归属**：A 分支（Go 域）。不涉及契约冻结点：无新字段、无新状态码、无 wire 变更，客户端零改动。
+- **修复（`9bc1260` + 后续两笔，2026-10-20）**：
+  1. store 层新增 `ErrLiveBindingExists`，`bindingConflict` 按约束名分类：`live_install` → 该哨兵，`live_idx`/`live_account_idx` → 保持 `ErrConflict`。原注释里「三者都是同一件事」的断言被显式推翻并写入理由。
+  2. `admin` 层把该哨兵映射为可操作的 409，文案点名 reissue；**真竞态路径保持原样**（读回赢家许可证、返回 200），有回归测试守着。
+  3. 读路径按状态加权排序，confirmed 优先于 pending。**首购 happy path 不变**（首购账号没有 confirmed 行，仍如实报 pending）。因 `licence_bindings_live_account_idx` 已把「一个账号至多一张活证」写进 schema，买断版语义下这本就正确。
+- **遗留 / 未做（2026-10-20 晚已补）**：`POST /v1/activation/request` 原先仍会为已授权买家开新 pending 行。现已在 `Register` 前置 `holdsLiveLicence` 拦截——问的正是 `Licence()` 问的问题（confirmed 且指向该机器未收回的 binding），**不新增字段与错误码**：同样 201、同样两个字段，只是 `status="confirmed"`、`requestId` 是客户本就持有的那一行。不发新码是刻意的：C# 的 `Classify` 不认，已付费客户会读到「登记购买失败」，把一个表面问题变成硬失败。`server/mock/server.js` 同步（客户端当初是对着 mock 写的契约参照，不同步即在一个行为上分叉），`admin-console/test/smoke.mjs` 新增 [9] 段回归。
+  - **反向对照给出的性质（值得记）**：只回退读侧修复，冒烟 [9] 全绿——写侧已不产生墓碑；只回退写侧修复，[9] 三项变红，但 `/status` 与 `/licence` 仍被读侧救回。**两处修复互为独立的安全网**，任一单独存在都能挡住本次事故。读侧仍不可省：旧版本已经写进去的墓碑行还在库里，那正是它守的场景。
+- **验证上的一个坑（已记入 OB 知识库 `09.经验沉淀`）**：pgxmock 只断言查询字符串、从不执行它；`activation` 包的测试打在 fake store 上——fake 实现什么规则就验证什么规则。**把新 SQL 改回修复前，整个包依然全绿**，即本次要修的这条查询单测覆盖率为零。已补 `store/postgres/activation_realdb_test.go`（`WCB_TEST_DATABASE_URL` 未设置则跳过，CI 无库不受影响），五个账号对真 PostgreSQL 跑，并以反向对照确认它真的会红——报出的正是事故现场 `acct-1: got act_new/pending, want act_old/confirmed`。**A-⑧ 的真库集成测试仍欠着**，这一笔只是其中一个查询。
+
+- **数据处置**：受影响的买家已用 `POST /v1/admin/reissue` 解套（旧 binding 落 `revoked_at`，新证 `lic_f999907681b655089d050d72`），并用买家 token 走通 `status` → `licence`，最后以客户端内嵌公钥**独立**验签通过（纯 Python 重写 P-256，未复用 Go 的 `license.Verify`，并加「篡改 r 必须失败」反向对照）。
+
 
 
 本册建立本身即验证了同步协议 §5 的价值：C 发现缺陷后**守规矩未私改**、按 message 上报；A 的验证修正了其中一条的定级（C-2 从「发行炸弹」降为「契约违背」）——这正是「先登记、后修复」要达成的效果：缺陷不丢，定级不失真。

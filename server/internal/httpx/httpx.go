@@ -121,6 +121,15 @@ func FromStore(err error) *APIError {
 		return Unauthorized("登录凭证已被使用，请重新登录。")
 	case errors.Is(err, store.ErrConflict):
 		return Conflict("资源状态已变化，请刷新后重试。")
+	case errors.Is(err, store.ErrLiveBindingExists):
+		// A standing state, deliberately not falling through to Internal. The
+		// store separated this from ErrConflict precisely so it stops being
+		// read as "somebody else won a race": letting it reach the default
+		// arm would answer a 500, which tells the operator their server is
+		// broken when in fact the seller simply pressed the wrong button.
+		// The confirm handler names reissue in its own words; this is the
+		// floor that keeps a future caller from reporting a fault.
+		return Conflict("该机器已有有效许可证，无法重复签发。")
 	default:
 		return Internal(err)
 	}
@@ -173,7 +182,7 @@ func Logger(log *slog.Logger) gin.HandlerFunc {
 		log.Info("http",
 			"request_id", RequestID(c),
 			"method", c.Request.Method,
-			"path", c.Request.URL.Path,
+			"path", logRoute(c),
 			"status", c.Writer.Status(),
 			"duration_ms", time.Since(start).Milliseconds(),
 			"client_ip", c.ClientIP())
@@ -188,13 +197,23 @@ func RecoveryMiddleware(log *slog.Logger) gin.HandlerFunc {
 			if r := recover(); r != nil {
 				log.Error("panic",
 					"request_id", RequestID(c),
-					"path", c.Request.URL.Path,
+					"path", logRoute(c),
 					"panic", r)
 				Fail(c, Internal(fmt.Errorf("panic: %v", r)))
 			}
 		}()
 		c.Next()
 	}
+}
+
+// Login tickets are bearer credentials until the one-time handoff is consumed.
+// Log route templates, including on panic; an unmatched path may contain the
+// same credential with a typo or extra suffix, so do not log that raw either.
+func logRoute(c *gin.Context) string {
+	if path := c.FullPath(); path != "" {
+		return path
+	}
+	return "<unmatched>"
 }
 
 // LoggerMiddleware is the structured request logger.

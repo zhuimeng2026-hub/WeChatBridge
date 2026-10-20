@@ -18,6 +18,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/freestylefly/WeChatBridge/server/internal/store"
 	"github.com/freestylefly/WeChatBridge/server/internal/token"
 	"github.com/freestylefly/WeChatBridge/server/internal/wechat"
 )
@@ -188,37 +189,6 @@ func TestPollReturnsExpiredForATicketThatIsGone(t *testing.T) {
 	}
 }
 
-func TestTheQREndpointReturnsAPngWithinTheClientLimit(t *testing.T) {
-	t.Parallel()
-
-	_, engine := newTestServer(t)
-	created := createTicket(t, engine, "install-1")
-	ticket := created["ticket"].(string)
-
-	req := httptest.NewRequest(http.MethodGet, "/v1/auth/session/"+ticket+"/qr", nil)
-	rec := httptest.NewRecorder()
-	engine.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, body %s", rec.Code, rec.Body.String())
-	}
-	if ct := rec.Header().Get("Content-Type"); ct != "image/png" {
-		t.Errorf("Content-Type = %q, want image/png", ct)
-	}
-
-	body := rec.Body.Bytes()
-	// The client checks these bytes before handing them to WPF. A wrong
-	// server answering with an HTML error page would otherwise surface as a
-	// NotSupportedException inside the image decoder, which reads like a
-	// client bug rather than a bad response.
-	if !wechat.IsPNG(body) {
-		t.Fatalf("the response is not a PNG: % x", body[:min(16, len(body))])
-	}
-	if len(body) > wechat.MaxQRBytes {
-		t.Fatalf("the PNG is %d bytes, over the client's %d byte limit", len(body), wechat.MaxQRBytes)
-	}
-}
-
 func TestTheQREndpoint404sForATicketThatDoesNotExist(t *testing.T) {
 	t.Parallel()
 
@@ -231,13 +201,41 @@ func TestTheQREndpoint404sForATicketThatDoesNotExist(t *testing.T) {
 	}
 }
 
+func TestTheOutstandingTicketLimitIsNotSomethingARefreshCanHit(t *testing.T) {
+	t.Parallel()
+
+	// Every page load mints a ticket, so this used to be the shape of a seller
+	// who refreshed four times inside one ticket lifetime: 429, 「待处理的二维码
+	// 过多」, and no way forward until the TTL ran out. The oldest ticket is
+	// retired instead, so the newest request always wins.
+	_, engine := newTestServer(t)
+	for n := 0; n < 8; n++ {
+		rec, body := doJSON(t, engine, http.MethodPost, "/v1/auth/session",
+			map[string]any{"installId": "install-1"}, nil)
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("refresh %d: status = %d, want 201: %v", n, rec.Code, body)
+		}
+		if body["ticket"] == "" {
+			t.Fatalf("refresh %d: no ticket in the response", n)
+		}
+	}
+}
+
 func TestTooManyOutstandingTicketsAnswers429(t *testing.T) {
 	t.Parallel()
 
-	_, engine := newTestServer(t)
+	// The 429 still exists, and it is now narrower: it is only reachable when
+	// every live ticket is an authorised sign-in. The 429's own shape — the
+	// error code and the Retry-After the client backs off with — is unchanged.
+	h, engine := newTestServer(t)
+	var tickets []string
 	for n := 0; n < 3; n++ {
-		createTicket(t, engine, "install-1")
+		tickets = append(tickets, createTicket(t, engine, "install-1")["ticket"].(string))
 	}
+	for _, ticket := range tickets {
+		h.store.forceAuthSessionState(ticket, store.AuthAuthorized)
+	}
+
 	rec, body := doJSON(t, engine, http.MethodPost, "/v1/auth/session",
 		map[string]any{"installId": "install-1"}, nil)
 	if rec.Code != http.StatusTooManyRequests {
@@ -256,10 +254,9 @@ func TestTooManyOutstandingTicketsAnswers429(t *testing.T) {
 // The redirect
 // ---------------------------------------------------------------------------
 
-// §15.1 step 7. The callback is a browser-facing GET and answers 200 with no
-// redirect. A redirect here is the reflexive browser-shaped answer and it
-// breaks the flow, because the destination is a page in a browser the desktop
-// process has never heard of. The poller is the channel.
+// Desktop sign-ins answer 200 with instructions while the desktop polls for
+// credentials. Console sign-ins have a separate redirect test and return to
+// their business page in the same tab.
 //
 // The body used to be empty, and that was the bug this test now pins the other
 // way: a 200 with nothing in it renders as a blank white page in the browser

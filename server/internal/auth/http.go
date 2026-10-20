@@ -12,7 +12,6 @@ import (
 	"github.com/freestylefly/WeChatBridge/server/internal/httpx"
 	"github.com/freestylefly/WeChatBridge/server/internal/store"
 	"github.com/freestylefly/WeChatBridge/server/internal/token"
-	"github.com/freestylefly/WeChatBridge/server/internal/wechat"
 )
 
 // CallbackPath is the redirect URI's path. It is fixed rather than configured
@@ -57,6 +56,7 @@ func BearerToken(c *gin.Context) string {
 // decides what else is mounted and in what order.
 func (s *Service) RegisterRoutes(r gin.IRouter) {
 	group := r.Group("/v1/auth")
+	group.Use(privateAuthResponse)
 	group.POST("/session", s.handleCreateSession)
 	group.GET("/session/:ticket", s.handlePoll)
 	group.GET("/session/:ticket/qr", s.handleQRCode)
@@ -64,8 +64,16 @@ func (s *Service) RegisterRoutes(r gin.IRouter) {
 	group.POST("/refresh", s.handleRefresh)
 	group.GET("/wechat/callback", s.handleCallback)
 
-	r.GET("/v1/account", s.RequireAuth(), s.handleAccount)
+	r.GET("/v1/account", privateAuthResponse, s.RequireAuth(), s.handleAccount)
 	r.GET("/v1/accounts/:id/avatar", s.handleAvatar)
+}
+
+// These responses carry tickets, credentials, or account data. Apply on error
+// paths too, and avoid forwarding callback codes/state in a Referer header.
+func privateAuthResponse(c *gin.Context) {
+	c.Header("Cache-Control", "no-store")
+	c.Header("Referrer-Policy", "no-referrer")
+	c.Next()
 }
 
 // RequireAuth is the bearer middleware. It verifies the signature and the
@@ -187,18 +195,16 @@ func (s *Service) toPollResponse(ctx context.Context, r PollResult) pollResponse
 	return out
 }
 
-// handleQRCode serves the PNG. The client verifies the magic bytes before
-// handing it to a decoder, so an HTML error page here would surface deep
-// inside WPF as an UnsupportedException; the content type and the byte count
-// are both checked before anything is written.
+// handleQRCode retains the legacy route with an explicit migration error.
+// Extracting a QR image from WeChat's page does not run the browser-side poll
+// and redirect that delivers the authorization code. Both current clients use
+// authorizeUrl in a browser; returning a plausible PNG here would strand old
+// clients at pending without any way to finish signing in.
 func (s *Service) handleQRCode(c *gin.Context) {
 	ticket := c.Param("ticket")
 	session, err := s.store.GetAuthSession(c.Request.Context(), ticket)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
-			// A PNG-shaped 404 is still a failure the client will reject on
-			// its magic-byte check. There is no picture of a ticket that does
-			// not exist, so say so.
 			c.Status(http.StatusNotFound)
 			return
 		}
@@ -206,12 +212,12 @@ func (s *Service) handleQRCode(c *gin.Context) {
 		return
 	}
 
-	png, err := renderQR(session.AuthorizeURL)
-	if err != nil {
-		httpx.Fail(c, httpx.Internal(err))
+	if session.State != store.AuthPending || !s.now().Before(session.ExpiresAt) {
+		httpx.Fail(c, &httpx.APIError{Status: http.StatusGone, Code: httpx.CodeGone,
+			Message: "登录会话已失效或已完成，请重新获取登录链接。"})
 		return
 	}
-	c.Data(http.StatusOK, "image/png", png)
+	httpx.Fail(c, httpx.Conflict("请在浏览器中打开会话的 authorizeUrl，并扫描微信官方授权页的二维码完成登录。"))
 }
 
 func (s *Service) handleCallback(c *gin.Context) {
@@ -244,13 +250,16 @@ func (s *Service) handleCallback(c *gin.Context) {
 		return
 	}
 
-	// §15.1 step 7, still true and still the reason for this handler existing:
-	// the reply is 200 and it is not a redirect. The redirect target would be a
-	// page in a browser the desktop process has never heard of, and the client's
-	// channel is the poll. What that rule does *not* say is that the body must
-	// be empty — an empty 200 renders as a blank white page, which is the one
-	// thing the person who just scanned most needs to be told is not happening.
-	// So: same status, no redirect, and a page that says what to do next.
+	// The console resumes its saved ticket in the same browser tab. Never put
+	// tokens or the ticket in the redirect URL, and derive the destination from
+	// service configuration rather than a caller-supplied return URL.
+	if adminConsoleInstallID.MatchString(result.InstallID) {
+		c.Redirect(http.StatusSeeOther, s.cfg.PublicBaseURL+"/admin/")
+		return
+	}
+
+	// Desktop sign-ins still collect credentials by polling and show the buyer
+	// instructions here. They must not be redirected to the admin console.
 	s.renderCallbackPage(c, pageAuthorized, result.InstallID, http.StatusOK)
 }
 
@@ -422,6 +431,7 @@ func (s *Service) handleAccount(c *gin.Context) {
 // oracle over an id the caller already holds, which buys nothing: the caller
 // cannot do anything with an id it does not already have.
 func (s *Service) handleAvatar(c *gin.Context) {
+	c.Header("Cache-Control", "no-store")
 	accountID := c.Param("id")
 
 	rec, body, ok, err := s.Avatar(c.Request.Context(), accountID)
@@ -437,10 +447,19 @@ func (s *Service) handleAvatar(c *gin.Context) {
 		return
 	}
 
-	// Immutable by construction: the file name is the digest of the bytes, so
-	// the contents behind this URL cannot change. A year is safe for the same
-	// reason a year is safe on a content-addressed asset URL.
-	c.Header("Cache-Control", "public, max-age=31536000, immutable")
+	version := c.Query("v")
+	if version != "" && version != rec.Digest {
+		httpx.Fail(c, &httpx.APIError{Status: http.StatusGone, Code: httpx.CodeGone,
+			Message: "头像已更新，请使用账号信息中的最新头像地址。"})
+		return
+	}
+	if version == rec.Digest {
+		c.Header("Cache-Control", "public, max-age=31536000, immutable")
+	} else {
+		// Older clients still use the unversioned account path. It must be
+		// revalidated, or replacing an avatar would leave it stale for a year.
+		c.Header("Cache-Control", "no-cache")
+	}
 	// The ETag is the digest, which is both the file's name and the answer to
 	// "have these bytes changed". Sending it costs nothing and is the one thing
 	// a proxy in front of this service can use to answer a revalidation.
@@ -449,11 +468,9 @@ func (s *Service) handleAvatar(c *gin.Context) {
 	// bytes as anything they are not, which matters because this endpoint is
 	// reachable without a token.
 	c.Header("X-Content-Type-Options", "nosniff")
+	if c.GetHeader("If-None-Match") == `"`+rec.Digest+`"` {
+		c.Status(http.StatusNotModified)
+		return
+	}
 	c.Data(http.StatusOK, rec.MIME, body)
-}
-
-// renderQR is the one call into the encoder, so the size this service asks for
-// is one number in one place.
-func renderQR(body string) ([]byte, error) {
-	return wechat.RenderQRPNG(body, wechat.DefaultQRSize)
 }

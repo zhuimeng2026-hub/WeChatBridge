@@ -88,16 +88,32 @@ func uniqueConflict(op, constraint string, err error) error {
 }
 
 // bindingConflict classifies the three ways a licence binding insert can
-// collide: the same licence id written twice, or a second live binding for one
-// machine or for one account. All three mean the same thing to the caller —
-// somebody else got there first — and all three are the seller's to resolve,
-// because the two partial unique indexes are the machine-change policy in
-// schema form.
+// collide — and it does NOT lump them together, because they are not the same
+// event.
+//
+//   - licence_bindings_pkey: the same licence id twice. That is a genuine race
+//     on a random id, and the loser retries.
+//   - licence_bindings_live_account_idx: a second live binding for one
+//     account. Also a real race: one account can hold pending requests for two
+//     different machines, so two sellers confirming at once is ordinary.
+//   - licence_bindings_live_install_idx: a second live binding for one
+//     machine. This one CANNOT be a race. Only one pending request per install
+//     id may exist at a time (activation_requests_live_install_idx), and the
+//     confirm path takes a row lock and re-checks the status before inserting,
+//     so a concurrent confirm of the same request is already excluded. The
+//     only way to land here is that the machine held a live licence from an
+//     earlier, already-confirmed request.
+//
+// The last one used to be reported as a plain conflict, which told the seller
+// "somebody else got there first, refresh and try again" about a state that
+// no amount of retrying could ever change.
 func bindingConflict(op string, err error) error {
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == pgUniqueViolation {
 		switch pgErr.ConstraintName {
-		case constraintLicenceBindingPK, constraintBindingLiveInstall, constraintBindingLiveAccount:
+		case constraintBindingLiveInstall:
+			return store.ErrLiveBindingExists
+		case constraintLicenceBindingPK, constraintBindingLiveAccount:
 			return store.ErrConflict
 		}
 		return wrap(op, fmt.Errorf("unique violation on %s: %w", pgErr.ConstraintName, err))

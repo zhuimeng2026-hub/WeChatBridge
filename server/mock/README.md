@@ -14,7 +14,7 @@
 | 真实（可依赖） | Mock（不可依赖） |
 | --- | --- |
 | 全部路由与 HTTP 方法 | 签名是占位符——envelope **不会**通过客户端内嵌公钥验签 |
-| 字段名、状态码、错误信封 | QR PNG 是 QR 形状的占位图（合法 PNG，不可扫） |
+| 字段名、状态码、错误信封 | 扫码由 `/mock/scan` 模拟，不连接真实微信 |
 | 时间戳格式、token 编码 | 任意非空 bearer token / admin 密码均接受 |
 | CORS 全开（`*`） | 无数据库、无限流、无并发互斥 |
 
@@ -40,8 +40,9 @@ node server/mock/server.js --port 8901
 
 完整流程（全部已实测通过）：
 
-1. `POST /v1/auth/session {installId, deviceId}` → `{ticket, qrImageUrl, expiresAt}`
-2. 展示 `qrImageUrl` 指向的 PNG，轮询 `GET /v1/auth/session/:ticket`
+1. `POST /v1/auth/session {installId, deviceId}` → `{ticket, authorizeUrl, qrImageUrl, expiresAt}`
+2. 真实登录在浏览器中打开 `authorizeUrl`，原客户端轮询 `GET /v1/auth/session/:ticket`。
+   旧 `/qr` 对有效待授权会话返回 409，要求使用官方授权页；已完成/失效返回 410，未知会话返回 404。
 3. **模拟扫码**：`POST /mock/scan/:ticket`（真实环境由微信回调触发，mock 用它代替）
 4. 轮询返回 `{status:"authorized", accessToken, refreshToken, account}`
 5. `POST /v1/activation/request`（Bearer）→ `{requestId, status:"pending"}`

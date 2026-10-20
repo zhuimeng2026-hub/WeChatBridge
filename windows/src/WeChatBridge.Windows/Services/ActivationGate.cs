@@ -50,7 +50,7 @@ internal sealed class ActivationGate : IDisposable
     private readonly Action<string>? _log;
     private bool _disposed;
 
-    private ActivationGate(ActivationGateway gateway, AppSettingsStore settings, Action<string>? log)
+    internal ActivationGate(ActivationGateway gateway, AppSettingsStore settings, Action<string>? log)
     {
         _gateway = gateway;
         _settings = settings;
@@ -58,6 +58,14 @@ internal sealed class ActivationGate : IDisposable
     }
 
     public static ActivationGate Current { get; } = new(ActivationGateway.Current, new AppSettingsStore(), null);
+
+    public event Action? Changed
+    {
+        add => _gateway.Changed += value;
+        remove => _gateway.Changed -= value;
+    }
+
+    public AuthTokens? StoredTokens => _gateway.StoredTokens;
 
     /// <summary>Everything the gate knows, as one value.</summary>
     public GateSnapshot Snapshot => _gateway.Snapshot();
@@ -166,6 +174,13 @@ internal sealed class ActivationGate : IDisposable
 
     private GatePage ShowLogin(Window owner, Action<string>? log, bool autoRegister = false)
     {
+        // A customer who is already signed in does not need a login window — the
+        // "我已付款" entry would put them through a redundant QR scan and leave
+        // them staring at "获取登录链接" when all they came for was to register the
+        // purchase. Bail straight to the purchase page instead.
+        if (_gateway.IsSignedIn)
+            return ShowPurchase(owner, log, autoRegister);
+
         using var controller = new AccountController(_gateway.Account, _gateway.InstallId, log);
         new LoginWindow(controller) { Owner = owner }.ShowDialog();
         return controller.IsSignedIn ? ContinueAfterLogin(owner, log, autoRegister) : GatePage.Login;
@@ -214,6 +229,15 @@ internal sealed class ActivationGate : IDisposable
 
         return controller.IsLicensed ? GatePage.None : GatePage.Purchase;
     }
+
+    /// <summary>
+    /// Asks the licence service whether the cached session is still alive. Pure
+    /// pass-through to <see cref="ActivationGateway.MeAsync"/> — the gate keeps the
+    /// one facade so panes that already know it do not have to reach across to the
+    /// gateway.
+    /// </summary>
+    public Task<LoginOutcome> MeAsync(CancellationToken cancellationToken) =>
+        _gateway.MeAsync(cancellationToken);
 
     /// <summary>
     /// Remembers that the page has been offered. Written even when the user bought

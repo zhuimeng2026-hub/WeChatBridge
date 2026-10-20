@@ -93,6 +93,18 @@ func (f *fakeStore) CreateAuthSession(_ context.Context, s store.AuthSession) er
 	return nil
 }
 
+// DeleteAuthSession mirrors the store's state guard: only a pending row goes.
+func (f *fakeStore) DeleteAuthSession(_ context.Context, ticket string) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	s, ok := f.authSessions[ticket]
+	if !ok || s.State != store.AuthPending {
+		return false, nil
+	}
+	delete(f.authSessions, ticket)
+	return true, nil
+}
+
 func (f *fakeStore) GetAuthSession(_ context.Context, ticket string) (store.AuthSession, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

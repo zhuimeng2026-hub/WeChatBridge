@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -114,6 +115,17 @@ const markAuthSessionAuthorizedSQL = `
 	UPDATE auth_sessions SET state = 'authorized', account_id = $2
 	WHERE ticket = $1 AND state = 'pending'`
 
+// deleteAuthSessionSQL retires a ticket. The `state = 'pending'` guard is the
+// safety property, not an optimisation: the caller is evicting the oldest of
+// several live tickets without holding a lock against the callback, and an
+// authorised row is a sign-in somebody has already completed and may not have
+// polled for yet. Deleting that is the one outcome worse than the row living a
+// few more minutes, so it is excluded here rather than in Go — a Go check and
+// a DELETE are two statements, and a scan can land between them.
+const deleteAuthSessionSQL = `
+	DELETE FROM auth_sessions
+	WHERE ticket = $1 AND state = 'pending'`
+
 // CreateAuthSession records a QR sign-in that is about to be shown.
 func (s *Store) CreateAuthSession(ctx context.Context, sess store.AuthSession) error {
 	state := sess.State
@@ -127,6 +139,19 @@ func (s *Store) CreateAuthSession(ctx context.Context, sess store.AuthSession) e
 		return err
 	}
 	return nil
+}
+
+// DeleteAuthSession retires a pending ticket and reports whether a row went
+// away. False with a nil error is a normal answer, not a failure: the row may
+// already be gone, or — the case this method exists to make safe — it may have
+// been authorised in the meantime, in which case the state guard refused it and
+// the completed sign-in is still there to be polled.
+func (s *Store) DeleteAuthSession(ctx context.Context, ticket string) (bool, error) {
+	tag, err := s.db.Exec(ctx, deleteAuthSessionSQL, ticket)
+	if err != nil {
+		return false, fmt.Errorf("delete auth session: %w", err)
+	}
+	return tag.RowsAffected() > 0, nil
 }
 
 // GetAuthSession reads a ticket. An expired ticket is a miss as far as callers
@@ -421,15 +446,11 @@ func (s *Store) RotateRefresh(ctx context.Context, oldHash, newHash, newAccessHa
 		rotated bool
 	)
 	err := s.inTx(ctx, func(tx pgx.Tx) error {
-		var (
-			accountID, chainID    string
-			currentHash, prevHash string
-			expiresAt             time.Time
-			revokedAt             pgtype.Timestamptz
-		)
-		err := tx.QueryRow(ctx, sessionMatchForUpdateSQL, oldHash).Scan(
-			&accountID, &chainID, &currentHash, &prevHash, &expiresAt, &revokedAt,
-		)
+		// The shared scanner, not a second copy of it. This path used to
+		// write its own Scan, which is how the fix for the NULL previous
+		// hash landed in the lookup and missed here: the client kept getting
+		// 503 from this half, and the error only changed its wording.
+		row, err := scanSessionRow(tx.QueryRow(ctx, sessionMatchForUpdateSQL, oldHash), oldHash)
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				// No such token. The caller must clear its session: presenting
@@ -441,14 +462,8 @@ func (s *Store) RotateRefresh(ctx context.Context, oldHash, newHash, newAccessHa
 			return wrap("rotate refresh: load token", err)
 		}
 
-		sess = store.Session{
-			ID:               accountID,
-			AccountID:        accountID,
-			RefreshTokenHash: oldHash,
-			RefreshExpiresAt: utc(expiresAt),
-			ChainID:          chainID,
-			RevokedAt:        nullTime(revokedAt),
-		}
+		sess = row.Session
+		currentHash, prevHash := row.LiveHash, row.PrevHash
 
 		// The family was revoked: sign-out everywhere, or a theft response.
 		if sess.RevokedAt != nil {
@@ -463,11 +478,11 @@ func (s *Store) RotateRefresh(ctx context.Context, oldHash, newHash, newAccessHa
 		}
 		// Expired. The client is told to re-authenticate; it is not an error,
 		// it is the answer.
-		if !expiresAt.After(now) {
+		if !sess.RefreshExpiresAt.After(now) {
 			return nil
 		}
 
-		tag, err := tx.Exec(ctx, rotateReplaceSQL, oldHash, newHash, accountID, expiresAt)
+		tag, err := tx.Exec(ctx, rotateReplaceSQL, oldHash, newHash, sess.AccountID, sess.RefreshExpiresAt)
 		if err != nil {
 			return wrap("rotate refresh: replace token", err)
 		}

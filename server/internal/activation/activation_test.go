@@ -346,6 +346,262 @@ func TestStatusRequiresASignedInAccount(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// The account-scoped read — a registration must not shadow a live licence
+//
+// Design doc §11.7 M-5. A customer who already holds a licence taps "I have
+// ordered" a second time; the registration opens a new pending row on top of
+// the confirmed one, and a read that takes the newest row waits on that
+// pending row forever. The licence the customer already paid for is on the
+// older row, and the licence endpoint never reaches it.
+//
+// The rule these tests pin: the row that names the account's live licence
+// wins; a buyer with no live licence still gets the ordinary newest row.
+// ---------------------------------------------------------------------------
+
+// licensedWithALaterRegistration is the incident's fixture: a confirmed
+// request whose licence is live, and a newer pending registration on top of
+// it. The pending row is the tombstone — it can never be confirmed, because
+// the machine's binding slot is taken.
+func licensedWithALaterRegistration(t *testing.T) (*fakeActivationStore, string) {
+	t.Helper()
+	st := newFakeStore()
+	const installID = "install-1"
+	st.seed(store.ActivationRequest{
+		RequestID: "act_old", InstallID: installID, AccountID: "acct-1",
+		Status: store.ActivationConfirmed, LicenseID: "lic_old",
+		EnvelopeJSON: signedEnvelope(t, installID),
+	})
+	st.seedBinding(store.LicenceBinding{
+		LicenseID: "lic_old", InstallID: installID, AccountID: "acct-1", RequestID: "act_old",
+	})
+	// The second tap. Seeded after the confirmed row, so it is the newer one.
+	st.seed(store.ActivationRequest{
+		RequestID: "act_new", InstallID: installID, AccountID: "acct-1",
+		Status: store.ActivationPending,
+	})
+	return st, installID
+}
+
+func TestRegisterOnAnAlreadyLicensedAccountAnswersWithTheLicence(t *testing.T) {
+	t.Parallel()
+	st, installID := licensedWithALaterRegistration(t)
+	// Start from a clean slate so the assertion below is about what Register
+	// writes, not about the tombstone the fixture deliberately seeds.
+	engine := newTestEngine(t, st, "acct-1")
+
+	rec, body := doJSON(t, engine, http.MethodPost, "/v1/activation/request",
+		map[string]any{"installId": installID})
+
+	// Same status code, same two fields — the C# client's classifier never sees
+	// anything it does not already handle.
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status %d, want 201: a licensed account must not be told registration failed (%s)", rec.Code, rec.Body.String())
+	}
+	if body["status"] != "confirmed" {
+		t.Fatalf("status = %v, want confirmed", body["status"])
+	}
+	if body["requestId"] != "act_old" {
+		t.Errorf("requestId = %v, want act_old (the request the customer already owns)", body["requestId"])
+	}
+}
+
+func TestRegisterOnAnAlreadyLicensedAccountFilesNothingNew(t *testing.T) {
+	t.Parallel()
+	st, _ := licensedWithALaterRegistration(t)
+	engine := newTestEngine(t, st, "acct-1")
+	before := len(st.requests)
+
+	doJSON(t, engine, http.MethodPost, "/v1/activation/request", map[string]any{"installId": "install-1"})
+
+	if len(st.requests) != before {
+		t.Fatalf("Register filed %d new row(s) for an account that already holds a live licence: "+
+			"the row can never be confirmed (one live licence per account) and it is exactly the "+
+			"tombstone §11.7 M-5 describes", len(st.requests)-before)
+	}
+}
+
+func TestRegisterOnAnUnlicensedAccountStillFilesARequest(t *testing.T) {
+	t.Parallel()
+	st := newFakeStore()
+	engine := newTestEngine(t, st, "acct-1")
+
+	rec, body := doJSON(t, engine, http.MethodPost, "/v1/activation/request",
+		map[string]any{"installId": "install-new"})
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status %d, want 201", rec.Code)
+	}
+	// The first purchase must be untouched by the licence check.
+	if body["status"] != "pending" {
+		t.Fatalf("status = %v, want pending", body["status"])
+	}
+	if body["requestId"] == "" {
+		t.Fatal("no requestId in the reply")
+	}
+}
+
+func TestRegisterAfterARevocationFilesARequestAgain(t *testing.T) {
+	t.Parallel()
+	// The mirror of the tombstone: the licence is dead, so the account is not
+	// licensed, and a new purchase must be registrable.
+	st := newFakeStore()
+	revoked := time.Now().UTC().Add(-time.Hour)
+	st.seed(store.ActivationRequest{
+		RequestID: "act_old", InstallID: "install-1", AccountID: "acct-1",
+		Status: store.ActivationConfirmed, LicenseID: "lic_old",
+		EnvelopeJSON: signedEnvelope(t, "install-1"),
+	})
+	st.seedBinding(store.LicenceBinding{
+		LicenseID: "lic_old", InstallID: "install-1", AccountID: "acct-1",
+		RequestID: "act_old", RevokedAt: &revoked,
+	})
+	engine := newTestEngine(t, st, "acct-1")
+
+	rec, body := doJSON(t, engine, http.MethodPost, "/v1/activation/request",
+		map[string]any{"installId": "install-1"})
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status %d, want 201", rec.Code)
+	}
+	if body["status"] != "pending" {
+		t.Fatalf("status = %v, want pending: a revoked licence must not keep the customer locked out", body["status"])
+	}
+}
+
+func TestStatusPrefersTheLiveLicenceOverANewerRegistration(t *testing.T) {
+	t.Parallel()
+	st, _ := licensedWithALaterRegistration(t)
+	engine := newTestEngine(t, st, "acct-1")
+
+	_, body := doJSON(t, engine, http.MethodGet, "/v1/activation/status", nil)
+	if body["status"] != "confirmed" {
+		t.Fatalf("status = %v, want confirmed: a newer registration shadowed the live licence", body["status"])
+	}
+	if body["licenseId"] != "lic_old" {
+		t.Fatalf("licenseId = %v, want lic_old (the live licence)", body["licenseId"])
+	}
+}
+
+func TestLicenceIsHandedOutDespiteANewerRegistration(t *testing.T) {
+	t.Parallel()
+	st, installID := licensedWithALaterRegistration(t)
+	engine := newTestEngine(t, st, "acct-1")
+
+	// The whole point of the fix: the licence the customer already paid for
+	// is collectible again. Before it, the pending row shadowed the confirmed
+	// one and this endpoint answered ErrNotConfirmed forever.
+	rec, body := doJSON(t, engine, http.MethodGet, "/v1/activation/licence", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("licence = %d, want 200: %s", rec.Code, rec.Body.String())
+	}
+	token, _ := body["token"].(string)
+	decoded, err := base64.RawURLEncoding.DecodeString(token)
+	if err != nil {
+		t.Fatalf("token is not unpadded base64url: %v", err)
+	}
+	var fromToken license.Envelope
+	if err := json.Unmarshal(decoded, &fromToken); err != nil {
+		t.Fatalf("token does not decode to an envelope: %v", err)
+	}
+	if fromToken.Subject != installID {
+		t.Fatalf("envelope subject = %q, want the install id %q", fromToken.Subject, installID)
+	}
+	envelope, _ := body["envelope"].(map[string]any)
+	if envelope["sub"] != installID {
+		t.Fatalf("envelope.sub = %v, want %q", envelope["sub"], installID)
+	}
+}
+
+func TestAFirstTimeBuyerStillSeesTheirPendingRegistration(t *testing.T) {
+	t.Parallel()
+	// The happy path must not move. A buyer who has never been confirmed has
+	// no live licence, so there is nothing to prefer, and their pending
+	// request is still what the poller waits on.
+	st := newFakeStore()
+	st.seed(store.ActivationRequest{
+		RequestID: "act_1", InstallID: "install-1", AccountID: "acct-1",
+		Status: store.ActivationPending,
+	})
+	engine := newTestEngine(t, st, "acct-1")
+
+	_, body := doJSON(t, engine, http.MethodGet, "/v1/activation/status", nil)
+	if body["status"] != "pending" {
+		t.Fatalf("status = %v, want pending", body["status"])
+	}
+	rec, _ := doJSON(t, engine, http.MethodGet, "/v1/activation/licence", nil)
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("licence before confirm = %d, want 409", rec.Code)
+	}
+}
+
+func TestANewerRegistrationSurvivesARevokedLicence(t *testing.T) {
+	t.Parallel()
+	// The mirror image of the incident, and the reason the rule is about the
+	// LIVE licence rather than about the word "confirmed". A customer whose
+	// licence was revoked and who registers again must see their new pending
+	// request: the dead confirmed row must not hide a purchase that can still
+	// be confirmed — and the dead licence must not be handed out again.
+	st := newFakeStore()
+	const installID = "install-1"
+	st.seed(store.ActivationRequest{
+		RequestID: "act_old", InstallID: installID, AccountID: "acct-1",
+		Status: store.ActivationConfirmed, LicenseID: "lic_old",
+		EnvelopeJSON: signedEnvelope(t, installID),
+	})
+	st.seedBinding(store.LicenceBinding{
+		LicenseID: "lic_old", InstallID: installID, AccountID: "acct-1", RequestID: "act_old",
+	})
+	if err := st.RevokeBinding(t.Context(), "lic_old", time.Now().UTC()); err != nil {
+		t.Fatalf("RevokeBinding: %v", err)
+	}
+	st.seed(store.ActivationRequest{
+		RequestID: "act_new", InstallID: installID, AccountID: "acct-1",
+		Status: store.ActivationPending,
+	})
+	engine := newTestEngine(t, st, "acct-1")
+
+	_, body := doJSON(t, engine, http.MethodGet, "/v1/activation/status", nil)
+	if body["status"] != "pending" {
+		t.Fatalf("status = %v, want pending: the dead confirmed row shadowed the new registration", body["status"])
+	}
+	rec, _ := doJSON(t, engine, http.MethodGet, "/v1/activation/licence", nil)
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("licence for a revoked licence = %d, want 409", rec.Code)
+	}
+}
+
+func TestARevokedLicenceAloneStillReadsAsConfirmed(t *testing.T) {
+	t.Parallel()
+	// The read must not quietly downgrade a revoked licence to "pending": the
+	// request was confirmed, and the client shows a different screen for each.
+	// What the revocation changes is that the licence is not handed out again
+	// (see TestLicenceRefusesARevokedRequest), not what the history says.
+	st := newFakeStore()
+	const installID = "install-1"
+	st.seed(store.ActivationRequest{
+		RequestID: "act_1", InstallID: installID, AccountID: "acct-1",
+		Status: store.ActivationConfirmed, LicenseID: "lic_1",
+		EnvelopeJSON: signedEnvelope(t, installID),
+	})
+	st.seedBinding(store.LicenceBinding{
+		LicenseID: "lic_1", InstallID: installID, AccountID: "acct-1", RequestID: "act_1",
+	})
+	if err := st.RevokeBinding(t.Context(), "lic_1", time.Now().UTC()); err != nil {
+		t.Fatalf("RevokeBinding: %v", err)
+	}
+	engine := newTestEngine(t, st, "acct-1")
+
+	_, body := doJSON(t, engine, http.MethodGet, "/v1/activation/status", nil)
+	if body["status"] != "confirmed" || body["licenseId"] != "lic_1" {
+		t.Fatalf("status = %v, licenseId = %v; want confirmed / lic_1", body["status"], body["licenseId"])
+	}
+	rec, _ := doJSON(t, engine, http.MethodGet, "/v1/activation/licence", nil)
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("licence for a revoked licence = %d, want 409", rec.Code)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // GET /v1/activation/licence
 // ---------------------------------------------------------------------------
 

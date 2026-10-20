@@ -24,6 +24,12 @@ import (
 //     a new row rather than conflicting. That is the partial unique index's
 //     exact shape.
 //
+//   - The account's latest request is the one that names the live licence if
+//     the account holds one, and the newest row otherwise. A second
+//     registration by a customer who already holds a licence must not shadow
+//     the licence they paid for — that is the tombstone of design doc §11.7
+//     M-5, and the read is where it is stopped.
+//
 //   - A licence is live only while the machine's live binding names it.
 //     Revocation is a date on the binding in this schema, so the fake marks
 //     bindings, not requests: a reissue retires the old binding and installs
@@ -112,26 +118,63 @@ func (f *fakeActivationStore) CreateActivationRequest(_ context.Context, r store
 	return r, nil
 }
 
+// LatestActivationRequest mirrors the store's account-scoped read: the
+// request the buyer's poller is waiting on.
+//
+// It is not simply the newest row. The database's query gives the account's
+// live licence priority, because a customer who already holds a licence and
+// registers again must not end up waiting on a registration that can never be
+// confirmed (design doc §11.7 M-5) — the row that names the live binding wins.
+//
+// A customer whose licence was revoked and who registers again sees their NEW
+// pending request instead of the dead confirmed row: with no live licence
+// there is nothing to prefer, so the ordinary newest-wins rule applies.
 func (f *fakeActivationStore) LatestActivationRequest(_ context.Context, accountID store.ID) (store.ActivationRequest, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.latestErr != nil {
 		return store.ActivationRequest{}, f.latestErr
 	}
-	var best *fakeRequest
+	var newest *fakeRequest
+	var live *fakeRequest
 	for i := range f.requests {
 		r := &f.requests[i]
 		if r.AccountID != accountID {
 			continue
 		}
-		if best == nil || r.seq > best.seq {
-			best = r
+		if newest == nil || r.seq > newest.seq {
+			newest = r
+		}
+		if f.namesTheLiveLicence(r) && (live == nil || r.seq > live.seq) {
+			live = r
 		}
 	}
-	if best == nil {
+	if live != nil {
+		return live.ActivationRequest, nil
+	}
+	if newest == nil {
 		return store.ActivationRequest{}, store.ErrNotFound
 	}
-	return best.ActivationRequest, nil
+	return newest.ActivationRequest, nil
+}
+
+// namesTheLiveLicence reports whether the row is a confirmed one whose licence
+// is the machine's live binding — the same question the licence endpoint asks
+// before it hands out bytes, and the same one the store's query asks.
+func (f *fakeActivationStore) namesTheLiveLicence(r *fakeRequest) bool {
+	if r.Status != store.ActivationConfirmed || r.LicenseID == "" {
+		return false
+	}
+	for i := range f.bindings {
+		b := &f.bindings[i]
+		if b.RevokedAt != nil {
+			continue
+		}
+		if b.InstallID == r.InstallID && b.LicenseID == r.LicenseID {
+			return true
+		}
+	}
+	return false
 }
 
 func (f *fakeActivationStore) GetActivationRequest(_ context.Context, requestID string) (store.ActivationRequest, error) {

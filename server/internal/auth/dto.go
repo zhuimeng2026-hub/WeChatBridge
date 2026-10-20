@@ -39,9 +39,8 @@ func (s stamp) MarshalJSON() ([]byte, error) {
 
 // createSessionResponse is POST /v1/auth/session.
 //
-// QrImageURL is absolute because the client turns it into a Uri and hands it
-// to a downloader with no base address to resolve against; a relative path
-// would depend on the caller knowing its own origin.
+// QRImageURL is retained for wire compatibility. Its deprecated route returns
+// a migration error; clients must open AuthorizeURL in a desktop browser.
 type createSessionResponse struct {
 	Ticket       string `json:"ticket"`
 	AuthorizeURL string `json:"authorizeUrl"`

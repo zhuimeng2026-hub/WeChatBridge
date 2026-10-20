@@ -210,7 +210,23 @@ type TransportError struct {
 	Cause error
 }
 
-func (e *TransportError) Error() string { return "wechat: " + e.Op + ": " + e.Cause.Error() }
+func (e *TransportError) Error() string {
+	// net/http wraps failures in url.Error, whose message includes the query
+	// string (AppSecret, code, or OAuth token). Keep the cause for errors.Is/As,
+	// but expose only a safe classification to logs and HTTP error handlers.
+	detail := "request failed"
+	if errors.Is(e.Cause, context.Canceled) {
+		detail = "request cancelled"
+	} else if errors.Is(e.Cause, context.DeadlineExceeded) {
+		detail = "request timed out"
+	} else {
+		var netErr net.Error
+		if errors.As(e.Cause, &netErr) && netErr.Timeout() {
+			detail = "request timed out"
+		}
+	}
+	return "wechat: " + e.Op + ": " + detail
+}
 
 func (e *TransportError) Unwrap() error { return e.Cause }
 
@@ -261,7 +277,7 @@ type userInfoResponse struct {
 // Public surface
 // ---------------------------------------------------------------------------
 
-// AuthorizeURL builds the URL to encode into the QR code. state is opaque to
+// AuthorizeURL builds the URL to open in the desktop browser. state is opaque to
 // WeChat and comes back untouched on the redirect, so it is where the ticket
 // that ties this scan to this desktop process travels.
 func (c *Client) AuthorizeURL(state, redirectURI string) string {
@@ -293,6 +309,11 @@ type Session struct {
 // therefore the ordinary answer, not a fault: a server that refused to sign in
 // because WeChat would not volunteer a nickname would be a server that signs
 // fewer people in than its contract allows.
+//
+// Availability depends on the grant and the upstream response, not on the scope
+// string alone, so this is a snapshot rather than a guarantee. Account identity
+// and administrator privileges always use the verified OpenID — never a display
+// name.
 type Profile struct {
 	Nickname  string
 	AvatarURL string

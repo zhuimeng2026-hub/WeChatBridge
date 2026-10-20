@@ -69,13 +69,20 @@ func TestAuthorizeURLCarriesEveryParameterWechatNeeds(t *testing.T) {
 		}
 	}
 
-	// scope must be snsapi_login and not snsapi_userinfo: this app carries no
-	// grant for the wider scope, so WeChat rejects the request outright, and
-	// where a grant does exist the wider scope still adds a consent screen
-	// between the scan and the redirect that the desktop client has no way to
-	// complete or even observe — the scan finishes and nobody ever signs in.
-	if q.Get("scope") != Scope {
-		t.Errorf("scope = %q, want %q", q.Get("scope"), Scope)
+	// Spelled out as a literal, not as `Scope`. The table above already pins
+	// the literal; asserting scope == Scope on top of it proves only that the
+	// constant matches itself, and it sailed through the exact commit that
+	// broke sign-in for everyone. Website qrconnect requires snsapi_login,
+	// independently of whether userinfo is available for a particular grant.
+	//
+	// The wider scope fails in three layers that stack: the protocol does not
+	// allow it in qrconnect, this app carries no grant for it (WeChat rejects
+	// the request outright, before a QR code is even rendered), and where a
+	// grant does exist it still inserts a consent screen between the scan and
+	// the redirect that the desktop client has no way to complete or observe.
+	if Scope != "snsapi_login" {
+		t.Errorf("Scope = %q, want website login scope snsapi_login", Scope)
+	}
 	}
 	// A secret in the browser-facing URL would be a secret in a browser
 	// history.
@@ -386,5 +393,27 @@ func TestContextCancellationIsTransient(t *testing.T) {
 	}
 	if !IsTransient(err) {
 		t.Errorf("a cancelled or timed-out request is transient: %v", err)
+	}
+}
+
+func TestTransportErrorsDoNotExposeCredentials(t *testing.T) {
+	t.Parallel()
+	client := NewClient(Config{AppID: "wx", AppSecret: "private-app-secret", APIBase: "https://api.weixin.qq.com"})
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	_, exchangeErr := client.ExchangeCode(ctx, "private-auth-code")
+	_, profileErr := client.FetchProfile(ctx, "private-oauth-token", "private-openid")
+	for name, err := range map[string]error{"exchange": exchangeErr, "profile": profileErr} {
+		if err == nil {
+			t.Fatalf("%s: expected a transport failure", name)
+		}
+		for _, secret := range []string{"private-app-secret", "private-auth-code", "private-oauth-token", "private-openid"} {
+			if strings.Contains(err.Error(), secret) {
+				t.Errorf("%s error exposes a credential", name)
+			}
+		}
+		if !errors.Is(err, context.Canceled) || !IsTransient(err) {
+			t.Errorf("%s: sanitizing the error lost its classification", name)
+		}
 	}
 }

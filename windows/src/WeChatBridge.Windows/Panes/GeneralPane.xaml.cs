@@ -1,4 +1,5 @@
 using WeChatBridge.Windows.Core;
+using WeChatBridge.Windows.Core.Activation;
 using System.Diagnostics;
 using System.Reflection;
 using System.Windows;
@@ -9,13 +10,22 @@ namespace WeChatBridge.Windows.Panes;
 /// <summary>通用 pane: status, retention window, version.</summary>
 public partial class GeneralPane : UserControl
 {
-    public GeneralPane()
+    private readonly Services.ActivationGate _gate;
+    private Window? _owner;
+    private bool _sessionProbed;
+
+    public GeneralPane() : this(Services.ActivationGate.Current) { }
+
+    internal GeneralPane(Services.ActivationGate gate)
     {
+        _gate = gate;
         InitializeComponent();
         var informational = Assembly.GetExecutingAssembly()
             .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
         VersionText.Text = L10n.Format($"当前版本 {ShortVersion(informational)}");
         RenderLicenceState();
+        Loaded += OnLoaded;
+        Unloaded += OnUnloaded;
     }
 
     /// <summary>
@@ -29,7 +39,7 @@ public partial class GeneralPane : UserControl
     /// </summary>
     private void RenderLicenceState()
     {
-        var gate = Services.ActivationGate.Current;
+        var gate = _gate;
         LicenceStatusText.Text = gate.StatusText;
 
         var installId = gate.Snapshot.InstallId;
@@ -42,6 +52,11 @@ public partial class GeneralPane : UserControl
         // goes rather than opening a window that says "you are already done".
         OpenActivationButton.Visibility = gate.CanOpenFromSettings ? Visibility.Visible : Visibility.Collapsed;
         OpenPaidButton.Visibility = gate.CanOpenFromSettings ? Visibility.Visible : Visibility.Collapsed;
+
+        var tokens = gate.StoredTokens;
+        var account = tokens is not null && tokens.IsUsableAt(DateTimeOffset.UtcNow) ? tokens.Account : null;
+        SessionInfoText.Text = account is null ? string.Empty : FormatSessionLine(account);
+        SessionInfoText.Visibility = account is null ? Visibility.Collapsed : Visibility.Visible;
     }
 
     private void OpenActivation_Click(object sender, RoutedEventArgs e)
@@ -49,7 +64,7 @@ public partial class GeneralPane : UserControl
         if (Window.GetWindow(this) is not { } window)
             return;
 
-        Services.ActivationGate.Current.OpenManually(window);
+        _gate.OpenManually(window);
 
         // The page may have taken the licence it was opened to fetch.
         RenderLicenceState();
@@ -60,10 +75,116 @@ public partial class GeneralPane : UserControl
         if (Window.GetWindow(this) is not { } window)
             return;
 
-        Services.ActivationGate.Current.OpenAlreadyPaid(window);
+        _gate.OpenAlreadyPaid(window);
 
         // The page may have taken the licence it was opened to fetch.
         RenderLicenceState();
+    }
+
+    private void OnLoaded(object sender, RoutedEventArgs e)
+    {
+        _gate.Changed -= OnStateChanged;
+        _gate.Changed += OnStateChanged;
+        if (_owner is not null)
+            _owner.Activated -= OnWindowActivated;
+        _owner = Window.GetWindow(this);
+        if (_owner is not null)
+            _owner.Activated += OnWindowActivated;
+        RenderLicenceState();
+
+        // Re-entering the pane only re-renders local state. The server probe runs
+        // once; subsequent login/profile updates arrive through Changed.
+        if (!_sessionProbed)
+        {
+            _sessionProbed = true;
+            _ = RefreshSessionAsync();
+        }
+    }
+
+    private void OnUnloaded(object sender, RoutedEventArgs e)
+    {
+        _gate.Changed -= OnStateChanged;
+        if (_owner is not null)
+            _owner.Activated -= OnWindowActivated;
+        _owner = null;
+    }
+
+    private void OnStateChanged()
+    {
+        if (!Dispatcher.CheckAccess())
+        {
+            Dispatcher.BeginInvoke(new Action(OnStateChanged));
+            return;
+        }
+        if (IsLoaded)
+            RenderLicenceState();
+    }
+
+    /// <summary>
+    /// Pane-level re-read on owner focus. A ShowDialog closing — LoginWindow,
+    /// PurchaseWindow, or any future modal the gate opens — necessarily
+    /// re-activates the owner; that's the natural moment to fetch the latest
+    /// snapshot without a restart.
+    /// </summary>
+    private void OnWindowActivated(object? sender, EventArgs e) => RenderLicenceState();
+
+    /// <summary>
+    /// One network read on pane load: asks the licence service whether the
+    /// cached session is still alive and who it belongs to. The result, when the
+    /// server agrees, becomes the "会话：xxx · 上次活跃 yy" line under the licence
+    /// status — a customer who restarts after a month should see at a glance
+    /// whether the app still remembers them.
+    /// <para>
+    /// Network failure preserves the cached identity. A missing session or a 401
+    /// hides it, and both labels are rendered from the resulting local state.
+    /// </para>
+    /// </summary>
+    private async Task RefreshSessionAsync()
+    {
+        try
+        {
+            await _gate
+                .MeAsync(CancellationToken.None)
+                .ConfigureAwait(true);
+            if (IsLoaded)
+                RenderLicenceState();
+        }
+        catch (OperationCanceledException)
+        {
+            // Closing the pane during the read is a legitimate path.
+        }
+        catch (Exception ex)
+        {
+            // A logged failure on a "still signed in?" probe is not worth a crash
+            // and not worth user-facing noise. The cached session is still on disk;
+            // the next launch will probe again.
+            Debug.WriteLine($"general pane: me refresh failed — {ex.Message}");
+        }
+    }
+
+    private static string FormatSessionLine(AccountView account)
+    {
+        var line = L10n.Format($"会话：{account.DisplayName}");
+        if (account.LastLoginAt is { } at)
+            // RelativeTime returns a string already; the " · " separator stays
+            // outside Format because the relative phrasing is opaque to the
+            // formatter and there is no value in rebuilding it twice.
+            line += " · " + RelativeTime(at);
+        return line;
+    }
+
+    private static string RelativeTime(DateTimeOffset past)
+    {
+        // Rough and locale-aware via L10n: anything coarser than a minute gets
+        // rounded down, never up, so "5 分钟前" stays honest past the 60-second
+        // boundary. Anything past two weeks is "很久之前" — exact day counts on a
+        // last-login time are noise the customer did not ask for.
+        var delta = DateTimeOffset.UtcNow - past;
+        if (delta.TotalMinutes < 1) return "刚刚";
+        if (delta.TotalMinutes < 60) return L10n.Format($"{(int)delta.TotalMinutes} 分钟前");
+        if (delta.TotalHours < 24) return L10n.Format($"{(int)delta.TotalHours} 小时前");
+        if (delta.TotalDays < 14) return L10n.Format($"{(int)delta.TotalDays} 天前");
+        return L10n.Text("很久之前");
     }
 
     /// <summary>1.0.0+commithash → 1.0.0 (short hash) — same rule as AboutPane.</summary>

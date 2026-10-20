@@ -27,6 +27,15 @@ public partial class LoginWindow : Window
 {
     private readonly AccountController _controller;
 
+    /// <summary>
+    /// The window auto-closes itself once sign-in is recorded. The flag keeps the
+    /// auto-close attempt idempotent — a successful Stage=Done raises Render, but
+    /// the same window can also be torn down by the user pressing × or 「完成」,
+    /// and a second BeginInvoke(Close) past a half-closed window is the kind of
+    /// thing that turns "login worked, jump to purchase" into a null-ref.
+    /// </summary>
+    private bool _autoCloseStarted;
+
     public LoginWindow(AccountController controller)
     {
         _controller = controller ?? throw new ArgumentNullException(nameof(controller));
@@ -104,6 +113,14 @@ public partial class LoginWindow : Window
     /// <summary>The only place this window decides what it looks like.</summary>
     private void Render()
     {
+        // AccountService polls without capturing the UI context. Its progress
+        // callback must return to the dispatcher before touching WPF controls.
+        if (!Dispatcher.CheckAccess())
+        {
+            Dispatcher.BeginInvoke(new Action(Render));
+            return;
+        }
+
         StatusText.Text = _controller.StatusMessage;
 
         var url = _controller.AuthorizeUrl;
@@ -137,5 +154,22 @@ public partial class LoginWindow : Window
             : _controller.CanRetry
                 ? L10n.Text("重试")
                 : L10n.Text("获取登录链接");
+
+        // The "刚刚登上,还要手动点完成" bug. Once the controller records a successful
+        // sign-in the bearer token is on disk and the next thing the customer needs to
+        // do is in another window; leaving this one up means the user has to know to
+        // click 「完成」, and a user who clicks × instead walks away thinking nothing
+        // happened (the ShowDialog returns and the purchase window silently never
+        // opens). Auto-close one dispatcher tick after Done paints, so the
+        // "已登录：xxx" status is visible for one frame and then the flow moves.
+        if (done && !_autoCloseStarted)
+        {
+            _autoCloseStarted = true;
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                DialogResult = true;
+                Close();
+            }));
+        }
     }
 }

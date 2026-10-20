@@ -86,7 +86,9 @@ func newHarness(t *testing.T) *harness {
 
 	wc := newWechatStub(t)
 	st := newFakeStore()
-	h := &harness{store: st, clock: time.Date(2026, 10, 18, 12, 0, 0, 0, time.UTC), wc: wc}
+	h := &harness{
+		store: st, clock: time.Date(2026, 10, 18, 12, 0, 0, 0, time.UTC), wc: wc,
+	}
 
 	issuer, err := token.NewIssuer(testSecret, testAccessTTL, testRefreshTTL)
 	if err != nil {
@@ -238,32 +240,97 @@ func TestTheAppSecretNeverReachesTheClient(t *testing.T) {
 	}
 }
 
-func TestRepeatedQRRequestsAreCapped(t *testing.T) {
+func TestRepeatedQRRequestsRetireTheOldestInsteadOfRefusing(t *testing.T) {
 	t.Parallel()
 
-	// §15.2: without a cap, hammering "get me a new code" is both a bad
-	// experience and a cheap way to flood the table.
+	// §15.2's cap still exists — it is what stops the table being flooded — but
+	// it is answered by retiring the oldest ticket, not by refusing the newest
+	// request. Observed on the seller's console, 2026-10-19: every page load
+	// mints a ticket, so four refreshes inside one 5-minute ticket lifetime
+	// answered 429 and the login page was stuck until the TTL ran out. The
+	// person refreshing is asking for the old code to be replaced; refusing is
+	// the one answer they cannot use.
 	h := newHarness(t)
-	var err error
+
+	var tickets []string
 	for n := 0; n < 3; n++ {
-		if _, err = h.svc.CreateSession(context.Background(), "install-1", "device-1"); err != nil {
+		got, err := h.svc.CreateSession(context.Background(), "install-1", "device-1")
+		if err != nil {
 			t.Fatalf("CreateSession %d: %v", n, err)
 		}
-	}
-	_, err = h.svc.CreateSession(context.Background(), "install-1", "device-1")
-	if !IsRateLimited(err) {
-		t.Fatalf("the fourth ticket for one install should be refused, got %v", err)
+		tickets = append(tickets, got.Ticket)
 	}
 
-	// A different install is a different person and gets its own budget.
+	// Over the budget now. The fourth request must succeed, and the oldest
+	// ticket must be the thing that goes — not the newest, and not nothing.
+	fourth, err := h.svc.CreateSession(context.Background(), "install-1", "device-1")
+	if err != nil {
+		t.Fatalf("the fourth ticket for one install was refused: %v", err)
+	}
+	if _, ok := h.store.authSessionByTicket(tickets[0]); ok {
+		t.Error("the oldest ticket is still stored; the cap is not being enforced by retiring")
+	}
+	for _, kept := range tickets[1:] {
+		if _, ok := h.store.authSessionByTicket(kept); !ok {
+			t.Errorf("ticket %s was retired but it was not the oldest", kept)
+		}
+	}
+	if _, ok := h.store.authSessionByTicket(fourth.Ticket); !ok {
+		t.Error("the newest ticket is not stored")
+	}
+
+	// A different install is a different person and has its own budget, which
+	// retiring one install's oldest must not touch.
 	if _, err := h.svc.CreateSession(context.Background(), "install-2", "device-1"); err != nil {
 		t.Fatalf("a second install was refused: %v", err)
 	}
 
-	// And once the old tickets age out, the budget comes back.
-	h.clock = h.clock.Add(2 * testSessionTTL)
-	if _, err := h.svc.CreateSession(context.Background(), "install-1", "device-1"); err != nil {
-		t.Fatalf("the budget did not come back after the tickets expired: %v", err)
+	// And the budget stays bounded: a loop of a hundred refreshes leaves three
+	// rows, not a hundred.
+	for n := 0; n < 100; n++ {
+		if _, err := h.svc.CreateSession(context.Background(), "install-1", "device-1"); err != nil {
+			t.Fatalf("refresh %d: %v", n, err)
+		}
+	}
+	live := 0
+	h.store.mu.Lock()
+	for _, s := range h.store.authSessions {
+		if s.InstallID == "install-1" {
+			live++
+		}
+	}
+	h.store.mu.Unlock()
+	if live > 3 {
+		t.Errorf("%d live rows for one install after a refresh loop, want at most 3", live)
+	}
+}
+
+func TestAnAuthorisedTicketIsNeverRetiredToMakeRoom(t *testing.T) {
+	t.Parallel()
+
+	// Preserve a completed sign-in awaiting token delivery, while retiring the
+	// next pending ticket so the new request can still proceed.
+	h := newHarness(t)
+
+	var tickets []string
+	for n := 0; n < 3; n++ {
+		got, err := h.svc.CreateSession(context.Background(), "install-1", "device-1")
+		if err != nil {
+			t.Fatalf("CreateSession %d: %v", n, err)
+		}
+		tickets = append(tickets, got.Ticket)
+	}
+	h.store.forceAuthSessionState(tickets[0], store.AuthAuthorized)
+
+	_, err := h.svc.CreateSession(context.Background(), "install-1", "device-1")
+	if err != nil {
+		t.Fatalf("pending tickets could be retired, but the new request failed: %v", err)
+	}
+	if _, ok := h.store.authSessionByTicket(tickets[0]); !ok {
+		t.Error("an authorised ticket was deleted to make room for a new one")
+	}
+	if _, ok := h.store.authSessionByTicket(tickets[1]); ok {
+		t.Error("the oldest pending ticket was not retired")
 	}
 }
 

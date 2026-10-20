@@ -58,7 +58,7 @@ async function waitHealth(baseURL, attempts = 40) {
 async function main() {
   // ---------- 起服务（或确认外挂 mock 可达） ----------
   let child = null;
-  let baseURL = cfg.baseURL;
+  let baseURL = process.env.WCB_TEST_BASE_URL || cfg.baseURL || "http://127.0.0.1:8901";
   if (process.env.WCB_MOCK_SCRIPT) {
     const port = 8909;
     baseURL = "http://127.0.0.1:" + port;
@@ -100,9 +100,8 @@ async function main() {
     check("响应含 authorizeUrl / qrImageUrl / expiresAt",
       !!sess.authorizeUrl && !!sess.qrImageUrl && !!sess.expiresAt);
 
-    const qr = await api.auth.qrBlob(sess.ticket);
-    const magic = new Uint8Array((await qr.arrayBuffer()).slice(0, 4));
-    check("QR 端点是合法 PNG", magic[0] === 0x89 && magic[1] === 0x50 && magic[2] === 0x4e && magic[3] === 0x47);
+    await expectApiError("旧 QR 端点提示改用官方浏览器授权",
+      () => api.auth.qrBlob(sess.ticket), 409);
 
     const pollPending = await api.auth.pollSession(sess.ticket);
     check("轮询 → pending", pollPending.status === "pending");
@@ -226,6 +225,73 @@ async function main() {
     } catch (err) {
       check("死端口 → NetworkError", err instanceof NetworkError, err.name);
     }
+
+    // ---------- 已持证买家再次登记（§11.7 M-5 回归）----------
+    //
+    // 这一段曾经是本次线上事故：已授权的买家再点一次「我已订购」，
+    // 会多出一行更新的 pending，把那张真正有效的证盖住——买家永远停在
+    // 「登记中」，而卖家点签发只会得到一个永远 409 的按钮。
+    //
+    // 自成一段，不依赖前面各段的顺序：[5] 把证作废了，所以这里自己先
+    // 走一遍「登记 → 签发」把活证拿到手，再去撞那个场景。
+    // 买家侧端点走裸 fetch：ConsoleApi 是卖家侧客户端，没有 /v1/activation/*。
+    //
+    // 这一段钉的是**写侧**（墓碑行不再被创建）。读侧那条「活证优先」的规则
+    // 它钉不到：只回退读侧时这几项仍然全绿，因为写侧已经不产生墓碑行了。
+    // 读侧由 server 侧的真库测试
+    // （store/postgres/activation_realdb_test.go）单独钉住——
+    // 它守的是「旧版本已经写进去的墓碑行」，那是这一段造不出来的。
+    console.log("\n[9] 已持证买家再次登记（M-5 回归）");
+    const buyerPost = (path, body) =>
+      fetch(baseURL + path, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer " + pollDone.accessToken,
+        },
+        body: JSON.stringify(body),
+      });
+    const buyerGet = (path) =>
+      fetch(baseURL + path, {
+        headers: { Authorization: "Bearer " + pollDone.accessToken },
+      });
+
+    // 前提：让这个账号真的持有一张活证。
+    const first = await (await buyerPost("/v1/activation/request", {
+      installId: "install_m5",
+      anchorDigest: "sha256:m5",
+    })).json();
+    await api.admin.confirm(first.requestId);
+
+    // 现在撞事故场景：同一台机器，再点一次「我已订购」。
+    const pendingBefore = (await api.admin.listRequests("pending")).items || [];
+    const againRes = await buyerPost("/v1/activation/request", {
+      installId: "install_m5",
+      anchorDigest: "sha256:m5",
+    });
+    check("再次登记 → 201（新错误码 C# 客户端不认，所以契约不能变）",
+      againRes.status === 201, "got " + againRes.status);
+    const reReg = await againRes.json();
+    check("再次登记 → 复用原本那张单号，没有新建墓碑行",
+      reReg.requestId === first.requestId,
+      "first=" + first.requestId + " again=" + reReg.requestId);
+    check("再次登记 → status=confirmed（不是 pending）",
+      reReg.status === "confirmed", "got " + reReg.status);
+
+    const st2 = await (await buyerGet("/v1/activation/status")).json();
+    check("轮询 → confirmed（原来永远停在 pending）",
+      st2.status === "confirmed", "got " + st2.status);
+
+    const licRes = await buyerGet("/v1/activation/licence");
+    const lic2 = await licRes.json();
+    check("取证 → 200 且带 envelope（原来卡在 409）",
+      licRes.status === 200 && !!lic2.envelope && !!lic2.token,
+      "HTTP " + licRes.status);
+
+    const pendingAfter = (await api.admin.listRequests("pending")).items || [];
+    check("卖家待签列表没有多出一行（墓碑行不再产生）",
+      pendingAfter.length === pendingBefore.length,
+      "before=" + pendingBefore.length + " after=" + pendingAfter.length);
 
     // ---------- 汇总 ----------
     console.log("\n========================================");

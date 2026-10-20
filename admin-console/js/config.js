@@ -1,10 +1,10 @@
-// admin-console 配置（合并后改这一行即可切真服务端）。
+// admin-console 公共配置；微信凭据由服务端从部署环境读取。
 //
 // 这个文件是 UMD 的：浏览器里挂在 window.WCB_CONFIG，Node 里可 require，
 // 这样 test/smoke.mjs 能直接读同一份配置跑契约冒烟。
 //
 // baseURL 的优先级：页面「设置」里的运行时覆盖（localStorage） > 本文件。
-// 运行时覆盖只是开发期便利，交付形态永远以本文件为准。
+// 留空时使用管理页面上一级的同源 API，支持 /admin/ 和 /prefix/admin/。
 (function (root, factory) {
   const config = factory();
   if (typeof module === "object" && module.exports) {
@@ -14,9 +14,8 @@
   }
 })(typeof self !== "undefined" ? self : globalThis, function () {
   return {
-    // 契约 mock（server/mock/server.js）默认监听 127.0.0.1:8901。
-    // 切到真实服务端时只改这一个值，例如 "https://license.example.com"。
-    baseURL: "http://127.0.0.1:8901",
+    // 无需在前端填写 AppID / AppSecret，也不要将 .env 放入静态目录。
+    baseURL: "",
 
     // 待确认列表自动刷新间隔（毫秒）。卖家盯着页面等买家登记，10 秒一拍。
     autoRefreshMs: 10000,

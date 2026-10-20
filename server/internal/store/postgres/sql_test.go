@@ -37,6 +37,14 @@ func TestCriticalSQL(t *testing.T) {
 			must: []string{"FOR UPDATE"},
 		},
 		{
+			name: "retiring a ticket may only touch a pending one",
+			sql:  deleteAuthSessionSQL,
+			// The guard is the whole method. Without it, freeing a slot for a
+			// refreshed QR can delete a sign-in the phone already completed and
+			// the browser has not polled for yet.
+			must: []string{"DELETE FROM auth_sessions", "state = 'pending'"},
+		},
+		{
 			name: "a replayed refresh token is still findable",
 			sql:  sessionMatchSQL,
 			// Without the second arm a replay looks like an unknown token and

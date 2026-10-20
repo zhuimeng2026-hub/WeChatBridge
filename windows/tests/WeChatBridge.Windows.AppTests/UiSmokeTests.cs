@@ -49,6 +49,8 @@ public sealed class UiSmokeTests
                 {
                     Source = new Uri("pack://application:,,,/WeChatBridge.Windows;component/Themes/AppTheme.xaml"),
                 });
+                LoginRefreshRegression.VerifyAsyncScan();
+                LoginRefreshRegression.VerifySessionRefresh();
                 var previewDirectory = Environment.GetEnvironmentVariable("WECHATBRIDGE_UI_PREVIEW");
                 foreach (var language in new[] { "zh-Hans", "en" })
                 {

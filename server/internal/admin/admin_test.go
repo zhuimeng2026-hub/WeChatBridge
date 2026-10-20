@@ -91,9 +91,24 @@ func newTestEngine(t *testing.T, st *fakeStore, accountID string) *gin.Engine {
 func newTestEngineWithSigner(t *testing.T, st *fakeStore, accountID string) (*gin.Engine, *ecdsa.PublicKey) {
 	t.Helper()
 	signer, pub := testSigner(t)
+	return newEngine(t, st, st, signer, accountID), pub
+}
+
+// newTestEngineWithStores is the same engine for the rare test that needs a
+// different activation store — the one that models a machine already holding
+// a live licence. The auth store stays the fake, so the whitelist behaves
+// exactly as it does everywhere else.
+func newTestEngineWithStores(t *testing.T, auth store.AuthStore, activation store.ActivationStore, accountID string) *gin.Engine {
+	t.Helper()
+	signer, _ := testSigner(t)
+	return newEngine(t, auth, activation, signer, accountID)
+}
+
+func newEngine(t *testing.T, auth store.AuthStore, activation store.ActivationStore, signer *license.Signer, accountID string) *gin.Engine {
+	t.Helper()
 	svc, err := NewService(Options{
-		Auth:         st,
-		Activation:   st,
+		Auth:         auth,
+		Activation:   activation,
 		Signer:       signer,
 		AdminOpenIDs: []string{adminOpenID},
 		AccountOf:    testAccountReader(accountID),
@@ -104,7 +119,38 @@ func newTestEngineWithSigner(t *testing.T, st *fakeStore, accountID string) (*gi
 	}
 	engine := gin.New()
 	svc.RegisterRoutes(engine, testAuth(accountID))
-	return engine, pub
+	return engine
+}
+
+// liveBindingStore models the one store state the confirm button has to give
+// an actionable answer for: the machine already holds a live licence from an
+// earlier, already-confirmed request, so the binding insert of a new confirm
+// is refused with store.ErrLiveBindingExists.
+//
+// It is a wrapper rather than a second fake so everything else — the account,
+// the request row, the earlier binding — is the very same fake the other
+// tests use, and the only difference is the collision this one exists for.
+//
+// The request row is left pending, exactly as the rolled-back transaction
+// leaves it: nothing was minted, so there is no licence to read back and the
+// buyer keeps waiting. That is the state this bug lived in.
+type liveBindingStore struct {
+	*fakeStore
+}
+
+func (s *liveBindingStore) ConfirmActivationRequest(ctx context.Context, requestID, licenseID string, envelopeJSON []byte, at time.Time) (store.ActivationRequest, error) {
+	r, err := s.fakeStore.GetActivationRequest(ctx, requestID)
+	if err != nil {
+		return store.ActivationRequest{}, err
+	}
+	s.fakeStore.mu.Lock()
+	held := s.fakeStore.liveBinding(r.InstallID) != nil
+	s.fakeStore.mu.Unlock()
+	if held {
+		// licence_bindings_live_idx refused the insert. The row is untouched.
+		return store.ActivationRequest{}, store.ErrLiveBindingExists
+	}
+	return s.fakeStore.ConfirmActivationRequest(ctx, requestID, licenseID, envelopeJSON, at)
 }
 
 // seedSellerAccount is the signed-in seller the whitelist names.
@@ -591,6 +637,12 @@ func TestConfirmOfARejectedRequestIs409(t *testing.T) {
 	if code, _ := out["error"].(map[string]any)["code"].(string); code != "conflict" {
 		t.Errorf("code %q, want conflict", code)
 	}
+	// The wording of this one is load-bearing: it is the answer that tells the
+	// seller the buyer's order was refused, and it must not change into the
+	// live-licence one now that a second 409 exists.
+	if msg, _ := out["error"].(map[string]any)["message"].(string); msg != "该购买请求已被拒绝，无法确认。" {
+		t.Errorf("message %q, want the rejected-request wording", msg)
+	}
 }
 
 func TestConfirmOfAnAlreadyConfirmedRequestReturnsTheSameLicence(t *testing.T) {
@@ -623,6 +675,95 @@ func TestConfirmOfALostRaceReturnsTheWinnersLicence(t *testing.T) {
 	rec, out := doJSON(t, engine, http.MethodPost, "/v1/admin/confirm", map[string]string{"requestId": pending.RequestID})
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status %d, want 200 — the loser of the race still gets the winner's licence", rec.Code)
+	}
+	if got, _ := out["licenseId"].(string); got != "lic_racewinner" {
+		t.Errorf("licenseId %q, want lic_racewinner", got)
+	}
+}
+
+// A machine that already holds a live licence cannot be confirmed again.
+//
+// This is not the lost race above and must not be answered like it: the
+// machine's licence was granted by an earlier, already-confirmed request, the
+// buyer has registered the same machine again, and no amount of retrying can
+// change that. The reply therefore has to name the action that does work —
+// reissue — instead of "refresh and try again", which is true of neither and
+// leaves the buyer stuck on "登记中" while the seller retries forever.
+func TestConfirmOfAMachineThatAlreadyHoldsALicenceIs409AndNamesReissue(t *testing.T) {
+	st := newFakeStore()
+	seedSellerAccount(t, st)
+	seedBuyerAccount(t, st)
+	// The earlier, already-confirmed request and the licence it granted.
+	earlier := st.seedRequest(store.ActivationRequest{
+		RequestID: "act_0", AccountID: buyerAccountID, InstallID: testInstallID,
+		Status: store.ActivationConfirmed, LicenseID: "lic_earlier",
+	})
+	st.seedBinding(store.LicenceBinding{
+		LicenseID: earlier.LicenseID,
+		InstallID: testInstallID,
+		AccountID: buyerAccountID,
+		RequestID: earlier.RequestID,
+	})
+	// And the buyer's second registration of the very same machine.
+	pending := seedPendingRequest(t, st, "act_1", testInstallID, nil)
+
+	engine := newTestEngineWithStores(t, st, &liveBindingStore{fakeStore: st}, adminAccountID)
+
+	rec, out := doJSON(t, engine, http.MethodPost, "/v1/admin/confirm", map[string]string{"requestId": pending.RequestID})
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("status %d, want 409 — the machine's licence makes this order unconfirmable", rec.Code)
+	}
+	errBody, _ := out["error"].(map[string]any)
+	if code, _ := errBody["code"].(string); code != "conflict" {
+		t.Errorf("code %q, want conflict", code)
+	}
+	if msg, _ := errBody["message"].(string); msg != "该机器已有有效许可证，请改用重签（reissue）。" {
+		// The wording is the whole point of this 409: it names the action
+		// that would work, so the seller's next click is the right one. A
+		// generic "refresh and try again" is true of neither and leaves the
+		// buyer stuck on "登记中".
+		t.Errorf("message %q, want the reissue wording", msg)
+	}
+
+	// And nothing was minted: the request is still pending and the machine
+	// still holds the one licence it had.
+	after, err := st.GetActivationRequest(context.Background(), pending.RequestID)
+	if err != nil {
+		t.Fatalf("GetActivationRequest: %v", err)
+	}
+	if after.Status != store.ActivationPending {
+		t.Errorf("request status %q, want it left pending — no licence was minted", after.Status)
+	}
+	if after.LicenseID != "" {
+		t.Errorf("request carries licence %q, want none", after.LicenseID)
+	}
+	bindings, err := st.ListBindings(context.Background())
+	if err != nil {
+		t.Fatalf("ListBindings: %v", err)
+	}
+	if len(bindings) != 1 {
+		t.Errorf("got %d bindings, want 1 — the refused confirm installed nothing", len(bindings))
+	}
+}
+
+// The live-licence answer must not swallow the race: two sellers pressing the
+// same button is still one licence, and the loser still gets the winner's
+// number back. The two refusals are separate all the way down to the store,
+// so the console can tell them apart.
+func TestConfirmOfALostRaceIsNotAnsweredAsALiveLicence(t *testing.T) {
+	st := newFakeStore()
+	seedSellerAccount(t, st)
+	seedBuyerAccount(t, st)
+	pending := seedPendingRequest(t, st, "act_1", testInstallID, nil)
+	// The machine holds no licence at all, so the only thing that can refuse
+	// this confirm is the other seller's confirm landing first.
+	st.raceWinner = true
+
+	engine := newTestEngineWithStores(t, st, &liveBindingStore{fakeStore: st}, adminAccountID)
+
+	rec, out := doJSON(t, engine, http.MethodPost, "/v1/admin/confirm", map[string]string{"requestId": pending.RequestID})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d, want 200 — a lost race is self-healing, not a dead end", rec.Code)
 	}
 	if got, _ := out["licenseId"].(string); got != "lic_racewinner" {
 		t.Errorf("licenseId %q, want lic_racewinner", got)

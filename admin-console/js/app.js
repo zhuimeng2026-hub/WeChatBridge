@@ -14,13 +14,28 @@
   var LS_BASEURL_OVERRIDE = "wcb_admin_baseurl_override";
   var LS_ACTION_LOG = "wcb_admin_action_log";
   var SS_TOKENS = "wcb_admin_tokens";
+  var SS_LOGIN = "wcb_admin_login";
 
-  var CONFIG = window.WCB_CONFIG || { baseURL: "http://127.0.0.1:8901", autoRefreshMs: 10000, actionLogLimit: 200 };
+  var CONFIG = window.WCB_CONFIG || { baseURL: "", autoRefreshMs: 10000, actionLogLimit: 200 };
+
+  function defaultBaseURL() {
+    // 本地文件仅供开发；线上始终从管理目录的上一级访问 API。
+    if (location.protocol === "file:") return CONFIG.baseURL || "http://127.0.0.1:8901";
+    return CONFIG.baseURL || new URL("../", location.href).href.replace(/\/+$/, "");
+  }
+
+  function allowedBaseURL(value) {
+    try {
+      var url = new URL(value);
+      return /^https?:$/.test(url.protocol) && !url.username && !url.password &&
+        !url.search && !url.hash && (location.protocol === "file:" || url.origin === location.origin);
+    } catch (_) { return false; }
+  }
 
   function effectiveBaseURL() {
     var override = "";
     try { override = localStorage.getItem(LS_BASEURL_OVERRIDE) || ""; } catch (_) {}
-    return override.trim() || CONFIG.baseURL;
+    return allowedBaseURL(override.trim()) ? override.trim().replace(/\/+$/, "") : defaultBaseURL();
   }
 
   var api = new WCB_CONSOLE.ConsoleApi(effectiveBaseURL());
@@ -51,16 +66,6 @@
     var p = function (n) { return (n < 10 ? "0" : "") + n; };
     return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()) +
       " " + p(d.getHours()) + ":" + p(d.getMinutes()) + ":" + p(d.getSeconds());
-  }
-
-  // 服务端给了绝对地址就用它的，给了相对地址才补 baseURL。两者不能无脑拼接：
-  // 把绝对地址接在 baseURL 后面会产出 "http://hosthttps://host/..." 这种废地址，
-  // <img> 取不到东西只会碎成裂图，而状态栏还停在「等待微信扫码…」——
-  // 卖家看到的是一张坏图和一个永远等下去的状态，没有任何线索。
-  function absoluteOrBase(url, base) {
-    var s = String(url == null ? "" : url);
-    if (/^https?:\/\//i.test(s)) return s;
-    return String(base || "").replace(/\/+$/, "") + s;
   }
 
   function copyText(text) {
@@ -118,7 +123,7 @@
       // 第三种最阴——开发者本机同源调试时永远不会遇到，只有卖家会撞上，
       // 而卖家看到的只是一句「Failed to fetch」。所以这里要把跨源点出来。
       showToast("net", "网络错误：" + scope, err.message +
-        "（请检查「设置」里的服务端地址；页面与服务端不同源时浏览器会拦截请求，需要服务端放行 CORS）");
+        "（请检查服务端地址及运行状态；管理页面与接口应同源部署）");
     } else if (err && err.name === "ApiError") {
       var detail = "HTTP " + err.status + " · " + err.code + "：" + (err.message || "");
       if (err.requestId) detail += "（request_id: " + err.requestId + "）";
@@ -253,6 +258,7 @@
   var loginTimer = null;
   var countdownTimer = null;
   var loginExpiresAt = 0;
+  var loginGeneration = 0;
 
   function installId() {
     var id = "";
@@ -273,7 +279,9 @@
   }
 
   function showLogin() {
+    stopAutoRefresh();
     stopLoginPolling();
+    renderAccount(null);
     $("view-app").hidden = true;
     $("view-login").hidden = false;
     $("login-install-id").textContent = installId();
@@ -288,29 +296,46 @@
 
   async function startLogin() {
     stopLoginPolling();
-    $("login-qr").hidden = true;
-    $("login-qr-placeholder").hidden = false;
-    $("login-qr-placeholder").textContent = "二维码加载中…";
-    $("login-authorize").hidden = true;
+    clearPendingLogin();
+    var generation = loginGeneration;
+    hideAuthorizeLink();
+    $("login-refresh").textContent = "重新获取登录链接";
     $("login-countdown").hidden = true;
-    setLoginStatus("正在获取登录二维码…");
+    setLoginStatus("正在准备微信登录…");
     try {
       var res = await api.auth.createSession(installId(), "admin-console");
+      if (generation !== loginGeneration) return;
+      var authorizeURL = new URL(res.authorizeUrl);
+      if (authorizeURL.protocol !== "https:" || authorizeURL.hostname !== "open.weixin.qq.com" ||
+          authorizeURL.port || authorizeURL.username || authorizeURL.password || !res.ticket ||
+          !Number.isFinite(Date.parse(res.expiresAt)) || Date.parse(res.expiresAt) <= Date.now()) {
+        throw new Error("服务端返回的微信授权链接或有效期无效，请检查开放平台配置。");
+      }
       loginTicket = res.ticket;
-      loginExpiresAt = Date.parse(res.expiresAt) || 0;
-      // qrImageUrl 按契约是绝对地址：服务端假定客户端没有它自己的 origin 可拼。
-      $("login-qr").src = absoluteOrBase(res.qrImageUrl, api.baseURL);
-      $("login-qr").hidden = false;
-      $("login-qr-placeholder").hidden = true;
-      $("login-authorize").href = res.authorizeUrl;
+      loginExpiresAt = Date.parse(res.expiresAt);
+      $("login-authorize").href = authorizeURL.href;
       $("login-authorize").hidden = false;
-      setLoginStatus("等待微信扫码…", { refresh: true });
+      setLoginStatus("请打开微信授权页扫码，完成后将自动进入后台。", { refresh: true });
       startCountdown();
-      pollLogin();
+      pollLogin(loginTicket, generation);
     } catch (err) {
-      setLoginStatus("获取二维码失败", { refresh: true });
+      if (generation !== loginGeneration) return;
+      setLoginStatus("准备微信登录失败，请重试。", { refresh: true });
       reportError("登录", err);
     }
+  }
+
+  function hideAuthorizeLink() {
+    $("login-authorize").hidden = true;
+    $("login-authorize").removeAttribute("href");
+  }
+
+  function endLogin(message) {
+    stopLoginPolling();
+    clearPendingLogin();
+    hideAuthorizeLink();
+    $("login-countdown").hidden = true;
+    setLoginStatus(message, { refresh: true });
   }
 
   function startCountdown() {
@@ -318,48 +343,48 @@
     $("login-countdown").hidden = false;
     var tick = function () {
       var left = Math.max(0, Math.ceil((loginExpiresAt - Date.now()) / 1000));
-      $("login-countdown").textContent = left > 0 ? "二维码有效时间剩余 " + left + " 秒" : "";
-      if (left <= 0) stopCountdown();
+      $("login-countdown").textContent = left > 0 ? "登录链接有效时间剩余 " + left + " 秒" : "";
+      if (left <= 0) endLogin("登录链接已过期，请重新获取。");
     };
-    tick();
     countdownTimer = setInterval(tick, 1000);
+    tick();
   }
 
   function stopCountdown() {
     if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
   }
 
-  async function pollLogin() {
-    if (!loginTicket) return;
+  async function pollLogin(ticket, generation) {
+    if (!ticket || ticket !== loginTicket || generation !== loginGeneration) return;
     try {
-      var res = await api.auth.pollSession(loginTicket);
+      var res = await api.auth.pollSession(ticket);
+      if (generation !== loginGeneration || ticket !== loginTicket) return;
       if (res.status === "authorized") {
-        onAuthorized(res);
+        await onAuthorized(res);
         return;
       }
       if (res.status === "expired") {
-        stopLoginPolling();
-        setLoginStatus("二维码已过期，请刷新", { refresh: true });
-        $("login-countdown").hidden = true;
+        endLogin("登录链接已过期，请重新获取。");
         return;
       }
       // rejected 是终态：这一张码不会再变成 authorized。不停轮询的话，
       // 服务端每次都答 rejected，而状态栏一直停在「等待微信扫码…」——
       // 卖家看到的是一个永远不会到来的登录。
       if (res.status === "rejected") {
-        stopLoginPolling();
-        setLoginStatus("本次授权被拒绝，请刷新二维码重试", { refresh: true });
-        $("login-countdown").hidden = true;
+        endLogin("本次授权被拒绝，请重新获取登录链接。");
         return;
       }
-      // pending：网络抖动不放弃，卖家二维码还有效
-      loginTimer = setTimeout(pollLogin, 2000);
+      // pending：网络抖动不放弃，有效期内继续等待。
+      loginTimer = setTimeout(function () { pollLogin(ticket, generation); }, 2000);
     } catch (err) {
-      loginTimer = setTimeout(pollLogin, 3000);
+      if (generation !== loginGeneration || ticket !== loginTicket) return;
+      setLoginStatus("暂时无法查询登录结果，正在重试…", { refresh: true });
+      loginTimer = setTimeout(function () { pollLogin(ticket, generation); }, 3000);
     }
   }
 
   function stopLoginPolling() {
+    loginGeneration++;
     loginTicket = null;
     if (loginTimer) { clearTimeout(loginTimer); loginTimer = null; }
     stopCountdown();
@@ -367,31 +392,116 @@
 
   async function onAuthorized(res) {
     stopLoginPolling();
+    clearPendingLogin();
     var tokens = {
       accessToken: res.accessToken,
       refreshToken: res.refreshToken,
       expiresAt: res.expiresAt,
       account: res.account || null,
     };
-    saveTokens(tokens);
-    api.setTokens(tokens);
-    enterApp();
+    await verifyAdmin(tokens);
   }
 
-  $("login-refresh").addEventListener("click", startLogin);
+  // 管理列表本身就是服务端的权限检查，403 不触发令牌刷新。
+  async function verifyAdmin(tokens) {
+    hideAuthorizeLink();
+    $("login-countdown").hidden = true;
+    setLoginStatus("正在验证管理员身份…");
+    if (!tokens || !tokens.accessToken || !tokens.refreshToken) {
+      clearTokens();
+      api.setTokens(null);
+      setLoginStatus("未取得完整登录凭证，请重新登录。", { refresh: true });
+      return;
+    }
+    saveTokens(tokens);
+    api.setTokens(tokens);
+    try {
+      var result = await api.admin.listRequests("pending");
+      if (!result || !Array.isArray(result.items)) {
+        throw new Error("管理接口返回格式无效，请检查服务端地址和反向代理配置。");
+      }
+      enterApp(result.items);
+    } catch (err) {
+      if (err && err.name === "ApiError" && [401, 403, 404].indexOf(err.status) !== -1) {
+        clearTokens();
+        api.setTokens(null);
+        var messages = {
+          401: "登录状态已失效，请重新登录。",
+          403: "当前微信没有管理员权限，请使用管理员微信重新登录。",
+          404: "管理接口未启用或地址配置有误，请检查服务端配置。",
+        };
+        setLoginStatus(messages[err.status], { refresh: true });
+        if (err.status === 403) {
+          api.auth.revoke(tokens.refreshToken).catch(function () {});
+        }
+      } else {
+        // 网络/服务暂时故障保留凭证，可直接重试权限验证。
+        $("login-refresh").textContent = "重试验证";
+        setLoginStatus("暂时无法验证管理员身份，请重试。", { refresh: true });
+      }
+      reportError("验证管理员身份", err);
+    }
+  }
 
-  // 裂图是最难自查的故障：二维码区域显示着占位框以外的东西，状态却还是
-  // 「等待微信扫码…」，卖家只会一直等下去。这里把它变成看得见的失败。
-  $("login-qr").addEventListener("error", function () {
-    $("login-qr").hidden = true;
-    $("login-qr-placeholder").hidden = false;
-    $("login-qr-placeholder").textContent = "二维码加载失败，请点「刷新二维码」重试。";
-    setLoginStatus("二维码加载失败", { refresh: true });
+  $("login-refresh").addEventListener("click", function () {
+    var tokens = loadTokens();
+    if (tokens && tokens.accessToken) verifyAdmin(tokens);
+    else startLogin();
+  });
+
+  // Navigation leaves this document, so persist the one-time ticket in this
+  // tab before opening WeChat. The callback returns to /admin/ without placing
+  // credentials in a URL; that page resumes this exact session instead of
+  // creating a new ticket. Stopping the old poller prevents double delivery.
+  $("login-authorize").addEventListener("click", function (event) {
+    if (!loginTicket || Date.now() >= loginExpiresAt) {
+      event.preventDefault();
+      endLogin("登录链接已过期，请重新获取。");
+      return;
+    }
+    try {
+      sessionStorage.setItem(SS_LOGIN, JSON.stringify({
+        ticket: loginTicket, expiresAt: loginExpiresAt, baseURL: api.baseURL,
+      }));
+    } catch (_) {
+      event.preventDefault();
+      setLoginStatus("浏览器无法保存登录会话，请允许本站使用会话存储后重试。", { refresh: true });
+      return;
+    }
     stopLoginPolling();
   });
 
+  function clearPendingLogin() {
+    try { sessionStorage.removeItem(SS_LOGIN); } catch (_) {}
+  }
+
+  function loadPendingLogin() {
+    try {
+      var value = JSON.parse(sessionStorage.getItem(SS_LOGIN));
+      if (value && typeof value.ticket === "string" && value.ticket &&
+          Number.isFinite(value.expiresAt) && value.baseURL === api.baseURL) return value;
+    } catch (_) {}
+    return null;
+  }
+
+  function resumeLogin(pending) {
+    stopLoginPolling();
+    $("login-install-id").textContent = installId();
+    hideAuthorizeLink();
+    $("login-refresh").textContent = "重新获取登录链接";
+    if (pending.expiresAt <= Date.now()) {
+      endLogin("登录链接已过期，请重新获取。");
+      return;
+    }
+    loginTicket = pending.ticket;
+    loginExpiresAt = pending.expiresAt;
+    setLoginStatus("正在完成微信登录并进入后台…", { refresh: true });
+    startCountdown();
+    pollLogin(loginTicket, loginGeneration);
+  }
+
   // ------------------------------------------------------------------
-  // 会话存取（令牌只进 sessionStorage：关标签页即失效，不落盘）
+  // 会话存取（令牌只进 sessionStorage，不写 localStorage）
   // ------------------------------------------------------------------
 
   function saveTokens(tokens) {
@@ -410,7 +520,10 @@
   }
 
   // 续期后把新令牌写回存储——api.js 只负责换， app.js 负责记住。
-  api.onTokensChanged(function (tokens) { saveTokens(tokens); });
+  api.onTokensChanged(function (tokens) {
+    saveTokens(tokens);
+    if (!$("view-app").hidden) renderAccount(tokens && tokens.account);
+  });
 
   // ------------------------------------------------------------------
   // 应用视图
@@ -420,15 +533,48 @@
   var refreshTimer = null;
   var activeTab = "pending";
 
-  function enterApp() {
+  function hideAvatar() {
+    $("current-avatar-wrap").hidden = true;
+  }
+
+  $("current-avatar").addEventListener("load", function () {
+    if (this.getAttribute("src") && this.naturalWidth > 0) $("current-avatar-wrap").hidden = false;
+  });
+  $("current-avatar").addEventListener("error", function () {
+    hideAvatar();
+    $("current-avatar").removeAttribute("src");
+  });
+
+  function renderAccount(account) {
+    var nickname = account && typeof account.nickname === "string" ? account.nickname.trim() : "";
+    $("current-nickname").textContent = nickname || "微信用户";
+    $("current-account").title = nickname || "当前登录的微信账号";
+    var avatarURL = "";
+    if (account && account.avatarUrl) {
+      try {
+        var url = new URL(account.avatarUrl, api.baseURL + "/");
+        if (/^https?:$/.test(url.protocol) && !url.username && !url.password) avatarURL = url.href;
+      } catch (_) {}
+    }
+    var image = $("current-avatar");
+    if (!avatarURL) {
+      hideAvatar();
+      image.removeAttribute("src");
+    } else if (image.getAttribute("src") !== avatarURL) {
+      hideAvatar();
+      image.src = avatarURL;
+    }
+  }
+
+  function enterApp(pendingItems) {
     $("view-login").hidden = true;
     $("view-app").hidden = false;
     var tokens = loadTokens();
-    var nick = tokens && tokens.account ? tokens.account.nickname : "";
-    $("current-account").textContent = nick ? "已登录：" + nick : "已登录";
+    renderAccount(tokens && tokens.account);
     $("current-server").textContent = api.baseURL;
     renderLog();
-    refreshAll();
+    if (pendingItems) renderPending(pendingItems);
+    else refreshAll();
     startAutoRefresh();
   }
 
@@ -451,7 +597,7 @@
 
   $("auto-refresh").addEventListener("change", startAutoRefresh);
   document.addEventListener("visibilitychange", function () {
-    if (!document.hidden && activeTab === "pending") refreshPending();
+    if (!document.hidden && !$("view-app").hidden && activeTab === "pending") refreshPending();
   });
 
   // ---------------- 页签 ----------------
@@ -801,6 +947,12 @@
 
   $("btn-save-baseurl").addEventListener("click", function () {
     var v = $("settings-baseurl").value.trim();
+    if (v && !allowedBaseURL(v)) {
+      showToast("err", "服务端地址无效", "请使用同源 HTTP(S) 地址，不包含账号、密码、查询参数或片段。");
+      return;
+    }
+    // 切换 API 时不能向新地址发送旧服务端签发的凭证。
+    clearTokens();
     try {
       if (v) localStorage.setItem(LS_BASEURL_OVERRIDE, v);
       else localStorage.removeItem(LS_BASEURL_OVERRIDE);
@@ -809,6 +961,7 @@
   });
 
   $("btn-reset-baseurl").addEventListener("click", function () {
+    clearTokens();
     try { localStorage.removeItem(LS_BASEURL_OVERRIDE); } catch (_) {}
     location.reload();
   });
@@ -850,12 +1003,13 @@
   // ------------------------------------------------------------------
 
   var restored = loadTokens();
+  var pendingLogin = loadPendingLogin();
   if (restored && restored.accessToken) {
-    api.setTokens(restored);
-    // 先进应用视图；第一个管理调用会验证令牌，失效则自动走 forceRelogin。
-    $("view-login").hidden = true;
-    $("view-app").hidden = false;
-    enterApp();
+    clearPendingLogin();
+    $("login-install-id").textContent = installId();
+    verifyAdmin(restored);
+  } else if (pendingLogin) {
+    resumeLogin(pendingLogin);
   } else {
     showLogin();
   }

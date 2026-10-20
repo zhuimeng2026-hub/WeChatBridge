@@ -130,17 +130,17 @@ func TestUniqueConflictMapping(t *testing.T) {
 
 func TestBindingConflictMapping(t *testing.T) {
 	// The machine-change policy lives in the two partial unique indexes, and
-	// the primary key guards a licence written twice. All three collision
-	// shapes must read as "somebody else got there first" to the caller.
-	cases := []struct {
+	// the primary key guards a licence written twice. They do NOT all mean
+	// the same thing: two are genuine races, and one is a standing business
+	// state that retrying can never clear.
+	raceCases := []struct {
 		name       string
 		constraint string
 	}{
 		{"the same licence written twice", constraintLicenceBindingPK},
-		{"a second live binding on one machine", constraintBindingLiveInstall},
 		{"a second live binding on one account", constraintBindingLiveAccount},
 	}
-	for _, tc := range cases {
+	for _, tc := range raceCases {
 		t.Run(tc.name+" is a conflict", func(t *testing.T) {
 			err := bindingConflict("confirm activation request: bind", uniqueErr(tc.constraint))
 			if !errors.Is(err, store.ErrConflict) {
@@ -148,6 +148,20 @@ func TestBindingConflictMapping(t *testing.T) {
 			}
 		})
 	}
+
+	// The install-scoped one is the case that actually shipped as a permanent
+	// 409: only one pending request per install id may exist, and confirm
+	// locks the row, so this collision can only mean the machine already
+	// holds a licence from an earlier order.
+	t.Run("a second live binding on one machine is not a race", func(t *testing.T) {
+		err := bindingConflict("confirm activation request: bind", uniqueErr(constraintBindingLiveInstall))
+		if !errors.Is(err, store.ErrLiveBindingExists) {
+			t.Fatalf("want store.ErrLiveBindingExists, got %v", err)
+		}
+		if errors.Is(err, store.ErrConflict) {
+			t.Fatal("reported as a conflict, which is what made this retryable-looking and unfixable")
+		}
+	})
 
 	t.Run("an unrelated constraint is not", func(t *testing.T) {
 		cause := uniqueErr(constraintAccountOpenID)

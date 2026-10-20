@@ -49,6 +49,8 @@ internal sealed class ActivationGateway : IDisposable
 
     public static ActivationGateway Current { get; } = new(LicensingBootstrap.Current, null, null);
 
+    public event Action? Changed;
+
     /// <summary>Builds a gateway over a specific licensing stack, for tests.</summary>
     internal static ActivationGateway Create(
         LicensingBootstrap licensing,
@@ -140,11 +142,15 @@ internal sealed class ActivationGateway : IDisposable
             lock (_gate)
             {
                 ObjectDisposedException.ThrowIf(_disposed, this);
-                return _account ??= new AccountService(
+                if (_account is not null)
+                    return _account;
+                _account = new AccountService(
                     Transport(),
                     TokenStore,
                     PollSchedule.Login,
                     log: _log);
+                _account.Changed += OnAccountChanged;
+                return _account;
             }
         }
     }
@@ -219,10 +225,26 @@ internal sealed class ActivationGateway : IDisposable
     }
 
     /// <summary>
+    /// Asks the service whether the cached session is still alive and who it
+    /// belongs to. Picked out of <see cref="Account"/> on purpose: a UI that needs
+    /// the freshest profile does not want to construct a transport itself, and the
+    /// service the gateway already holds is the only one this build is allowed to
+    /// talk to.
+    /// </summary>
+    public Task<LoginOutcome> MeAsync(CancellationToken cancellationToken) =>
+        Account.MeAsync(cancellationToken);
+
+    /// <summary>
     /// Re-reads the licence file after one was written, so the gate sees the change
     /// without a restart.
     /// </summary>
-    public void RefreshLicence() => _licensing.Refresh();
+    public void RefreshLicence()
+    {
+        _licensing.Refresh();
+        Changed?.Invoke();
+    }
+
+    private void OnAccountChanged() => Changed?.Invoke();
 
     public void Dispose()
     {
@@ -232,6 +254,8 @@ internal sealed class ActivationGateway : IDisposable
                 return;
             _disposed = true;
         }
+        if (_account is not null)
+            _account.Changed -= OnAccountChanged;
         _transport?.Dispose();
     }
 

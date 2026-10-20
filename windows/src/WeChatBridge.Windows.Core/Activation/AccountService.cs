@@ -91,6 +91,9 @@ public sealed class AccountService : IDisposable
     /// <summary>The live session, or null. Never reads from disk again.</summary>
     public AuthTokens? Current => _current;
 
+    /// <summary>Raised after the session or profile is persisted; may run on a worker thread.</summary>
+    public event Action? Changed;
+
     /// <summary>The access token to authorise a call with, or null when signed out.</summary>
     public string? BearerToken => _current?.AccessToken;
 
@@ -102,6 +105,7 @@ public sealed class AccountService : IDisposable
         ArgumentNullException.ThrowIfNull(tokens);
         _current = tokens;
         _store?.Save(tokens);
+        Changed?.Invoke();
         _log?.Invoke($"account: signed in as {tokens.Account.DisplayName}");
     }
 
@@ -113,8 +117,7 @@ public sealed class AccountService : IDisposable
     public async Task SignOutAsync(CancellationToken cancellationToken)
     {
         var refresh = _current?.RefreshToken;
-        _current = null;
-        _store?.Clear();
+        SignOutLocally();
 
         if (refresh is null)
             return;
@@ -352,6 +355,67 @@ public sealed class AccountService : IDisposable
     {
         _current = null;
         _store?.Clear();
+        Changed?.Invoke();
+    }
+
+    /// <summary>
+    /// Asks the service who the bearer belongs to right now. The endpoint exists to
+    /// let the client answer "am I still signed in?" without re-running the QR flow:
+    /// a 200 means the access token still verifies and the cached profile is fresh,
+    /// a 401 means the session has aged out server-side and the next thing the user
+    /// needs to do is scan again.
+    /// <para>
+    /// <b>What gets refreshed, and what does not.</b> The reply is the server's
+    /// authoritative view of this account — nickname, plan, last-login time —
+    /// because those drift without the client noticing and a UI showing a stale
+    /// nickname looks like the licence had a brain fart. The tokens themselves are
+    /// not rotated here: a token that would need rotating can no longer reach this
+    /// endpoint, and the chain's whole life is the refresh path's job.
+    /// </para>
+    /// <para>
+    /// <b>On a 401 we drop the local session.</b> The server is the one telling us
+    /// the credential is dead, and a client that keeps the dead token around will
+    /// try again on the next launch, fail again, and present a "you're signed in"
+    /// pane that has not been true for a week. Clearing <see cref="_current"/> here
+    /// is what keeps that lie from compiling.
+    /// </para>
+    /// </summary>
+    public async Task<LoginOutcome> MeAsync(CancellationToken cancellationToken)
+    {
+        var access = BearerToken;
+        if (string.IsNullOrWhiteSpace(access))
+            return LoginOutcome.Failed(LoginFailure.SessionExpired, "尚未登录。");
+
+        var reply = await SendAsync(ActivationEndpoint.MePath, null, bearer: access, cancellationToken).ConfigureAwait(false);
+
+        if (reply.StatusCode == 401)
+        {
+            SignOutLocally();
+            return LoginOutcome.Failed(LoginFailure.SessionExpired, "登录已过期，请重新扫码。");
+        }
+        if (!reply.IsSuccess)
+            return LoginOutcome.Failed(LoginFailure.Unreachable, $"查询会话状态失败（HTTP {reply.StatusCode}）。");
+
+        try
+        {
+            using var document = JsonDocument.Parse(reply.Body);
+            var account = ReadAccount(document.RootElement);
+            if (_current is null)
+            {
+                // The server says yes, the disk says no. Treat it as logged out so
+                // the caller does the right thing on the next launch — and not
+                // invent a token out of thin air to "save" the response.
+                return LoginOutcome.Failed(LoginFailure.SessionExpired, "本地会话缺失。");
+            }
+            _current = _current with { Account = account };
+            _store?.Save(_current);
+            Changed?.Invoke();
+            return LoginOutcome.Success(_current);
+        }
+        catch (JsonException)
+        {
+            return LoginOutcome.Failed(LoginFailure.MalformedResponse, "返回内容无法识别。");
+        }
     }
 
     public void Dispose() => _transport.Dispose();
@@ -387,9 +451,18 @@ public sealed class AccountService : IDisposable
         var access = root.GetProperty("accessToken").GetString() ?? throw new JsonException("accessToken is null");
         var refresh = root.GetProperty("refreshToken").GetString() ?? throw new JsonException("refreshToken is null");
         var expires = root.GetProperty("expiresAt").GetDateTimeOffset();
+        return new AuthTokens(access, refresh, expires, ReadAccount(root.GetProperty("account")));
+    }
 
-        var accountElement = root.GetProperty("account");
-        var account = new AccountView(
+    /// <summary>
+    /// Reads an account view from any element that has one. Pulled out of
+    /// <see cref="ReadTokens"/> so the <c>/v1/account</c> read uses exactly the same
+    /// field-by-field parsing as the login and refresh paths do. Two callers, one
+    /// shape, no chance for them to drift if the wire ever grows a new field.
+    /// </summary>
+    private static AccountView ReadAccount(JsonElement accountElement)
+    {
+        return new AccountView(
             accountElement.GetProperty("id").GetString() ?? "",
             accountElement.TryGetProperty("nickname", out var n) ? n.GetString() ?? "" : "",
             accountElement.TryGetProperty("avatarUrl", out var a) ? a.GetString() ?? "" : "",
@@ -399,8 +472,6 @@ public sealed class AccountService : IDisposable
                 ? l.GetDateTimeOffset()
                 : null,
             accountElement.TryGetProperty("wechatBound", out var w) && w.ValueKind == JsonValueKind.True);
-
-        return new AuthTokens(access, refresh, expires, account);
     }
 }
 
