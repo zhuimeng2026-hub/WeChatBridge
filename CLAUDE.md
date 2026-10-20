@@ -125,6 +125,29 @@ toolchain 早已在 `$(go env GOMODCACHE)/golang.org/toolchain@v0.0.1-go1.26.9.l
 
 `go test ./...` 全绿**不需要**真实 PostgreSQL、微信凭据或网络——每个外部依赖都在接口后面，测试用 pgxmock / fake store 顶替。**但 pgxmock 只断言查询字符串，从不执行它**：`store/postgres` 里那些真正要紧的语义——部分唯一索引的并发冲突（`activation_requests_live_install_idx` 是 `UNIQUE … WHERE status='pending'`）、条件 UPDATE 守卫实际影响几行、隐式行序——一行都没被真跑过。覆盖它们是 A-⑧ 的活，需要真库。
 
+**这条缝不是理论上的。** §11.7 M-5 发出去的查询，其全部意义就是「轮询器该等哪一行」，而**把 SQL 改回含 bug 的那一版，整个包依然全绿**——因为测它的是一个 fake，而 fake 实现什么规则就验证什么规则。下面的真库测试就是为这条缝补的。
+
+#### 真库测试怎么跑（A-⑧，2026-10-20 起）
+
+`store/postgres` 里文件名带 `_realdb_test.go` 的测试对着**真实 PostgreSQL** 跑，开关是环境变量：
+
+```bash
+# 建一个专用库（别指生产）
+su postgres -c "psql -c 'CREATE DATABASE wcb_verify OWNER wcb;'"
+
+export WCB_TEST_DATABASE_URL="postgres://wcb:wcb@127.0.0.1:5432/wcb_verify?sslmode=disable"
+export GOTOOLCHAIN=go1.26.9        # Linux 镜像机的绕法，本机不要加
+go test ./internal/store/postgres/ -count=1 -v
+```
+
+**不设 `WCB_TEST_DATABASE_URL` 时这些测试整体 skip**，所以 CI（无库）零影响——这是刻意的：一个只在某个人笔记本上跑的测试，会悄悄地不再被跑。代价是它们**在 CI 上不生效**，谁改坏了得自己记得跑。
+
+三点实现决定：
+
+- **用 `migrations.FS` 的真 `.up.sql` 建库，不用手抄 DDL。** 手抄件是 schema 的第二份描述，两者不一致那天，继续变绿的是手抄件。
+- **每个测试一个独立 schema**（迁移 + 全新表，结束 `DROP SCHEMA CASCADE`），所以 `t.Parallel()` 是真并行，不靠「清空表」那种让套件对顺序敏感的隔离方式。
+- **fixture 常要直插 SQL。** `CreateActivationRequest` 刻意把 `status` 写成 `'pending'`——公共方法到不了「已确认但已吊销」这类状态，用 `mustInsertRequest` / `mustInsertBinding`。
+
 #### 本机 PostgreSQL（供 A-⑧ 集成测试）
 
 **这台 Windows 机器上没有 PostgreSQL**：`psql` / `pg_isready` 都不在 PATH，也没有任何本地
