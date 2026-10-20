@@ -81,10 +81,14 @@ import (
 // CASE in upsertAccountSQL), so this is a one-way loss, applied to new
 // accounts alone.
 //
-// Nickname and avatar are recovered on a separate path instead of a wider
-// login scope: the login returns openid+unionid, and the server looks the
-// same-subject public account's openid up by unionid, then calls that
-// account's /sns/userinfo (see server/internal/auth).
+// Nickname and avatar are not what the scope is for. The token exchange often
+// volunteers them in the response itself — the open platform sends nickname
+// and headimgurl for many website apps even under snsapi_login — and when it
+// does, that is the whole of it: no second call, no wider scope, no bridge.
+// When it does not, they are recovered on a separate path: the login returns
+// openid+unionid, and the server looks the same-subject public account's
+// openid up by unionid, then calls that account's /sns/userinfo (see
+// server/internal/auth).
 //
 // Do not "improve" this back to snsapi_userinfo without re-reading the three
 // failures above. If the console genuinely cannot work without a nickname, the
@@ -275,8 +279,19 @@ type tokenResponse struct {
 	OpenID       string `json:"openid"`
 	Scope        string `json:"scope"`
 	UnionID      string `json:"unionid"`
-	ErrCode      *int   `json:"errcode"`
-	ErrMsg       string `json:"errmsg"`
+	// Nickname and HeadImgURL are not part of the documented response for
+	// every scope, and the open platform sends them for many website apps
+	// even under snsapi_login.
+	//
+	// The scope decides what /sns/userinfo will answer; it does not decide
+	// what the token exchange already said. A response that carries a
+	// nickname here has given it away for free — no second call, no wider
+	// scope, no bridge — so the fields are parsed whether or not they arrive.
+	// When they do not arrive, the code is the same as it was before them.
+	Nickname   string `json:"nickname"`
+	HeadImgURL string `json:"headimgurl"`
+	ErrCode    *int   `json:"errcode"`
+	ErrMsg     string `json:"errmsg"`
 }
 
 type userInfoResponse struct {
@@ -308,6 +323,11 @@ func (c *Client) AuthorizeURL(state, redirectURI string) string {
 }
 
 // Session is what a code turned into.
+//
+// Nickname and AvatarURL are what the open platform volunteered on the way —
+// the scope of the sign-in says nothing about whether they are in here, so
+// they may be present and may be empty, and the caller has to treat both as
+// ordinary answers rather than as a failure.
 type Session struct {
 	AccessToken  string
 	RefreshToken string
@@ -315,15 +335,18 @@ type Session struct {
 	Scope        string
 	OpenID       string
 	UnionID      string
+	Nickname     string
+	AvatarURL    string
 }
 
-// Profile is the person, as far as WeChat is willing to say. Under the current
-// snsapi_login scope the /sns/userinfo call answers 42003 — no scope — so both
-// fields are empty for every new account and populated only for the ones whose
-// WeChat app still carries the wider scope from an earlier sign-in. Empty is
-// therefore the ordinary answer, not a fault: a server that refused to sign in
-// because WeChat would not volunteer a nickname would be a server that signs
-// fewer people in than its contract allows.
+// Profile is the person, as far as WeChat is willing to say.
+//
+// This is what a separate /sns/userinfo call produced. Under the current
+// snsapi_login scope that call answers 42003 — no scope — so both fields come
+// back empty, and the nickname and avatar a sign-in actually has came from the
+// token exchange instead (see Session). The two are kept apart because they
+// answer different questions: the call is a second look at a person, and the
+// session is what the sign-in was told on the way in.
 //
 // Availability depends on the grant and the upstream response, not on the scope
 // string alone, so this is a snapshot rather than a guarantee. Account identity
@@ -364,6 +387,8 @@ func (c *Client) ExchangeCode(ctx context.Context, code string) (Session, error)
 		Scope:        out.Scope,
 		OpenID:       out.OpenID,
 		UnionID:      out.UnionID,
+		Nickname:     out.Nickname,
+		AvatarURL:    out.HeadImgURL,
 	}, nil
 }
 

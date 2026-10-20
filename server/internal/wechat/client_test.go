@@ -419,3 +419,58 @@ func TestTransportErrorsDoNotExposeCredentials(t *testing.T) {
 		}
 	}
 }
+
+// The token exchange may volunteer a nickname and an avatar even under
+// snsapi_login, and the scope says nothing about whether it does. A response
+// that carries them has given them away for free — no second call, no wider
+// scope, no bridge — so the fields must survive the exchange rather than be
+// dropped on the way to the caller.
+func TestExchangeCodeCarriesTheNicknameAndAvatarWhenTheTokenResponseHasThem(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"access_token":"ACCESS","expires_in":7200,` +
+			`"openid":"oABC","scope":"snsapi_login","unionid":"uXYZ",` +
+			`"nickname":"萌心","headimgurl":"https://thirdwx.qlogo.cn/mmopen/abc/0"}`))
+	}))
+	defer srv.Close()
+
+	c := newTestClient(t, srv)
+	sess, err := c.ExchangeCode(context.Background(), "the-code")
+	if err != nil {
+		t.Fatalf("ExchangeCode: %v", err)
+	}
+	if sess.Nickname != "萌心" {
+		t.Errorf("nickname = %q, want 萌心", sess.Nickname)
+	}
+	if sess.AvatarURL != "https://thirdwx.qlogo.cn/mmopen/abc/0" {
+		t.Errorf("avatar = %q", sess.AvatarURL)
+	}
+}
+
+// The absence of those fields is the ordinary case for a scope that does not
+// grant them, and it must not become a failure: the sign-in stands, and the
+// nickname is simply not known.
+func TestExchangeCodeWithoutANicknameIsStillASuccessfulSignIn(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"access_token":"ACCESS","expires_in":7200,` +
+			`"openid":"oABC","scope":"snsapi_login","unionid":"uXYZ"}`))
+	}))
+	defer srv.Close()
+
+	c := newTestClient(t, srv)
+	sess, err := c.ExchangeCode(context.Background(), "the-code")
+	if err != nil {
+		t.Fatalf("ExchangeCode: %v", err)
+	}
+	if sess.Nickname != "" || sess.AvatarURL != "" {
+		t.Errorf("nickname = %q, avatar = %q, want both empty", sess.Nickname, sess.AvatarURL)
+	}
+	if sess.OpenID != "oABC" {
+		t.Errorf("openid = %q, want oABC", sess.OpenID)
+	}
+}

@@ -1190,3 +1190,109 @@ func TestCallbackURLIsDerivedFromThePublicBase(t *testing.T) {
 		t.Errorf("CallbackURL = %q", got)
 	}
 }
+
+// The open platform volunteers a nickname and an avatar in the token exchange
+// for many website apps even under snsapi_login, and the scope says nothing
+// about whether it does. When it does, that is the whole of the sign-in's
+// display information — no second call, no wider scope, no bridge — so it has
+// to reach the account row.
+func TestCallbackStoresTheNicknameTheTokenExchangeVolunteered(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.wc.exchangeHandler = func(rw http.ResponseWriter, r *http.Request) {
+		rw.Header().Set("Content-Type", "application/json")
+		_, _ = rw.Write([]byte(`{"access_token":"OAUTH","expires_in":7200,` +
+			`"openid":"oTESTOPENID","scope":"snsapi_login","unionid":"uTESTUNION",` +
+			`"nickname":"小红","headimgurl":"https://thirdwx.qlogo.cn/b"}`))
+	}
+	created, _ := h.svc.CreateSession(context.Background(), "install-1", "device-1")
+	if _, err := h.svc.HandleCallback(context.Background(), "auth-code", created.Ticket); err != nil {
+		t.Fatalf("HandleCallback: %v", err)
+	}
+	poll, _ := h.svc.Poll(context.Background(), created.Ticket)
+	if poll.Account == nil {
+		t.Fatal("no account was returned")
+	}
+	if poll.Account.Nickname != "小红" {
+		t.Errorf("nickname = %q, want 小红", poll.Account.Nickname)
+	}
+}
+
+// The second look must not erase what the sign-in was already told. Under
+// snsapi_login the profile call answers 42003, and a caller that treated that
+// as "the nickname is empty" would wipe the very value the token exchange had
+// just handed over.
+func TestCallbackKeepsTheTokenNicknameWhenTheProfileCallAddsNothing(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.wc.exchangeHandler = func(rw http.ResponseWriter, r *http.Request) {
+		rw.Header().Set("Content-Type", "application/json")
+		_, _ = rw.Write([]byte(`{"access_token":"OAUTH","expires_in":7200,` +
+			`"openid":"oTESTOPENID","scope":"snsapi_login","unionid":"uTESTUNION",` +
+			`"nickname":"小红"}`))
+	}
+	// The default profile handler answers 42003 — no scope.
+	created, _ := h.svc.CreateSession(context.Background(), "install-1", "device-1")
+	if _, err := h.svc.HandleCallback(context.Background(), "auth-code", created.Ticket); err != nil {
+		t.Fatalf("HandleCallback: %v", err)
+	}
+	poll, _ := h.svc.Poll(context.Background(), created.Ticket)
+	if poll.Account == nil {
+		t.Fatal("no account was returned")
+	}
+	if poll.Account.Nickname != "小红" {
+		t.Errorf("nickname = %q, want 小红: a profile call that answers 42003 must not erase it",
+			poll.Account.Nickname)
+	}
+}
+
+// When the second look does have something, it is the fresher answer and
+// wins — the profile endpoint is a second look at the person, and the token
+// exchange was a moment earlier.
+func TestCallbackPrefersTheProfileOverTheTokenNickname(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.wc.exchangeHandler = func(rw http.ResponseWriter, r *http.Request) {
+		rw.Header().Set("Content-Type", "application/json")
+		_, _ = rw.Write([]byte(`{"access_token":"OAUTH","expires_in":7200,` +
+			`"openid":"oTESTOPENID","scope":"snsapi_login","unionid":"uTESTUNION",` +
+			`"nickname":"旧名字"}`))
+	}
+	h.wc.profileHandler = func(rw http.ResponseWriter, r *http.Request) {
+		_, _ = rw.Write([]byte(`{"nickname":"新名字","headimgurl":"https://thirdwx.qlogo.cn/c"}`))
+	}
+	created, _ := h.svc.CreateSession(context.Background(), "install-1", "device-1")
+	if _, err := h.svc.HandleCallback(context.Background(), "auth-code", created.Ticket); err != nil {
+		t.Fatalf("HandleCallback: %v", err)
+	}
+	poll, _ := h.svc.Poll(context.Background(), created.Ticket)
+	if poll.Account == nil || poll.Account.Nickname != "新名字" {
+		t.Fatalf("nickname = %+v, want 新名字", poll.Account)
+	}
+}
+
+// A sign-in that learned nothing about the person is still a sign-in. The
+// account is created, the ticket is authorized, and the nickname is empty —
+// which is the state the service was in before any of this, and is usable.
+func TestCallbackWithNoNicknameAnywhereStillAuthorizes(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	created, _ := h.svc.CreateSession(context.Background(), "install-1", "device-1")
+	if _, err := h.svc.HandleCallback(context.Background(), "auth-code", created.Ticket); err != nil {
+		t.Fatalf("HandleCallback: %v", err)
+	}
+	poll, _ := h.svc.Poll(context.Background(), created.Ticket)
+	if poll.Status != StatusAuthorized {
+		t.Fatalf("status = %q, want authorized", poll.Status)
+	}
+	if poll.Account == nil {
+		t.Fatal("no account was returned")
+	}
+	if poll.Account.Nickname != "" {
+		t.Errorf("nickname = %q, want empty", poll.Account.Nickname)
+	}
+}

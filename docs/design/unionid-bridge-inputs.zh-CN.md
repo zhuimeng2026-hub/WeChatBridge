@@ -18,15 +18,22 @@
 
 ```
 网站应用 snsapi_login 扫码
-   └─ 返 openid + unionid
-        └─ 用 unionid 调公众号的 unionid→openid 接口  →  公众号 openid
-             └─ 用公众号 openid 调 cgi-bin/user/info  →  昵称 + 头像
-                  └─ 写 store.Account.Nickname / AvatarURL
+   └─ 换 token 的响应
+        ├─ 【主路径】响应里直接带 nickname / headimgurl  →  昵称 + 头像
+        └─ 【补拉路径】只带 openid + unionid
+             └─ 用 unionid 调公众号的 unionid→openid 接口  →  公众号 openid
+                  └─ 用公众号 openid 调 cgi-bin/user/info  →  昵称 + 头像
+                       └─ 写 store.Account.Nickname / AvatarURL
 ```
 
 > ⚠️ **2026-10-20 更正**：原文把 unionid→openid 这一步写成 `cgi-bin/user/getid`。
 > 实测该路径**不存在**（见 §9），而 `cgi-bin/user/info` 这一步是**实测可用**的。
 > 中间那一步的接口路径与可用性仍待确认——**这是 U-④ 的前置条件，不是已知的**。
+>
+> **2026-10-20 再更正（重要）**：用户后来发现，开放平台用 `sns_login` 登录时，
+> **换 token 的响应里就会带简单用户信息**（nickname / headimgurl）。也就是说
+> **主路径根本不需要桥接**——上面那条「补拉路径」只在 token 响应没带信息时才需要。
+> 代码原先**没有解析这两个字段**，微信给了也丢掉；现已补上，见 §10。
 
 ---
 
@@ -236,3 +243,50 @@ U-③ 实现公众号客户端时，接口必须用真凭据打一遍——凭�
 U-③（公众号客户端 + access_token 中控）**已实现并真机验证通过**，见
 `server/internal/wechat/mp.go` 与 `server/internal/wechat/mp_live_test.go`。
 其中 `cgi-bin/user/info`（openid → 昵称头像）**实测可用**，缺的只是它前面那一步。
+
+---
+
+## 10. 2026-10-20 补充：token 响应里的用户信息（主路径）
+
+用户观察：开放平台用 `sns_login` 登录时，**换 token 的响应里会带简单用户信息**
+（nickname / headimgurl）。
+
+这句话的分量比它听起来大：**昵称头像的主路径根本不需要桥接**。scope 决定的是
+`/sns/userinfo` 答不答，**不决定换 token 时微信已经说了什么**——`sns_login`
+的语义是「不授权读 profile」，不是「不许在别处告诉你名字」。
+
+### 10.1 代码原先把这份信息丢掉了
+
+`wechat/client.go` 的 `tokenResponse` 里**根本没有** `nickname` / `headimgurl`
+这两个字段，`Session` 也没有。于是微信即便在响应里给了，也**在解码那一步被丢掉**，
+后面整条链路都不知道它存在过：
+
+- `FetchProfile` 是唯一的昵称头像来源，而它在 `snsapi_login` 下回 42003；
+- 所以昵称头像为空；
+- 而空的原因是**代码没读那个字段**，不是微信没给。
+
+这是一个典型的「上游给了、被中间层扔掉、最后表现为下游缺数据」的形状——
+症状在昵称头像这一列，原因在两百行外的结构体定义里。
+
+### 10.2 现在怎么用
+
+- `tokenResponse` 增加 `nickname` / `headimgurl`，`Session` 增加 `Nickname` /
+  `AvatarURL`，`ExchangeCode` 原样带出。
+- `HandleCallback` 里 **session 是第一来源**，`FetchProfile` 只能**改进**它：
+  调用返回 42003（空）时**不得抹掉** session 已经带来的昵称——把「没问到」
+  当成「没有」正是当初把这份信息扔掉的那类错误，换了个方向再来一次。
+- 调用返回了内容时，以调用为准：它是更晚的一眼。
+- 回调多打一条日志（只打布尔值，不打人名）：
+  `has_unionid` / `token_nickname` / `token_avatar` / `profile_nickname` /
+  `profile_avatar`。**下一次真机扫码就能一眼看出这条主路径成不成立**。
+
+### 10.3 对桥接计划的影响
+
+- **U-⓪（主路径）落地，U-④（桥接）降级为补拉路径**——只在 token 响应没带信息的
+  那部分账号上才需要。
+- 若主路径在真机上成立，**§9.3 的三条出路都可以不走了**：那一步（unionid→openid）
+  只是给「token 响应没带信息」的账号兜底用的。
+- 若主路径不成立（微信对这个应用不给），桥接仍是唯一的路，§9.3 照旧。
+
+**验证方式**：部署当前 main，用真机扫码一次，看服务日志里 `token_nickname` 是
+true 还是 false。这是一行日志的判读，不需要另外的接口。

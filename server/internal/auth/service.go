@@ -667,8 +667,16 @@ func (s *Service) HandleCallback(ctx context.Context, code, state string) (Callb
 	// The profile is a nicety. A sign-in that fails because a display name is
 	// unavailable would be a strictly worse product, so every failure below is
 	// logged and stepped over.
-	profile, err := s.wechat.FetchProfile(ctx, sess.AccessToken, sess.OpenID)
-	if err != nil {
+	//
+	// The token exchange may already have carried a nickname and an avatar
+	// — the open platform sends them for many website apps even under
+	// snsapi_login — so the session is the first source and the call is the
+	// one that can improve on it. Under the current scope the call answers
+	// 42003 and adds nothing, which is why the session is seeded first
+	// rather than the other way round: a call that returns nothing must not
+	// erase what the sign-in was already told.
+	profile := wechat.Profile{Nickname: sess.Nickname, AvatarURL: sess.AvatarURL}
+	if fetched, err := s.wechat.FetchProfile(ctx, sess.AccessToken, sess.OpenID); err != nil {
 		if wechat.IsTransient(err) {
 			s.log.Info("wechat profile unavailable, continuing with the stored one",
 				"ticket", token.Fingerprint(session.Ticket),
@@ -676,8 +684,22 @@ func (s *Service) HandleCallback(ctx context.Context, code, state string) (Callb
 		} else {
 			s.log.Warn("wechat profile unavailable", "error", err)
 		}
-		profile = wechat.Profile{}
+	} else if fetched.Nickname != "" || fetched.AvatarURL != "" {
+		profile = fetched
 	}
+	// What the sign-in actually learned, in a form that can be read at a
+	// glance: whether the open platform volunteered a nickname and an avatar
+	// on the way in, and whether the second call improved on them. The
+	// nickname itself is not logged — it is a person's name, and the account
+	// row is where it belongs.
+	s.log.Info("wechat sign-in resolved",
+		"ticket", token.Fingerprint(session.Ticket),
+		"has_unionid", sess.UnionID != "",
+		"token_nickname", sess.Nickname != "",
+		"token_avatar", sess.AvatarURL != "",
+		"profile_nickname", profile.Nickname != "",
+		"profile_avatar", profile.AvatarURL != "")
+
 	if profile.Nickname != "" || profile.AvatarURL != "" {
 		// Best effort: refresh the display fields without disturbing the
 		// identity or the plan. A failure here costs a stale nickname, which
