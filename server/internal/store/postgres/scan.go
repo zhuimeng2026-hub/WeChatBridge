@@ -73,11 +73,24 @@ func scanAccount(row rowScanner) (store.Account, error) {
 // matches either generation, so the row cannot say which one the caller
 // presented, and the answer does not matter here — the paths that care ask
 // the database again under a lock.
+//
+// They are scanned as nullable, and that is not tidiness. The session-start
+// statement sets prev_refresh_token_hash = NULL on purpose: a fresh sign-in
+// has no previous generation, and "no previous generation" is what a NULL
+// column means. Scanning it into a plain string made every account that had
+// signed in and not yet refreshed once unreadable — the row was found, and
+// then the scan failed on the very column that says "there was no earlier
+// token". The client saw 503 on every refresh, for three days, from a column
+// that was NULL exactly as designed.
+//
+// The other two columns of the projection are not nullable in practice:
+// refresh_expires_at and chain_id are written by the same statement that
+// writes refresh_token_hash, so a row this query can return always has them.
 func scanSession(row rowScanner, presented string) (store.Session, error) {
 	var (
 		s       store.Session
-		live    string
-		prev    string
+		live    pgtype.Text
+		prev    pgtype.Text
 		expires time.Time
 		revoked pgtype.Timestamptz
 	)
