@@ -382,6 +382,92 @@ func licensedWithALaterRegistration(t *testing.T) (*fakeActivationStore, string)
 	return st, installID
 }
 
+func TestRegisterOnAnAlreadyLicensedAccountAnswersWithTheLicence(t *testing.T) {
+	t.Parallel()
+	st, installID := licensedWithALaterRegistration(t)
+	// Start from a clean slate so the assertion below is about what Register
+	// writes, not about the tombstone the fixture deliberately seeds.
+	engine := newTestEngine(t, st, "acct-1")
+
+	rec, body := doJSON(t, engine, http.MethodPost, "/v1/activation/request",
+		map[string]any{"installId": installID})
+
+	// Same status code, same two fields — the C# client's classifier never sees
+	// anything it does not already handle.
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status %d, want 201: a licensed account must not be told registration failed (%s)", rec.Code, rec.Body.String())
+	}
+	if body["status"] != "confirmed" {
+		t.Fatalf("status = %v, want confirmed", body["status"])
+	}
+	if body["requestId"] != "act_old" {
+		t.Errorf("requestId = %v, want act_old (the request the customer already owns)", body["requestId"])
+	}
+}
+
+func TestRegisterOnAnAlreadyLicensedAccountFilesNothingNew(t *testing.T) {
+	t.Parallel()
+	st, _ := licensedWithALaterRegistration(t)
+	engine := newTestEngine(t, st, "acct-1")
+	before := len(st.requests)
+
+	doJSON(t, engine, http.MethodPost, "/v1/activation/request", map[string]any{"installId": "install-1"})
+
+	if len(st.requests) != before {
+		t.Fatalf("Register filed %d new row(s) for an account that already holds a live licence: "+
+			"the row can never be confirmed (one live licence per account) and it is exactly the "+
+			"tombstone §11.7 M-5 describes", len(st.requests)-before)
+	}
+}
+
+func TestRegisterOnAnUnlicensedAccountStillFilesARequest(t *testing.T) {
+	t.Parallel()
+	st := newFakeStore()
+	engine := newTestEngine(t, st, "acct-1")
+
+	rec, body := doJSON(t, engine, http.MethodPost, "/v1/activation/request",
+		map[string]any{"installId": "install-new"})
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status %d, want 201", rec.Code)
+	}
+	// The first purchase must be untouched by the licence check.
+	if body["status"] != "pending" {
+		t.Fatalf("status = %v, want pending", body["status"])
+	}
+	if body["requestId"] == "" {
+		t.Fatal("no requestId in the reply")
+	}
+}
+
+func TestRegisterAfterARevocationFilesARequestAgain(t *testing.T) {
+	t.Parallel()
+	// The mirror of the tombstone: the licence is dead, so the account is not
+	// licensed, and a new purchase must be registrable.
+	st := newFakeStore()
+	revoked := time.Now().UTC().Add(-time.Hour)
+	st.seed(store.ActivationRequest{
+		RequestID: "act_old", InstallID: "install-1", AccountID: "acct-1",
+		Status: store.ActivationConfirmed, LicenseID: "lic_old",
+		EnvelopeJSON: signedEnvelope(t, "install-1"),
+	})
+	st.seedBinding(store.LicenceBinding{
+		LicenseID: "lic_old", InstallID: "install-1", AccountID: "acct-1",
+		RequestID: "act_old", RevokedAt: &revoked,
+	})
+	engine := newTestEngine(t, st, "acct-1")
+
+	rec, body := doJSON(t, engine, http.MethodPost, "/v1/activation/request",
+		map[string]any{"installId": "install-1"})
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status %d, want 201", rec.Code)
+	}
+	if body["status"] != "pending" {
+		t.Fatalf("status = %v, want pending: a revoked licence must not keep the customer locked out", body["status"])
+	}
+}
+
 func TestStatusPrefersTheLiveLicenceOverANewerRegistration(t *testing.T) {
 	t.Parallel()
 	st, _ := licensedWithALaterRegistration(t)

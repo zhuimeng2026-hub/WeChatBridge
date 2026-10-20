@@ -285,12 +285,36 @@ function bearerAccount(req) {
   return state.tokens.get(m[1].trim()) ?? null;
 }
 
-function latestRequest(accountId) {
+function newestRequest(accountId) {
   const list = state.requestsByAccount.get(accountId) ?? [];
   for (let i = list.length - 1; i >= 0; i--) {
-    return state.activations.get(list[i]);
+    const r = state.activations.get(list[i]);
+    if (r) return r;
   }
   return null;
+}
+
+// liveLicenceOf 找的是「这张证还活着」的那一行：request 是 confirmed，
+// 且它指向的许可证没有被收回。与真服务端 Licence() 问的是同一个问题。
+function liveLicenceOf(accountId) {
+  const list = state.requestsByAccount.get(accountId) ?? [];
+  for (let i = list.length - 1; i >= 0; i--) {
+    const r = state.activations.get(list[i]);
+    if (!r || r.status !== "confirmed" || !r.licenseId) continue;
+    const lic = state.licences.get(r.licenseId);
+    if (lic && !lic.revoked) return r;
+  }
+  return null;
+}
+
+// §11.7 M-5：「最新一行说了算」是错的。已持证的买家再点一次「我已订购」
+// 会多出一行更新的 pending，把那张真正有效的证盖住——买家永远停在「登记中」。
+// 真服务端已改为「活证优先，否则才取最新」，这里必须跟着改，否则 mock 与
+// 真服务端在这个行为上分叉，而 mock 正是客户端当初对着写的契约参照。
+// 之所以按「活」而不只是按 confirmed：证被收回后再登记的买家，若让那行
+// 已死的 confirmed 继续压过新的 pending，墓碑就会以镜像的方式再出现一次。
+function latestRequest(accountId) {
+  return liveLicenceOf(accountId) ?? newestRequest(accountId);
 }
 
 async function activationRequest(req, res) {
@@ -301,6 +325,14 @@ async function activationRequest(req, res) {
   const body = await readBody(req).catch(() => ({}));
   if (!body.installId) {
     return sendError(res, 400, "bad_request", "请求体格式不正确。");
+  }
+  // 已经持证就不再新建行（§11.7 M-5 的写侧一半）。一个账号同时只能有一张
+  // 活证，所以这一行永远签不下来——它只会变成卖家清不掉的 pending。
+  // 契约保持不变：同样 201、同样两个字段，只是 status 为 confirmed，
+  // requestId 是客户本来就有的那一行；新错误码 C# 客户端不认。
+  const held = liveLicenceOf(accountId);
+  if (held) {
+    return sendJSON(res, 201, { requestId: held.requestId, status: "confirmed" });
   }
   const requestId = "act_" + hex(6);
   state.activations.set(requestId, {

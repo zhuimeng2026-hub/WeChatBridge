@@ -109,12 +109,12 @@ func TestScanSessionReadsAnAccountThatHasNotRefreshedYet(t *testing.T) {
 	// "cannot scan NULL into *string", and the client's refresh answered 503.
 	expires := time.Date(2027, 1, 18, 6, 58, 22, 0, time.UTC)
 	row := fakeRow{values: []any{
-		"acct-1",           // id
-		"chain-1",          // chain_id
-		"live-hash",        // refresh_token_hash
-		nil,                // prev_refresh_token_hash — NULL by design
-		expires,            // refresh_expires_at
-		nil,                // session_revoked_at
+		"acct-1",    // id
+		"chain-1",   // chain_id
+		"live-hash", // refresh_token_hash
+		nil,         // prev_refresh_token_hash — NULL by design
+		expires,     // refresh_expires_at
+		nil,         // session_revoked_at
 	}}
 
 	sess, err := scanSession(row, "presented-hash")

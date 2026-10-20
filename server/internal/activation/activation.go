@@ -163,7 +163,29 @@ func (s *Service) RegisterRoutes(r gin.IRouter, requireAuth gin.HandlerFunc) {
 // for the same account — tapping "buy" twice refreshes the row and returns the
 // same request id — and refuses, with ErrMachineTaken, when the machine's live
 // request belongs to somebody else.
+//
+// An account that already holds a live licence is answered with that licence
+// and files nothing new. This is the write-side half of the fix for §11.7 M-5,
+// and it is deliberately kept contract-safe: the reply keeps the same two
+// fields and the same 201, carrying the request the customer already owns and
+// status "confirmed". A new error code would be unknown to the C# client's
+// classifier, so an already-paying customer would read "登记购买失败" — turning
+// a cosmetic wart into a hard failure. The client's next call is /status,
+// which agrees.
+//
+// Why file nothing: the row this would create can never be confirmed. One
+// account holds at most one live licence — licence_bindings_live_account_idx
+// says so in schema — so the seller's confirm would fail on that very index.
+// The row would sit in the console as a pending line the seller cannot clear,
+// and, before the read-side fix, it also shadowed the licence the customer had
+// already paid for. Not creating it is the fix at its source; the read-side
+// rule remains necessary because rows created by older builds are still out
+// there.
 func (s *Service) Register(ctx context.Context, accountID, installID, anchorDigest string, amountFen *int64) (store.ActivationRequest, error) {
+	if licensed, ok := s.holdsLiveLicence(ctx, accountID); ok {
+		return licensed, nil
+	}
+
 	requestID, err := newRequestID()
 	if err != nil {
 		return store.ActivationRequest{}, fmt.Errorf("activation: mint request id: %w", err)
@@ -243,6 +265,27 @@ func (s *Service) Licence(ctx context.Context, accountID string) (LicenceResult,
 		Token:    base64.RawURLEncoding.EncodeToString(r.EnvelopeJSON),
 		Envelope: envelope,
 	}, nil
+}
+
+// holdsLiveLicence reports the confirmed request this account's live licence
+// belongs to, if it has one.
+//
+// It asks exactly the question Licence asks — a row is only "the customer's
+// licence" if it is confirmed and names the machine's unrevoked binding — so
+// the two can never disagree about who is licensed. Anything short of a
+// definite yes is a no, and the caller proceeds to file a request: a buyer who
+// is not licensed is the ordinary case, and this check exists to stop the
+// redundant row, never to stand between a buyer and a purchase.
+func (s *Service) holdsLiveLicence(ctx context.Context, accountID string) (store.ActivationRequest, bool) {
+	r, err := s.store.LatestActivationRequest(ctx, accountID)
+	if err != nil || r.Status != store.ActivationConfirmed || r.LicenseID == "" {
+		return store.ActivationRequest{}, false
+	}
+	live, err := s.store.LiveBindingByInstallID(ctx, r.InstallID)
+	if err != nil || live.LicenseID != r.LicenseID {
+		return store.ActivationRequest{}, false
+	}
+	return r, true
 }
 
 // newRequestID mints the 单号 the customer quotes and the seller's console
