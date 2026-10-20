@@ -77,7 +77,7 @@ func scanSession(row rowScanner, presented string) (store.Session, error) {
 	var (
 		s       store.Session
 		live    string
-		prev    string
+		prev    pgtype.Text // NULL until the first successful rotation.
 		expires time.Time
 		revoked pgtype.Timestamptz
 	)

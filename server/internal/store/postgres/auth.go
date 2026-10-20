@@ -447,10 +447,11 @@ func (s *Store) RotateRefresh(ctx context.Context, oldHash, newHash, newAccessHa
 	)
 	err := s.inTx(ctx, func(tx pgx.Tx) error {
 		var (
-			accountID, chainID    string
-			currentHash, prevHash string
-			expiresAt             time.Time
-			revokedAt             pgtype.Timestamptz
+			accountID, chainID string
+			currentHash        string
+			prevHash           pgtype.Text // CreateSession clears this to SQL NULL.
+			expiresAt          time.Time
+			revokedAt          pgtype.Timestamptz
 		)
 		err := tx.QueryRow(ctx, sessionMatchForUpdateSQL, oldHash).Scan(
 			&accountID, &chainID, &currentHash, &prevHash, &expiresAt, &revokedAt,
@@ -483,7 +484,7 @@ func (s *Store) RotateRefresh(ctx context.Context, oldHash, newHash, newAccessHa
 		// This is the reuse signal and it is deliberately its own error rather
 		// than a flavour of ErrConflict, because the caller's response is to
 		// kill the whole chain, not to re-issue.
-		if prevHash != "" && oldHash == prevHash && oldHash != currentHash {
+		if prevHash.Valid && oldHash == prevHash.String && oldHash != currentHash {
 			return store.ErrReuseDetected
 		}
 		// Expired. The client is told to re-authenticate; it is not an error,
