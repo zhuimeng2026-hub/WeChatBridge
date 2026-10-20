@@ -152,9 +152,10 @@ func (f *fakeStore) upsertLocked(openID, unionID, nickname, avatar string) (stor
 		if unionID != "" {
 			existing.UnionID = unionID
 		}
-		// A blank field in an upsert must not erase what is stored. Under
-		// snsapi_login the profile is usually absent, and a sign-in that
-		// wiped the nickname would be a visible regression.
+		// A blank field in an upsert must not erase what is stored. The current
+		// scope returns no profile at all, so this is not a defensive branch —
+		// it is the path every sign-in takes, and a sign-in that wiped the
+		// nickname would be a visible regression.
 		if nickname != "" {
 			existing.Nickname = nickname
 		}

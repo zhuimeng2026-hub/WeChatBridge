@@ -34,15 +34,48 @@ import (
 
 // Scope is the scope the website app's QR sign-in uses.
 //
-// It is snsapi_userinfo, not snsapi_login. The original choice was snsapi_login
-// because that scope avoided a second consent screen, and a login flow that can
-// ask for consent is a login flow that can be refused. The trade is reversed
-// now: the avatar and nickname are how the console proves "the buyer is the
-// person who scanned the code", and snsapi_login leaves both fields empty so
-// the proof is never there. The consent screen stays — the screen is the cost
-// of a credential that proves something, not just a sign-in that grants
-// nothing.
-const Scope = "snsapi_userinfo"
+// It is snsapi_login, reverted 2026-10-19 from snsapi_userinfo. Three
+// separate failures pushed it there, and they stack, so all three have to hold
+// for the revert to be the only way forward:
+//
+//  1. Protocol. snsapi_userinfo is a different authorization flow and cannot
+//     replace snsapi_login in qrconnect. The website-login specification says
+//     so: https://developers.weixin.qq.com/doc/oplatform/Website_App/WeChat_Login/Wechat_Login.html
+//
+//  2. Grant. The website app wx0ebd7da2e72e6be2 carries no snsapi_userinfo
+//     grant on the open platform, so a request naming that scope is rejected
+//     outright ("scope 参数错误或没有 scope 权限") — before a QR code is even
+//     rendered. The user sees an error, not a sign-in.
+//
+//  3. Runtime. Even where the grant exists, snsapi_userinfo inserts a consent
+//     screen: WeChat renders a second page between the scan and the redirect,
+//     asking the user to authorize access to their profile. The desktop client
+//     opened that page in a browser it does not own and cannot wait on, so a
+//     scan that a person believed succeeded ended in a tab nobody came back
+//     from — a login flow that can ask for consent is a login flow that can be
+//     left unfinished, and here it was the common case, not the edge case.
+//
+// The wider scope was originally chosen because it is the one that populates
+// nickname and avatar, and the avatar is how the console shows who a buyer is.
+// The trade is knowingly taken back: a new account signs in with no nickname
+// and no avatar, and the console shows it by open_id. What that costs is a
+// display name, not a credential — the proof that the buyer is the person who
+// scanned the code was never the OpenID, which the code exchange establishes on
+// its own. Accounts that already have a nickname or avatar keep it: the upsert
+// only overwrites those columns when WeChat actually says something (see the
+// CASE in upsertAccountSQL), so this is a one-way loss, applied to new
+// accounts alone.
+//
+// Nickname and avatar are recovered on a separate path instead of a wider
+// login scope: the login returns openid+unionid, and the server looks the
+// same-subject public account's openid up by unionid, then calls that
+// account's /sns/userinfo (see server/internal/auth).
+//
+// Do not "improve" this back to snsapi_userinfo without re-reading the three
+// failures above. If the console genuinely cannot work without a nickname, the
+// fix is asking the user for a name after the sign-in — not a consent screen in
+// the middle of the scan.
+const Scope = "snsapi_login"
 
 // redirectFragment is not decoration. Without it WeChat renders a blank page
 // instead of the QR image, and the symptom is a scan that "does nothing"
@@ -253,12 +286,13 @@ type Session struct {
 	UnionID      string
 }
 
-// Profile is the person, as far as WeChat is willing to say. Under
-// snsapi_userinfo both fields are populated; under the old snsapi_login they
-// were routinely empty. Empty today is still a normal answer, not a failure —
-// a server that refused to sign in because WeChat would not volunteer a
-// nickname would be a server that signs fewer people in than its contract
-// allows.
+// Profile is the person, as far as WeChat is willing to say. Under the current
+// snsapi_login scope the /sns/userinfo call answers 42003 — no scope — so both
+// fields are empty for every new account and populated only for the ones whose
+// WeChat app still carries the wider scope from an earlier sign-in. Empty is
+// therefore the ordinary answer, not a fault: a server that refused to sign in
+// because WeChat would not volunteer a nickname would be a server that signs
+// fewer people in than its contract allows.
 type Profile struct {
 	Nickname  string
 	AvatarURL string
@@ -299,11 +333,13 @@ func (c *Client) ExchangeCode(ctx context.Context, code string) (Session, error)
 
 // FetchProfile reads the nickname and avatar for a token obtained above.
 //
-// An empty result is still not a failure: WeChat's profile endpoints refuse
-// the call without warning sometimes (rate limits, internal errors that come
-// back as 48001), and a sign-in that fails because a display name is missing
-// would be a worse product than one that signs in without one. The account
-// row keeps whatever nickname and avatar were already there.
+// An empty result is not a failure, and under the current scope it is the
+// expected one: the call answers 42003 for tokens minted without profile
+// access. WeChat's profile endpoints also refuse without warning sometimes
+// (rate limits, internal errors that come back as 48001), and a sign-in that
+// fails because a display name is missing would be a worse product than one
+// that signs in without one. The account row keeps whatever nickname and avatar
+// were already there.
 func (c *Client) FetchProfile(ctx context.Context, oauthAccessToken, openID string) (Profile, error) {
 	const op = "fetch profile"
 	if oauthAccessToken == "" || openID == "" {
@@ -317,11 +353,11 @@ func (c *Client) FetchProfile(ctx context.Context, oauthAccessToken, openID stri
 	var out userInfoResponse
 	if err := c.get(ctx, op, "/sns/userinfo", q, &out); err != nil {
 		if apiErr := (*APIError)(nil); errors.As(err, &apiErr) && !apiErr.Transient() {
-			// 42003 (no scope), 48001 (api unauthorized), 40125 (bad secret)
-			// are all "WeChat will not answer this" rather than "the call is
-			// broken"; the auth code already exchanged, the sign-in still
-			// stands, and the avatar pipeline degrades to "we'll try again
-			// next time".
+			// 42003 (no scope — the expected answer under snsapi_login),
+			// 48001 (api unauthorized), 40125 (bad secret) are all "WeChat will
+			// not answer this" rather than "the call is broken"; the auth code
+			// already exchanged, the sign-in still stands, and the avatar
+			// pipeline degrades to "we'll try again next time".
 			return Profile{}, nil
 		}
 		return Profile{}, err

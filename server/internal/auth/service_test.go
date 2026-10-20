@@ -64,7 +64,8 @@ func newWechatStub(t *testing.T) *wechatStub {
 			w.profileHandler(rw, r)
 			return
 		}
-		// The realistic answer under snsapi_login: no scope, no profile.
+		// The only answer under snsapi_login: no profile scope, no profile.
+		// This is the default shape of a sign-in, not a degraded one.
 		rw.Header().Set("Content-Type", "application/json")
 		_, _ = rw.Write([]byte(`{"errcode":42003,"errmsg":"insufficient scope"}`))
 	})
@@ -574,8 +575,9 @@ func TestCallbackStoresTheProfileWhenWechatOffersOne(t *testing.T) {
 func TestAMissingProfileDoesNotFailTheSignIn(t *testing.T) {
 	t.Parallel()
 
-	// Under snsapi_login there is usually no profile at all, and 42003 is the
-	// expected answer rather than a fault.
+	// snsapi_login grants no profile access, so 42003 is the expected answer
+	// for every sign-in. The account must still be created and authorized —
+	// this is the path most users will actually take.
 	h := newHarness(t)
 	created, _ := h.svc.CreateSession(context.Background(), "install-1", "device-1")
 	if _, err := h.svc.HandleCallback(context.Background(), "auth-code", created.Ticket); err != nil {
