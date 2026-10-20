@@ -281,6 +281,7 @@
   function showLogin() {
     stopAutoRefresh();
     stopLoginPolling();
+    renderAccount(null);
     $("view-app").hidden = true;
     $("view-login").hidden = false;
     $("login-install-id").textContent = installId();
@@ -519,7 +520,10 @@
   }
 
   // 续期后把新令牌写回存储——api.js 只负责换， app.js 负责记住。
-  api.onTokensChanged(function (tokens) { saveTokens(tokens); });
+  api.onTokensChanged(function (tokens) {
+    saveTokens(tokens);
+    if (!$("view-app").hidden) renderAccount(tokens && tokens.account);
+  });
 
   // ------------------------------------------------------------------
   // 应用视图
@@ -529,12 +533,44 @@
   var refreshTimer = null;
   var activeTab = "pending";
 
+  function hideAvatar() {
+    $("current-avatar-wrap").hidden = true;
+  }
+
+  $("current-avatar").addEventListener("load", function () {
+    if (this.getAttribute("src") && this.naturalWidth > 0) $("current-avatar-wrap").hidden = false;
+  });
+  $("current-avatar").addEventListener("error", function () {
+    hideAvatar();
+    $("current-avatar").removeAttribute("src");
+  });
+
+  function renderAccount(account) {
+    var nickname = account && typeof account.nickname === "string" ? account.nickname.trim() : "";
+    $("current-nickname").textContent = nickname || "微信用户";
+    $("current-account").title = nickname || "当前登录的微信账号";
+    var avatarURL = "";
+    if (account && account.avatarUrl) {
+      try {
+        var url = new URL(account.avatarUrl, api.baseURL + "/");
+        if (/^https?:$/.test(url.protocol) && !url.username && !url.password) avatarURL = url.href;
+      } catch (_) {}
+    }
+    var image = $("current-avatar");
+    if (!avatarURL) {
+      hideAvatar();
+      image.removeAttribute("src");
+    } else if (image.getAttribute("src") !== avatarURL) {
+      hideAvatar();
+      image.src = avatarURL;
+    }
+  }
+
   function enterApp(pendingItems) {
     $("view-login").hidden = true;
     $("view-app").hidden = false;
     var tokens = loadTokens();
-    var nick = tokens && tokens.account ? tokens.account.nickname : "";
-    $("current-account").textContent = nick ? "已登录：" + nick : "已登录";
+    renderAccount(tokens && tokens.account);
     $("current-server").textContent = api.baseURL;
     renderLog();
     if (pendingItems) renderPending(pendingItems);

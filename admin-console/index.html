@@ -53,7 +53,15 @@
       </nav>
     </div>
     <div class="topbar-right">
-      <span id="current-account" class="current-account" title="当前登录的卖家微信"></span>
+      <div id="current-account" class="current-account" title="当前登录的微信账号">
+        <span id="current-avatar-wrap" class="account-avatar" aria-hidden="true" hidden>
+          <img id="current-avatar" alt="" width="34" height="34" referrerpolicy="no-referrer">
+        </span>
+        <span class="account-info">
+          <span id="current-nickname" class="account-name">微信用户</span>
+          <span class="account-status">已登录</span>
+        </span>
+      </div>
       <button id="btn-logout" type="button" class="btn btn-quiet">退出登录</button>
     </div>
   </header>

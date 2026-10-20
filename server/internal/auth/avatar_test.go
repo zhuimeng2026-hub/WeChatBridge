@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gin-gonic/gin"
+
 	"github.com/freestylefly/WeChatBridge/server/internal/avatar"
 	"github.com/freestylefly/WeChatBridge/server/internal/store"
 )
@@ -42,12 +44,13 @@ var avatarPNG = append([]byte{0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A},
 type avatarHarness struct {
 	*harness
 
-	cache    *avatar.Cache
-	cacheDir string
-	served   []byte
-	hits     int
-	srv      *httptest.Server
-	account  string
+	cache     *avatar.Cache
+	cacheDir  string
+	served    []byte
+	hits      int
+	srv       *httptest.Server
+	account   string
+	sourceURL string
 }
 
 func newAvatarHarness(t *testing.T) *avatarHarness {
@@ -87,6 +90,9 @@ func newAvatarHarness(t *testing.T) *avatarHarness {
 func (ah *avatarHarness) signInWithPicture(t *testing.T, installID string) {
 	t.Helper()
 	picURL := ah.srv.URL + "/pic"
+	if ah.sourceURL != "" {
+		picURL = ah.sourceURL
+	}
 	ah.wc.profileHandler = func(rw http.ResponseWriter, r *http.Request) {
 		rw.Header().Set("Content-Type", "application/json")
 		_, _ = rw.Write([]byte(`{"nickname":"小明",` +
@@ -152,7 +158,7 @@ func TestTheClientIsGivenThisServicesAddressNotWechats(t *testing.T) {
 	ah.signInWithPicture(t, "install-1")
 
 	dto := ah.svc.accountDTO(context.Background(), ah.mustAccount(t))
-	want := testPublicBase + AvatarPath(ah.account)
+	want := testPublicBase + AvatarPath(ah.account) + "?v=" + avatar.DigestOf(ah.served)
 	if dto.AvatarURL != want {
 		t.Errorf("avatarUrl = %q, want %q", dto.AvatarURL, want)
 	}
@@ -202,6 +208,52 @@ func TestAPictureOlderThanTheTTLIsReplaced(t *testing.T) {
 	}
 	if rec.Digest == first {
 		t.Error("the record still points at the old picture")
+	}
+}
+
+func TestReplacingTheWechatAvatarUpdatesTheLocalCacheImmediately(t *testing.T) {
+	t.Parallel()
+	ah := newAvatarHarness(t)
+	ah.signInWithPicture(t, "install-1")
+	firstURL := ah.svc.accountDTO(t.Context(), ah.mustAccount(t)).AvatarURL
+	ah.served = append(append([]byte(nil), avatarPNG...), 0x42)
+	ah.sourceURL = ah.srv.URL + "/pic?revision=2"
+	// No clock advance: a changed source must bypass the usual refresh TTL.
+	ah.signInWithPicture(t, "install-2")
+	updatedURL := ah.svc.accountDTO(t.Context(), ah.mustAccount(t)).AvatarURL
+	if ah.hits != 2 || updatedURL == firstURL {
+		t.Fatal("a changed WeChat avatar did not replace the cached image and URL")
+	}
+	ah.signInWithPicture(t, "install-3")
+	if ah.hits != 2 || ah.svc.accountDTO(t.Context(), ah.mustAccount(t)).AvatarURL != updatedURL {
+		t.Fatal("an unchanged avatar should reuse its cached bytes and version")
+	}
+}
+
+func TestAvatarCachingUsesTheContentVersionAndRevalidatesLegacyURLs(t *testing.T) {
+	t.Parallel()
+	ah := newAvatarHarness(t)
+	ah.signInWithPicture(t, "install-1")
+	engine := gin.New()
+	ah.svc.RegisterRoutes(engine)
+	path := AvatarPath(ah.account)
+	digest := avatar.DigestOf(ah.served)
+	for _, tc := range []struct {
+		suffix, cache string
+		status        int
+	}{
+		{"?v=" + digest, "public, max-age=31536000, immutable", http.StatusOK},
+		{"", "no-cache", http.StatusOK},
+		{"?v=previous-avatar", "no-store", http.StatusGone},
+	} {
+		rec, _ := doJSON(t, engine, http.MethodGet, path+tc.suffix, nil, nil)
+		if rec.Code != tc.status || rec.Header().Get("Cache-Control") != tc.cache {
+			t.Errorf("%s: status=%d cache=%q", tc.suffix, rec.Code, rec.Header().Get("Cache-Control"))
+		}
+	}
+	rec, _ := doJSON(t, engine, http.MethodGet, path, nil, map[string]string{"If-None-Match": `"` + digest + `"`})
+	if rec.Code != http.StatusNotModified || rec.Body.Len() != 0 {
+		t.Fatal("an unchanged avatar must reuse the browser's local bytes")
 	}
 }
 
