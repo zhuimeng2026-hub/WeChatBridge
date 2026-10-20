@@ -14,12 +14,19 @@
 | # | 步骤 | 状态 | commit |
 |---|---|---|---|
 | S0 | 提交任务 15（门禁接入） | ✅ | `2d994b0` |
-| S1 | `PollSchedule` 单测 | ⬜ | — |
-| S2 | `ActivationContract` / `TimestampConverter` 单测 | ⬜ | — |
-| S3 | `AccountService` 单测 | ⬜ | — |
-| S4 | `ActivationService` 单测 | ⬜ | — |
-| S5 | `HttpActivationTransport` handler 注入 | ⬜ | — |
+| S1 | `PollSchedule` 单测 | ✅ | `502e9ae` |
+| S2 | `ActivationContract` / `TimestampConverter` 单测 | ⏳ | 代码已写，**8 红待修** |
+| S3 | `AccountService` 单测 | ⏳ | 代码已写，编译已通 |
+| S4 | `ActivationService` 单测 | ⏳ | 代码已写，**2 红待决策** |
+| S5 | `HttpActivationTransport` handler 注入 | ✅ |代码已写，**81 测试全绿** |
 | S6 | mock 全流程 + 出口复核 | 🔴 | — |
+
+> **2026-10-20 更新**：S2–S5 的代码早已写完，但因`AccountServiceTests.cs`
+> 缺一个 class 闭合括号，**Tests 工程编译不过，这批测试从未真正运行过**。
+> 补括号后 build 转绿，实测 **失败 10 / 通过 649**（AppTests 81 全绿）。
+> 详见看板「测试真实状态」一节——那里有10 个失败的逐条根因。
+> 下一步不是重跑 S2–S5，而是先修 A 类 8 个（测试探针补 `JsonPropertyName`），
+> B 类 2 个需设计决策。
 
 清单里只剩 🔴 时，计划任务会**自己停用**（`Disable-ScheduledTask`）——没有可执行的步骤
 就不该再唤醒机器。要恢复：
