@@ -10,7 +10,7 @@
 //
 //	POST   /v1/auth/session           -> ticket + authorizeUrl + qrImageUrl + expiresAt
 //	GET    /v1/auth/session/{ticket}  -> {status, tokens?, expiresAt?, account?}
-//	GET    /v1/auth/session/{t}/qr    -> image/png
+//	GET    /v1/auth/session/{t}/qr    -> 409, open authorizeUrl in a browser
 //	GET    /v1/auth/wechat/callback   -> 200, empty body, no redirect
 //	POST   /v1/auth/refresh           -> rotated pair, or a reason not to
 //	DELETE /v1/auth/session           -> revoke the whole chain
@@ -85,15 +85,6 @@ type Service struct {
 	log         *slog.Logger
 	now         func() time.Time
 
-	// scannableQR turns an authorize URL into the /connect/qrcode/<uuid> that
-	// a phone recognises as a login code. It is a field rather than a direct
-	// call into the wechat client so that the QR endpoint can be tested without
-	// the network: the authorize URL it is handed points at the real open
-	// platform, and a test that fetched it would be a test that fails whenever
-	// WeChat or the network has a bad minute. See wechat.ScannableQRURL for
-	// what the swap buys and why the fallback still exists.
-	scannableQR func(ctx context.Context, authorizeURL string) (string, error)
-
 	// outstanding tracks live tickets per install id. It is an in-process
 	// approximation, not an authoritative count — the store has no listing
 	// method, and the cost of getting it wrong is a few extra rows that the
@@ -105,6 +96,14 @@ type Service struct {
 	// something a bare timestamp can act on.
 	outstandingMu sync.Mutex
 	outstanding   map[string][]reservation
+	creating      map[string]*ticketCreation // guarded by outstandingMu
+}
+
+// ticketCreation serializes reservation and INSERT for one install. The
+// reference count includes waiters, so idle locks can be removed safely.
+type ticketCreation struct {
+	slot  chan struct{}
+	users int
 }
 
 // reservation is one live ticket: when it was taken, and which one it is.
@@ -128,9 +127,6 @@ type Options struct {
 	// URL expires.
 	Avatars *avatar.Cache
 	Logger  *slog.Logger
-	// ScannableQR resolves an authorize URL into the code a phone can scan.
-	// Optional: nil uses the WeChat client's own resolver. Only tests set it.
-	ScannableQR func(ctx context.Context, authorizeURL string) (string, error)
 	// Now defaults to the wall clock. Tests set it so a ticket can be aged
 	// out without sleeping.
 	Now func() time.Time
@@ -171,9 +167,6 @@ func NewService(cfg Config, opts Options) (*Service, error) {
 	if opts.Now == nil {
 		opts.Now = func() time.Time { return time.Now().UTC() }
 	}
-	if opts.ScannableQR == nil {
-		opts.ScannableQR = opts.WeChat.ScannableQRURL
-	}
 	if cfg.MaxOutstandingTickets <= 0 {
 		cfg.MaxOutstandingTickets = 3
 	}
@@ -195,8 +188,8 @@ func NewService(cfg Config, opts Options) (*Service, error) {
 		avatarCache: opts.Avatars,
 		log:         opts.Logger,
 		now:         opts.Now,
-		scannableQR: opts.ScannableQR,
 		outstanding: make(map[string][]reservation),
+		creating:    make(map[string]*ticketCreation),
 	}, nil
 }
 
@@ -207,7 +200,7 @@ func NewService(cfg Config, opts Options) (*Service, error) {
 // CallbackURL is the redirect URI sent to WeChat.
 func (s *Service) CallbackURL() string { return s.cfg.PublicBaseURL + CallbackPath }
 
-// QRImagePath is where the PNG for a ticket lives, relative to the base URL.
+// QRImagePath is the deprecated image route, retained for wire compatibility.
 func QRImagePath(ticket string) string { return "/v1/auth/session/" + ticket + "/qr" }
 
 // QRImageURL is the absolute URL handed to the client. It has to be absolute:
@@ -251,6 +244,12 @@ type CreateSessionResult struct {
 // a QR image and a status word, and the status word is worthless until the
 // person in front of the phone is somebody.
 func (s *Service) CreateSession(ctx context.Context, installID, deviceID string) (CreateSessionResult, error) {
+	unlock, err := s.lockTicketCreation(ctx, installID)
+	if err != nil {
+		return CreateSessionResult{}, err
+	}
+	defer unlock()
+
 	ticket, err := s.issuer.NewID()
 	if err != nil {
 		return CreateSessionResult{}, fmt.Errorf("auth: mint ticket: %w", err)
@@ -291,6 +290,41 @@ func (s *Service) CreateSession(ctx context.Context, installID, deviceID string)
 	}, nil
 }
 
+// lockTicketCreation holds only this install's slot during store I/O. Without
+// it, a parallel request can mistake a reserved but unpersisted ticket for a
+// deleted row, retire it, and let both INSERTs exceed the budget.
+func (s *Service) lockTicketCreation(ctx context.Context, installID string) (func(), error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if installID == "" {
+		return func() {}, nil
+	}
+	s.outstandingMu.Lock()
+	entry := s.creating[installID]
+	if entry == nil {
+		entry = &ticketCreation{slot: make(chan struct{}, 1)}
+		s.creating[installID] = entry
+	}
+	entry.users++
+	s.outstandingMu.Unlock()
+	release := func() {
+		s.outstandingMu.Lock()
+		defer s.outstandingMu.Unlock()
+		entry.users--
+		if entry.users == 0 {
+			delete(s.creating, installID)
+		}
+	}
+	select {
+	case entry.slot <- struct{}{}:
+		return func() { <-entry.slot; release() }, nil
+	case <-ctx.Done():
+		release()
+		return nil, ctx.Err()
+	}
+}
+
 // reserveTicket keeps at most MaxOutstandingTickets live tickets per install,
 // so that asking for a new QR in a loop cannot pile up rows.
 //
@@ -303,9 +337,8 @@ func (s *Service) CreateSession(ctx context.Context, installID, deviceID string)
 // the one person for whom "your QR is too old, make a new one" is exactly what
 // they asked for; the row they are discarding is the one they no longer want.
 //
-// Retiring is not unconditional. store.DeleteAuthSession refuses to remove an
-// authorised row, and when it does the limit stands and the caller gets 429 —
-// see dropStaleTicket for why deleting that one would be worse than a 429.
+// Authorised rows awaiting token delivery are protected. If the oldest one is
+// protected, try the next pending row before refusing the new request.
 func (s *Service) reserveTicket(ctx context.Context, installID, ticket string) error {
 	if installID == "" {
 		// An anonymous caller with no install id gets no per-install budget,
@@ -316,34 +349,36 @@ func (s *Service) reserveTicket(ctx context.Context, installID, ticket string) e
 	now := s.now()
 	cutoff := now.Add(-s.cfg.AuthSessionTTL)
 
-	// Which ticket is in the way is read under the lock; the retirement of it
-	// is not. The store round trip happens with the lock released so one slow
-	// delete cannot serialise ticket creation for every other install id.
+	// CreateSession holds this install's creation slot through the INSERT.
+	// The global bookkeeping lock is never held during a store round trip.
 	s.outstandingMu.Lock()
 	s.pruneLocked(cutoff)
-	blocked := ""
+	var candidates []reservation
 	if list := s.outstanding[installID]; len(list) >= s.cfg.MaxOutstandingTickets {
-		blocked = list[0].ticket
+		candidates = append(candidates, list...)
 	}
 	s.outstandingMu.Unlock()
 
-	if blocked != "" {
-		dropped, err := s.dropStaleTicket(ctx, blocked)
-		if err != nil {
-			s.log.Warn("auth: could not retire the oldest ticket, refusing instead",
-				"install", token.Fingerprint(installID), "err", err)
+	if len(candidates) > 0 {
+		for _, candidate := range candidates {
+			dropped, err := s.dropStaleTicket(ctx, candidate.ticket)
+			if err != nil {
+				return fmt.Errorf("auth: retire pending ticket: %w", err)
+			}
+			if !dropped {
+				continue
+			}
+			s.releaseTicket(installID, candidate.ticket)
+			break
 		}
-		if !dropped {
-			return &RateLimitedError{Limit: s.cfg.MaxOutstandingTickets}
-		}
-		s.outstandingMu.Lock()
-		s.dropLocked(installID, blocked)
-		s.outstandingMu.Unlock()
 	}
 
 	s.outstandingMu.Lock()
 	defer s.outstandingMu.Unlock()
 	s.pruneLocked(cutoff)
+	if len(s.outstanding[installID]) >= s.cfg.MaxOutstandingTickets {
+		return &RateLimitedError{Limit: s.cfg.MaxOutstandingTickets}
+	}
 	s.outstanding[installID] = append(s.outstanding[installID], reservation{ticket: ticket, at: now})
 	return nil
 }
@@ -354,9 +389,8 @@ func (s *Service) reserveTicket(ctx context.Context, installID, ticket string) e
 // It answers false for a ticket that has already been authorised. That row is a
 // sign-in somebody completed and the console may not have polled for yet —
 // deleting it would produce 「扫码成功」 followed by an expired poll, which is a
-// worse failure than the 429 this path exists to avoid. False is also the
-// answer for a row that is already gone: nothing is lost by refusing then, and
-// the in-process entry it leaves behind ages out with everything else.
+// worse failure than the 429 this path exists to avoid. A row that is already
+// gone has no sign-in to protect and its reservation can be released.
 func (s *Service) dropStaleTicket(ctx context.Context, ticket string) (bool, error) {
 	session, err := s.store.GetAuthSession(ctx, ticket)
 	if err != nil {
@@ -408,7 +442,7 @@ func (s *Service) dropLocked(installID, ticket string) {
 	s.outstanding[installID] = live
 }
 
-// releaseTicket drops a reservation whose ticket was never stored.
+// releaseTicket drops a failed creation, retired ticket, or delivered sign-in.
 func (s *Service) releaseTicket(installID, ticket string) {
 	if installID == "" {
 		return
@@ -549,6 +583,7 @@ func (s *Service) authorized(ctx context.Context, session store.AuthSession) (Po
 		ExpiresAt:    creds.AccessExpiresAt,
 		Account:      &account,
 	}
+	s.releaseTicket(session.InstallID, session.Ticket)
 	s.log.Info("auth session delivered",
 		"ticket", token.Fingerprint(session.Ticket),
 		"account", token.Fingerprint(account.ID),

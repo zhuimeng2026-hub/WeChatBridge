@@ -173,7 +173,7 @@ func Logger(log *slog.Logger) gin.HandlerFunc {
 		log.Info("http",
 			"request_id", RequestID(c),
 			"method", c.Request.Method,
-			"path", c.Request.URL.Path,
+			"path", logRoute(c),
 			"status", c.Writer.Status(),
 			"duration_ms", time.Since(start).Milliseconds(),
 			"client_ip", c.ClientIP())
@@ -188,13 +188,23 @@ func RecoveryMiddleware(log *slog.Logger) gin.HandlerFunc {
 			if r := recover(); r != nil {
 				log.Error("panic",
 					"request_id", RequestID(c),
-					"path", c.Request.URL.Path,
+					"path", logRoute(c),
 					"panic", r)
 				Fail(c, Internal(fmt.Errorf("panic: %v", r)))
 			}
 		}()
 		c.Next()
 	}
+}
+
+// Login tickets are bearer credentials until the one-time handoff is consumed.
+// Log route templates, including on panic; an unmatched path may contain the
+// same credential with a typo or extra suffix, so do not log that raw either.
+func logRoute(c *gin.Context) string {
+	if path := c.FullPath(); path != "" {
+		return path
+	}
+	return "<unmatched>"
 }
 
 // LoggerMiddleware is the structured request logger.

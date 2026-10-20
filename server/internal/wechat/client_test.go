@@ -72,11 +72,10 @@ func TestAuthorizeURLCarriesEveryParameterWechatNeeds(t *testing.T) {
 	// Spelled out as a literal, not as `Scope`. The table above already pins
 	// the literal; asserting scope == Scope on top of it proves only that the
 	// constant matches itself, and it sailed through the exact commit that
-	// broke sign-in for everyone. If you are about to "fix" this back to
-	// snsapi_userinfo, read the Scope doc comment first — the app answers
-	// 42003 for it, and the failure surfaces only on a phone screen.
+	// broke sign-in for everyone. Website qrconnect requires snsapi_login,
+	// independently of whether userinfo is available for a particular grant.
 	if Scope != "snsapi_login" {
-		t.Errorf("Scope = %q; the live app rejects it with 42003", Scope)
+		t.Errorf("Scope = %q, want website login scope snsapi_login", Scope)
 	}
 	// A secret in the browser-facing URL would be a secret in a browser
 	// history.
@@ -388,5 +387,27 @@ func TestContextCancellationIsTransient(t *testing.T) {
 	}
 	if !IsTransient(err) {
 		t.Errorf("a cancelled or timed-out request is transient: %v", err)
+	}
+}
+
+func TestTransportErrorsDoNotExposeCredentials(t *testing.T) {
+	t.Parallel()
+	client := NewClient(Config{AppID: "wx", AppSecret: "private-app-secret", APIBase: "https://api.weixin.qq.com"})
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	_, exchangeErr := client.ExchangeCode(ctx, "private-auth-code")
+	_, profileErr := client.FetchProfile(ctx, "private-oauth-token", "private-openid")
+	for name, err := range map[string]error{"exchange": exchangeErr, "profile": profileErr} {
+		if err == nil {
+			t.Fatalf("%s: expected a transport failure", name)
+		}
+		for _, secret := range []string{"private-app-secret", "private-auth-code", "private-oauth-token", "private-openid"} {
+			if strings.Contains(err.Error(), secret) {
+				t.Errorf("%s error exposes a credential", name)
+			}
+		}
+		if !errors.Is(err, context.Canceled) || !IsTransient(err) {
+			t.Errorf("%s: sanitizing the error lost its classification", name)
+		}
 	}
 }

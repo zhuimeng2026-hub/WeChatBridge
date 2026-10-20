@@ -32,35 +32,10 @@ import (
 	"time"
 )
 
-// Scope is the scope the website app's QR sign-in uses.
-//
-// It is snsapi_login, and 7a16d19 tried to make it snsapi_userinfo for good
-// reasons that are still true. The narrower scope leaves nickname and avatar
-// empty, and the avatar and nickname are how the console proves "the buyer is
-// the person who scanned the code" — snsapi_login leaves both fields empty so
-// the proof is never there. That trade was taken for granted, and it was
-// wrong: it assumed the app was certified for snsapi_userinfo.
-//
-// It is not. Probed 2026-10-19 against the live appid, same redirect_uri,
-// only the scope differing:
-//
-//	snsapi_login     -> 43,810 bytes, embeds a uuid, renders the QR
-//	snsapi_userinfo  ->    892 bytes, "Scope 参数错误或没有 Scope 权限" (42003)
-//
-// So snsapi_userinfo is not a nicer default here, it is the difference between
-// signing in and not. Read this before "fixing" it back: the way to earn
-// snsapi_userinfo is 微信认证 on the open platform account, not a code change.
-// Until then the avatar and nickname are empty and the admin console falls back
-// to identifying accounts by OpenID.
-//
-// Note the shape of the failure, because it is invisible in the logs and
-// repeats: AuthorizeURL only builds a string and the QR is rendered locally.
-// The server never calls WeChat to render the code, so 42003 comes back as a
-// page on the phone's browser, not as a status in the service. No callback is
-// ever made either, because there is no code to carry, so the only trace is
-// repeated 201s on POST /v1/auth/session and then silence. FetchProfile's
-// tolerance for 42003 (see below) cannot help: it degrades after the token
-// exchange, and this fails before it.
+// Scope is fixed by WeChat website login, independently of profile data.
+// snsapi_userinfo is a different authorization flow and cannot replace it in
+// qrconnect. See the official website login specification:
+// https://developers.weixin.qq.com/doc/oplatform/Website_App/WeChat_Login/Wechat_Login.html
 const Scope = "snsapi_login"
 
 // redirectFragment is not decoration. Without it WeChat renders a blank page
@@ -196,7 +171,23 @@ type TransportError struct {
 	Cause error
 }
 
-func (e *TransportError) Error() string { return "wechat: " + e.Op + ": " + e.Cause.Error() }
+func (e *TransportError) Error() string {
+	// net/http wraps failures in url.Error, whose message includes the query
+	// string (AppSecret, code, or OAuth token). Keep the cause for errors.Is/As,
+	// but expose only a safe classification to logs and HTTP error handlers.
+	detail := "request failed"
+	if errors.Is(e.Cause, context.Canceled) {
+		detail = "request cancelled"
+	} else if errors.Is(e.Cause, context.DeadlineExceeded) {
+		detail = "request timed out"
+	} else {
+		var netErr net.Error
+		if errors.As(e.Cause, &netErr) && netErr.Timeout() {
+			detail = "request timed out"
+		}
+	}
+	return "wechat: " + e.Op + ": " + detail
+}
 
 func (e *TransportError) Unwrap() error { return e.Cause }
 
@@ -247,7 +238,7 @@ type userInfoResponse struct {
 // Public surface
 // ---------------------------------------------------------------------------
 
-// AuthorizeURL builds the URL to encode into the QR code. state is opaque to
+// AuthorizeURL builds the URL to open in the desktop browser. state is opaque to
 // WeChat and comes back untouched on the redirect, so it is where the ticket
 // that ties this scan to this desktop process travels.
 func (c *Client) AuthorizeURL(state, redirectURI string) string {
@@ -272,14 +263,10 @@ type Session struct {
 	UnionID      string
 }
 
-// Profile is the person, as far as WeChat is willing to say.
-//
-// Both fields are empty today and not by accident: Scope is snsapi_login
-// because the app is not certified for snsapi_userinfo (see above). So
-// FetchProfile returns a zero Profile on the happy path, not by error. Empty is
-// still a normal answer, not a failure — a server that refused to sign in
-// because WeChat would not volunteer a nickname would be a server that signs
-// fewer people in than its contract allows.
+// Profile is the display information WeChat returns. Availability depends on
+// the grant and upstream response, not just the scope string. FetchProfile
+// attempts the userinfo call and tolerates unavailable display fields; account
+// identity and administrator privileges always use the verified OpenID.
 type Profile struct {
 	Nickname  string
 	AvatarURL string

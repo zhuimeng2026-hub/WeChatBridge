@@ -200,6 +200,8 @@ func (p *PaymentCode) Problems() []string {
 	if p == nil {
 		return nil
 	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	var out []string
 	for _, i := range []picture{p.pay, p.contact} {
 		if i.Problem != "" {
@@ -210,7 +212,14 @@ func (p *PaymentCode) Problems() []string {
 }
 
 // Configured reports whether the payment image is usable.
-func (p *PaymentCode) Configured() bool { return p != nil && p.pay.usable() }
+func (p *PaymentCode) Configured() bool {
+	if p == nil {
+		return false
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.pay.usable()
+}
 
 // maxInstallIDShown bounds the machine code on the page.
 //
@@ -349,7 +358,7 @@ func (p *PaymentCode) Render(kind pageKind, installID string) ([]byte, error) {
 			Kind:    kind,
 			Title:   "登录成功",
 			Detail:  "卖家后台 · 微信流",
-			Hint:    "回到卖家后台那一页，它已经自动登录完成。这个标签页可以关掉。",
+			Hint:    "请回到卖家后台页面，等待管理员身份验证完成。这个标签页可以关掉。",
 			Console: true,
 		}
 		if err := pageTemplate.Execute(&buf, m); err != nil {
@@ -365,9 +374,11 @@ func (p *PaymentCode) Render(kind pageKind, installID string) ([]byte, error) {
 		Hint:   c.hint,
 	}
 	if p != nil {
+		p.mu.Lock()
 		m.Image = template.URL(p.pay.URI)
 		m.Contact = template.URL(p.contact.URI)
 		m.WeChat = p.weChat
+		p.mu.Unlock()
 	}
 	if kind == pageAuthorized {
 		m.InstallID = installID

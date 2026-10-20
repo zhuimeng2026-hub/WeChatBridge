@@ -12,7 +12,6 @@ import (
 	"github.com/freestylefly/WeChatBridge/server/internal/httpx"
 	"github.com/freestylefly/WeChatBridge/server/internal/store"
 	"github.com/freestylefly/WeChatBridge/server/internal/token"
-	"github.com/freestylefly/WeChatBridge/server/internal/wechat"
 )
 
 // CallbackPath is the redirect URI's path. It is fixed rather than configured
@@ -57,6 +56,7 @@ func BearerToken(c *gin.Context) string {
 // decides what else is mounted and in what order.
 func (s *Service) RegisterRoutes(r gin.IRouter) {
 	group := r.Group("/v1/auth")
+	group.Use(privateAuthResponse)
 	group.POST("/session", s.handleCreateSession)
 	group.GET("/session/:ticket", s.handlePoll)
 	group.GET("/session/:ticket/qr", s.handleQRCode)
@@ -64,8 +64,16 @@ func (s *Service) RegisterRoutes(r gin.IRouter) {
 	group.POST("/refresh", s.handleRefresh)
 	group.GET("/wechat/callback", s.handleCallback)
 
-	r.GET("/v1/account", s.RequireAuth(), s.handleAccount)
+	r.GET("/v1/account", privateAuthResponse, s.RequireAuth(), s.handleAccount)
 	r.GET("/v1/accounts/:id/avatar", s.handleAvatar)
+}
+
+// These responses carry tickets, credentials, or account data. Apply on error
+// paths too, and avoid forwarding callback codes/state in a Referer header.
+func privateAuthResponse(c *gin.Context) {
+	c.Header("Cache-Control", "no-store")
+	c.Header("Referrer-Policy", "no-referrer")
+	c.Next()
 }
 
 // RequireAuth is the bearer middleware. It verifies the signature and the
@@ -187,27 +195,16 @@ func (s *Service) toPollResponse(ctx context.Context, r PollResult) pollResponse
 	return out
 }
 
-// handleQRCode serves the PNG. The client verifies the magic bytes before
-// handing it to a decoder, so an HTML error page here would surface deep
-// inside WPF as an UnsupportedException; the content type and the byte count
-// are both checked before anything is written.
-//
-// What is encoded matters as much as the encoding. The obvious choice — the
-// session's authorize URL — produces a picture nobody can finish a sign-in
-// with: a phone reads that URL as an ordinary link and opens the open
-// platform's own page in-app, where a desktop login cannot be completed, and
-// the callback never comes. The code that does work is the /connect/qrcode/
-// <uuid> WeChat mints for that page, one hop deeper and issued by WeChat
-// itself. So the image is rendered from that, and the browser link on the
-// login page becomes the fallback it should have been all along.
+// handleQRCode retains the legacy route with an explicit migration error.
+// Extracting a QR image from WeChat's page does not run the browser-side poll
+// and redirect that delivers the authorization code. Both current clients use
+// authorizeUrl in a browser; returning a plausible PNG here would strand old
+// clients at pending without any way to finish signing in.
 func (s *Service) handleQRCode(c *gin.Context) {
 	ticket := c.Param("ticket")
 	session, err := s.store.GetAuthSession(c.Request.Context(), ticket)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
-			// A PNG-shaped 404 is still a failure the client will reject on
-			// its magic-byte check. There is no picture of a ticket that does
-			// not exist, so say so.
 			c.Status(http.StatusNotFound)
 			return
 		}
@@ -215,30 +212,12 @@ func (s *Service) handleQRCode(c *gin.Context) {
 		return
 	}
 
-	body := session.AuthorizeURL
-	if scannable, err := s.scannableQR(c.Request.Context(), body); err == nil {
-		body = scannable
-	} else {
-		// Falling back rather than failing is a deliberate choice and it has a
-		// cost: the image on screen becomes one that does not work. It is
-		// still the better of the two, because the alternative is a 500 that
-		// the page renders as 「二维码加载失败，请点刷新重试」 — and a seller
-		// refreshing into an upstream outage never gets a picture at all,
-		// whereas this leaves the browser link above it as a live way in.
-		//
-		// The warning is therefore the only trace this decision leaves, which
-		// is exactly why it is a warning and not a debug line: "the QR on the
-		// login page stopped working" has no other symptom anywhere.
-		s.log.Warn("qr: falling back to the authorize URL, which does not scan",
-			"ticket", ticket, "err", err)
-	}
-
-	png, err := renderQR(body)
-	if err != nil {
-		httpx.Fail(c, httpx.Internal(err))
+	if session.State != store.AuthPending || !s.now().Before(session.ExpiresAt) {
+		httpx.Fail(c, &httpx.APIError{Status: http.StatusGone, Code: httpx.CodeGone,
+			Message: "登录会话已失效或已完成，请重新获取登录链接。"})
 		return
 	}
-	c.Data(http.StatusOK, "image/png", png)
+	httpx.Fail(c, httpx.Conflict("请在浏览器中打开会话的 authorizeUrl，并扫描微信官方授权页的二维码完成登录。"))
 }
 
 func (s *Service) handleCallback(c *gin.Context) {
@@ -477,10 +456,4 @@ func (s *Service) handleAvatar(c *gin.Context) {
 	// reachable without a token.
 	c.Header("X-Content-Type-Options", "nosniff")
 	c.Data(http.StatusOK, rec.MIME, body)
-}
-
-// renderQR is the one call into the encoder, so the size this service asks for
-// is one number in one place.
-func renderQR(body string) ([]byte, error) {
-	return wechat.RenderQRPNG(body, wechat.DefaultQRSize)
 }

@@ -100,9 +100,8 @@ async function main() {
     check("响应含 authorizeUrl / qrImageUrl / expiresAt",
       !!sess.authorizeUrl && !!sess.qrImageUrl && !!sess.expiresAt);
 
-    const qr = await api.auth.qrBlob(sess.ticket);
-    const magic = new Uint8Array((await qr.arrayBuffer()).slice(0, 4));
-    check("QR 端点是合法 PNG", magic[0] === 0x89 && magic[1] === 0x50 && magic[2] === 0x4e && magic[3] === 0x47);
+    await expectApiError("旧 QR 端点提示改用官方浏览器授权",
+      () => api.auth.qrBlob(sess.ticket), 409);
 
     const pollPending = await api.auth.pollSession(sess.ticket);
     check("轮询 → pending", pollPending.status === "pending");

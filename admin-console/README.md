@@ -21,6 +21,12 @@ node server/mock/server.js --port 8901
 管理页面不再展示 `/qr` 返回的普通链接二维码，避免微信将其识别成手机网页而无法登录。
 mock 只模拟登录接口；本地验证由测试脚本调用 `/mock/scan`，不会完成真实微信授权。
 
+旧 `/v1/auth/session/:ticket/qr` 已停用：有效待授权会话返回 **409 conflict**，
+提示打开 `authorizeUrl`；已失效或完成的会话返回 410，未知会话返回 404。
+`qrImageUrl` 字段仅为兼容旧响应结构保留。不要单独抓取微信页面中的二维码：
+没有页面中等待扫码并跳转的逻辑，就不会交付回调所需的授权码。
+审查与验证记录见 [开放平台登录审查](../docs/design/wechat-open-platform-review-2026-10-20.zh-CN.md)。
+
 ## 部署环境变量（.env）
 
 微信相关参数沿用服务端 `server/internal/config/config.go` 的配置，由部署环境的

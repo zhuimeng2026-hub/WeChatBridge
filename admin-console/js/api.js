@@ -115,7 +115,7 @@
 
   // AuthClient — 微信开放平台网站应用扫码登录。
   //
-  // 流程（与买家端完全同一套冻结端点）：建会话拿 ticket → 展示 QR →
+  // 流程（与买家端同一套端点）：建会话拿 ticket → 浏览器打开 authorizeUrl →
   // 轮询 ticket → authorized 时拿双令牌。installId 是这台控制台自己的
   // 匿名身份，由调用方生成后持久化，与服务端登记的买家机器码无关。
   class AuthClient {
@@ -135,6 +135,7 @@
     }
 
     qrBlob(ticket) {
+      // 兼容旧调用方；服务端已停用独立二维码，此调用会得到迁移错误。
       return this.http.png("/v1/auth/session/" + encodeURIComponent(ticket) + "/qr");
     }
 

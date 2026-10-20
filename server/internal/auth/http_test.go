@@ -189,37 +189,6 @@ func TestPollReturnsExpiredForATicketThatIsGone(t *testing.T) {
 	}
 }
 
-func TestTheQREndpointReturnsAPngWithinTheClientLimit(t *testing.T) {
-	t.Parallel()
-
-	_, engine := newTestServer(t)
-	created := createTicket(t, engine, "install-1")
-	ticket := created["ticket"].(string)
-
-	req := httptest.NewRequest(http.MethodGet, "/v1/auth/session/"+ticket+"/qr", nil)
-	rec := httptest.NewRecorder()
-	engine.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, body %s", rec.Code, rec.Body.String())
-	}
-	if ct := rec.Header().Get("Content-Type"); ct != "image/png" {
-		t.Errorf("Content-Type = %q, want image/png", ct)
-	}
-
-	body := rec.Body.Bytes()
-	// The client checks these bytes before handing them to WPF. A wrong
-	// server answering with an HTML error page would otherwise surface as a
-	// NotSupportedException inside the image decoder, which reads like a
-	// client bug rather than a bad response.
-	if !wechat.IsPNG(body) {
-		t.Fatalf("the response is not a PNG: % x", body[:min(16, len(body))])
-	}
-	if len(body) > wechat.MaxQRBytes {
-		t.Fatalf("the PNG is %d bytes, over the client's %d byte limit", len(body), wechat.MaxQRBytes)
-	}
-}
-
 func TestTheQREndpoint404sForATicketThatDoesNotExist(t *testing.T) {
 	t.Parallel()
 
@@ -229,74 +198,6 @@ func TestTheQREndpoint404sForATicketThatDoesNotExist(t *testing.T) {
 	engine.ServeHTTP(rec, req)
 	if rec.Code != http.StatusNotFound {
 		t.Errorf("status = %d, want 404", rec.Code)
-	}
-}
-
-func TestTheQREndpointEncodesTheCodeWechatActuallyRecognises(t *testing.T) {
-	t.Parallel()
-
-	// The regression this guards is invisible from the outside: encoding the
-	// authorize URL also answers 200 with a perfectly valid PNG under the byte
-	// limit. It is just a picture a phone cannot finish a sign-in with — it
-	// reads the URL as a link and lands on a page built for a desktop. So the
-	// assertion cannot be about the response; it is about what got rendered.
-	h, engine := newTestServer(t)
-	created := createTicket(t, engine, "install-1")
-	ticket := created["ticket"].(string)
-
-	req := httptest.NewRequest(http.MethodGet, "/v1/auth/session/"+ticket+"/qr", nil)
-	rec := httptest.NewRecorder()
-	engine.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, body %s", rec.Code, rec.Body.String())
-	}
-
-	saw := h.sawAuthorizeURLs()
-	if len(saw) != 1 {
-		t.Fatalf("the resolver was called %d times, want once", len(saw))
-	}
-	// The ticket's own authorize URL — not some other one. A resolver handed
-	// the wrong state resolves a login code that lands the callback on a ticket
-	// this poller is not watching, and the symptom is a scan that authorizes
-	// nobody.
-	if !strings.HasPrefix(saw[0], "https://open.weixin.qq.com/connect/qrconnect?") {
-		t.Errorf("the resolver was handed %q, want this session's authorize URL", saw[0])
-	}
-	if !strings.Contains(saw[0], "state="+ticket) {
-		t.Errorf("the authorize URL %q does not carry this ticket", saw[0])
-	}
-}
-
-func TestTheQREndpointStillServesAPngWhenWechatCannotBeReached(t *testing.T) {
-	t.Parallel()
-
-	// A WeChat outage must not become a login page that says 「二维码加载失败」
-	// in a loop. The image on screen in this state is the one that does not
-	// work, and that is the deliberate trade — the browser link above it is
-	// still a way in. The endpoint's contract (200, image/png, within the
-	// client's byte limit) does not move for it.
-	h, engine := newTestServer(t)
-	h.failQR(errors.New("wechat: scannable qr: context deadline exceeded"))
-
-	created := createTicket(t, engine, "install-1")
-	ticket := created["ticket"].(string)
-
-	req := httptest.NewRequest(http.MethodGet, "/v1/auth/session/"+ticket+"/qr", nil)
-	rec := httptest.NewRecorder()
-	engine.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200: a failed resolve is not a failed request", rec.Code)
-	}
-	if ct := rec.Header().Get("Content-Type"); ct != "image/png" {
-		t.Errorf("Content-Type = %q, want image/png", ct)
-	}
-	if !wechat.IsPNG(rec.Body.Bytes()) {
-		t.Error("the fallback response is not a PNG")
-	}
-	if len(rec.Body.Bytes()) > wechat.MaxQRBytes {
-		t.Errorf("the PNG is %d bytes, over the client's %d byte limit", len(rec.Body.Bytes()), wechat.MaxQRBytes)
 	}
 }
 

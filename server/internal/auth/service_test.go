@@ -9,7 +9,6 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -79,46 +78,6 @@ type harness struct {
 	store *fakeStore
 	clock time.Time
 	wc    *wechatStub
-	// qrCalls records every authorize URL the QR endpoint handed to the
-	// resolver, and qrErr is what the resolver answers with. The default
-	// resolver below answers a fixed uuid; a test that wants to see the
-	// fallback sets qrErr.
-	qrMu     sync.Mutex
-	qrCalls  []string
-	qrErr    error
-	resolved string
-}
-
-// newHarnessResolver stands in for wechat.Client.ScannableQRURL.
-//
-// The real one fetches the authorize URL over the network, and the harness
-// deliberately points AuthURL at the real open platform — so an unwired
-// resolver would make every test that touches /qr a test of the network.
-func (h *harness) newHarnessResolver() func(context.Context, string) (string, error) {
-	return func(_ context.Context, authorizeURL string) (string, error) {
-		h.qrMu.Lock()
-		defer h.qrMu.Unlock()
-		h.qrCalls = append(h.qrCalls, authorizeURL)
-		if h.qrErr != nil {
-			return "", h.qrErr
-		}
-		return h.resolved, nil
-	}
-}
-
-// failQR makes the resolver fail, which is the case the login page's fallback
-// exists for.
-func (h *harness) failQR(err error) {
-	h.qrMu.Lock()
-	defer h.qrMu.Unlock()
-	h.qrErr = err
-}
-
-// sawAuthorizeURLs returns what the resolver was asked to resolve.
-func (h *harness) sawAuthorizeURLs() []string {
-	h.qrMu.Lock()
-	defer h.qrMu.Unlock()
-	return append([]string(nil), h.qrCalls...)
 }
 
 func newHarness(t *testing.T) *harness {
@@ -128,11 +87,6 @@ func newHarness(t *testing.T) *harness {
 	st := newFakeStore()
 	h := &harness{
 		store: st, clock: time.Date(2026, 10, 18, 12, 0, 0, 0, time.UTC), wc: wc,
-		// A uuid-shaped stand-in. The content is not what these tests are
-		// about; the endpoint's contract is that a PNG comes back within the
-		// client's byte limit, and that the image is built from what the
-		// resolver resolved.
-		resolved: "https://open.weixin.qq.com/connect/qrcode/TESTuuidTESTuuid",
 	}
 
 	issuer, err := token.NewIssuer(testSecret, testAccessTTL, testRefreshTTL)
@@ -163,8 +117,6 @@ func newHarness(t *testing.T) *harness {
 		Handoff: NewMemoryHandoff(func() time.Time { return h.clock }),
 		Now:     func() time.Time { return h.clock },
 		Logger:  discardLogger(),
-
-		ScannableQR: h.newHarnessResolver(),
 	})
 	if err != nil {
 		t.Fatalf("auth.NewService: %v", err)
@@ -355,11 +307,8 @@ func TestRepeatedQRRequestsRetireTheOldestInsteadOfRefusing(t *testing.T) {
 func TestAnAuthorisedTicketIsNeverRetiredToMakeRoom(t *testing.T) {
 	t.Parallel()
 
-	// The other half of the trade. Someone scanned with the oldest ticket and
-	// has not polled for it yet; that row is a completed sign-in. Deleting it
-	// to free a slot would produce 「扫码成功」 on the phone followed by an
-	// expired poll in the browser — strictly worse than the 429 this path
-	// avoids — so the store refuses and the limit stands.
+	// Preserve a completed sign-in awaiting token delivery, while retiring the
+	// next pending ticket so the new request can still proceed.
 	h := newHarness(t)
 
 	var tickets []string
@@ -373,11 +322,14 @@ func TestAnAuthorisedTicketIsNeverRetiredToMakeRoom(t *testing.T) {
 	h.store.forceAuthSessionState(tickets[0], store.AuthAuthorized)
 
 	_, err := h.svc.CreateSession(context.Background(), "install-1", "device-1")
-	if !IsRateLimited(err) {
-		t.Fatalf("err = %v, want a rate limit: the oldest ticket is an authorised sign-in", err)
+	if err != nil {
+		t.Fatalf("pending tickets could be retired, but the new request failed: %v", err)
 	}
 	if _, ok := h.store.authSessionByTicket(tickets[0]); !ok {
 		t.Error("an authorised ticket was deleted to make room for a new one")
+	}
+	if _, ok := h.store.authSessionByTicket(tickets[1]); ok {
+		t.Error("the oldest pending ticket was not retired")
 	}
 }
 
