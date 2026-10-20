@@ -431,6 +431,7 @@ func (s *Service) handleAccount(c *gin.Context) {
 // oracle over an id the caller already holds, which buys nothing: the caller
 // cannot do anything with an id it does not already have.
 func (s *Service) handleAvatar(c *gin.Context) {
+	c.Header("Cache-Control", "no-store")
 	accountID := c.Param("id")
 
 	rec, body, ok, err := s.Avatar(c.Request.Context(), accountID)
@@ -446,10 +447,19 @@ func (s *Service) handleAvatar(c *gin.Context) {
 		return
 	}
 
-	// Immutable by construction: the file name is the digest of the bytes, so
-	// the contents behind this URL cannot change. A year is safe for the same
-	// reason a year is safe on a content-addressed asset URL.
-	c.Header("Cache-Control", "public, max-age=31536000, immutable")
+	version := c.Query("v")
+	if version != "" && version != rec.Digest {
+		httpx.Fail(c, &httpx.APIError{Status: http.StatusGone, Code: httpx.CodeGone,
+			Message: "头像已更新，请使用账号信息中的最新头像地址。"})
+		return
+	}
+	if version == rec.Digest {
+		c.Header("Cache-Control", "public, max-age=31536000, immutable")
+	} else {
+		// Older clients still use the unversioned account path. It must be
+		// revalidated, or replacing an avatar would leave it stale for a year.
+		c.Header("Cache-Control", "no-cache")
+	}
 	// The ETag is the digest, which is both the file's name and the answer to
 	// "have these bytes changed". Sending it costs nothing and is the one thing
 	// a proxy in front of this service can use to answer a revalidation.
@@ -458,5 +468,9 @@ func (s *Service) handleAvatar(c *gin.Context) {
 	// bytes as anything they are not, which matters because this endpoint is
 	// reachable without a token.
 	c.Header("X-Content-Type-Options", "nosniff")
+	if c.GetHeader("If-None-Match") == `"`+rec.Digest+`"` {
+		c.Status(http.StatusNotModified)
+		return
+	}
 	c.Data(http.StatusOK, rec.MIME, body)
 }

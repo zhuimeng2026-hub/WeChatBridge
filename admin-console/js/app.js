@@ -533,17 +533,15 @@
   var refreshTimer = null;
   var activeTab = "pending";
 
-  function showDefaultAvatar() {
-    $("current-avatar").hidden = true;
-    $("current-avatar-fallback").hidden = false;
+  function hideAvatar() {
+    $("current-avatar-wrap").hidden = true;
   }
 
   $("current-avatar").addEventListener("load", function () {
-    $("current-avatar").hidden = false;
-    $("current-avatar-fallback").hidden = true;
+    if (this.getAttribute("src") && this.naturalWidth > 0) $("current-avatar-wrap").hidden = false;
   });
   $("current-avatar").addEventListener("error", function () {
-    showDefaultAvatar();
+    hideAvatar();
     $("current-avatar").removeAttribute("src");
   });
 
@@ -560,10 +558,10 @@
     }
     var image = $("current-avatar");
     if (!avatarURL) {
-      showDefaultAvatar();
+      hideAvatar();
       image.removeAttribute("src");
     } else if (image.getAttribute("src") !== avatarURL) {
-      showDefaultAvatar();
+      hideAvatar();
       image.src = avatarURL;
     }
   }

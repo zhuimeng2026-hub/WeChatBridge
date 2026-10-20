@@ -758,7 +758,8 @@ func (s *Service) HandleCallback(ctx context.Context, code, state string) (Callb
 //
 //   - Avatars is off. Nothing to do.
 //   - WeChat gave no URL. Nothing to fetch.
-//   - The copy is younger than AvatarRefreshTTL. The person signed in again
+//   - The source URL is unchanged and the copy is younger than AvatarRefreshTTL.
+//     A changed source URL is refreshed immediately. The person signed in again
 //     yesterday; their picture has not had time to change, and re-downloading
 //     it on every sign-in would make sign-in cost a request to a CDN for no
 //     change anybody can observe.
@@ -766,7 +767,7 @@ func (s *Service) refreshAvatar(ctx context.Context, accountID, sourceURL string
 	if s.avatarCache.Disabled() || strings.TrimSpace(sourceURL) == "" {
 		return
 	}
-	if !s.avatarIsStale(ctx, accountID) {
+	if !s.avatarIsStale(ctx, accountID, sourceURL) {
 		return
 	}
 
@@ -811,13 +812,16 @@ func (s *Service) refreshAvatar(ctx context.Context, accountID, sourceURL string
 // replacing. A missing row, a zero timestamp or a read failure all answer true:
 // the cost of a redundant fetch is one request, and the cost of skipping a
 // needed one is a client showing a picture of who somebody used to be.
-func (s *Service) avatarIsStale(ctx context.Context, accountID string) bool {
+func (s *Service) avatarIsStale(ctx context.Context, accountID, sourceURL string) bool {
 	ttl := s.cfg.AvatarRefreshTTL
 	if ttl <= 0 {
 		ttl = 24 * time.Hour
 	}
 	existing, err := s.store.GetAvatar(ctx, accountID)
 	if err != nil {
+		return true
+	}
+	if existing.SourceURL != sourceURL {
 		return true
 	}
 	return s.now().Sub(existing.FetchedAt) >= ttl
@@ -1064,7 +1068,8 @@ func (s *Service) accountDTO(ctx context.Context, a store.Account) *accountDTO {
 	if s.avatarCache.Disabled() {
 		return toAccountDTO(a, "")
 	}
-	if _, err := s.store.GetAvatar(ctx, a.ID); err != nil {
+	rec, err := s.store.GetAvatar(ctx, a.ID)
+	if err != nil {
 		if !errors.Is(err, store.ErrNotFound) {
 			// A database problem must not turn into a 500 on the account
 			// read; the account is right there and the picture is a nicety.
@@ -1073,7 +1078,9 @@ func (s *Service) accountDTO(ctx context.Context, a store.Account) *accountDTO {
 		}
 		return toAccountDTO(a, "")
 	}
-	return toAccountDTO(a, s.AvatarURL(a.ID))
+	// The account path is stable, but avatar bytes can change. Version the URL
+	// by content so the browser can keep a local copy until the picture changes.
+	return toAccountDTO(a, s.AvatarURL(a.ID)+"?v="+rec.Digest)
 }
 
 // ---------------------------------------------------------------------------
