@@ -461,6 +461,23 @@ POST /v1/admin/reject    { requestId }   → {}   // 拒绝一单：不签发、
 - **修复（2026-10-19）**：`admin/http.go` 的 `requestItem` 增 `LicenseID string \`json:"licenseId"\`` 并在 `handleRequests` 填 `v.LicenseID`；`server/mock/server.js` 的 `adminRequests` 同步该字段（空串表示未签发，与真服务端 `license_id NOT NULL DEFAULT ''` 同形）；`admin-console/js/app.js` 的 `ledgerRow` 改为 `it.licenseId || localLicenseForRequest(it.requestId)`，顺序不可颠倒（理由写在该函数注释里）。`ConfirmedAt` **未捎带**：它会让 mock 与前端列一起变宽，不在最小修复范围内，留作独立项。
 - **遗留**：`admin-console/test/browser.mjs` 第 6 步原标题即「本地日志补许可证号列」，其断言对新路径仍然成立（未锚定），但用例名已与实际数据来源不符，建议后续改写。`smoke.mjs` 的 `/^lic_[0-9a-f]{12}$/` 是**锚定**断言，而真服务端 `newLicenseID()` 用 12 字节产出 24 个 hex 字符（mock 才是 12），对着真服务端必红——与本条无关，属 mock/真实分叉，另记。
 
-#### 流程补记
+#### M-5 重复登记的买家被永久卡在「登记中」（唯一索引冲突被误译为竞态 + latest-wins 读遮蔽，2026-10-20 修复）
+
+- **上报**：线上反馈——买家「我已订购」后一直显示「登记中」，同时卖家后台点签发无反应。两侧都在说实话。
+- **验证（2026-10-20）——属实，且是两个缺陷叠加**：PG 实查该机（`install_id=977khOZNqm9C8bwqVwNALQ`，账号 `ccf2ab13`）有两行——`act_ef8a…`（10-19 23:36 创建，08:53 已签发，binding 的 `revoked_at IS NULL`，**证是有效的**）与 `act_ed68…`（10-20 09:36 再登记，pending）。日志里每次 `POST /v1/admin/confirm` 都是 **409**。
+  1. **写侧**：`ConfirmActivationRequest` 先插 binding，撞 `licence_bindings_live_idx`。`bindingConflict` 把三种唯一索引违反**一律映射成 `ErrConflict`**（该函数原注释即断言「三者对调用方是同一件事」），于是「这台机器早就有一张活证」被表述为「别人刚好抢在你前面」，回一句「资源状态已变化，请刷新后重试」——而刷新一万次也不会有用。**必现，非竞态**。
+  2. **读侧**：`latestActivationRequestSQL` 是 `ORDER BY created_at DESC LIMIT 1`，选中那条永远签不下来的 pending 行，把有效许可证**完全遮蔽**。买家因此永远读到「登记中」，`GET /v1/activation/licence` 永远 `ErrNotConfirmed`。
+  3. 两者合成闭环死结：新行签不了（坑位被占），老行读不到（被墓碑盖住），而**唯一出路 `reissue` 没有任何一条路径会提示**。
+- **关键推理（决定修复方案的那一步）**：单次 confirm 内 `activation_requests_live_install_idx`（`UNIQUE(install_id) WHERE status='pending'`）保证每个 install 至多一条 pending，且 confirm 已持 `FOR UPDATE` 行锁并复查 status，**故 `live_install` 冲突在数学上不可能来自并发**，只可能来自更早的已确认请求——它是确定性的业务状态。反之 `licence_bindings_live_account_idx` **仍是真竞态**（同一账号两台机器可有两条 pending，两个卖家同时确认是常态），语义不变。
+- **影响面**：🔴 活跃——**每一个已授权买家若再次点击「我已订购」即永久卡死**，且无自愈路径；卖家侧得到的是一句无法据以行动的话。买断版卖的是能力，重复登记本应是幂等的「你已经是 Pro 了」。
+- **修复归属**：A 分支（Go 域）。不涉及契约冻结点：无新字段、无新状态码、无 wire 变更，客户端零改动。
+- **修复（`9bc1260` + 后续两笔，2026-10-20）**：
+  1. store 层新增 `ErrLiveBindingExists`，`bindingConflict` 按约束名分类：`live_install` → 该哨兵，`live_idx`/`live_account_idx` → 保持 `ErrConflict`。原注释里「三者都是同一件事」的断言被显式推翻并写入理由。
+  2. `admin` 层把该哨兵映射为可操作的 409，文案点名 reissue；**真竞态路径保持原样**（读回赢家许可证、返回 200），有回归测试守着。
+  3. 读路径按状态加权排序，confirmed 优先于 pending。**首购 happy path 不变**（首购账号没有 confirmed 行，仍如实报 pending）。因 `licence_bindings_live_account_idx` 已把「一个账号至多一张活证」写进 schema，买断版语义下这本就正确。
+- **遗留 / 未做（有意）**：**写侧没有拦**。`POST /v1/activation/request` 仍会为已授权买家开新 pending 行——改它会变更该端点的响应契约，且客户端是跨语言 C#，§11.3 冻结点不能私改。故只在读侧兜。写侧拦截的价值与代价另记。
+- **数据处置**：受影响的买家已用 `POST /v1/admin/reissue` 解套（旧 binding 落 `revoked_at`，新证 `lic_f999907681b655089d050d72`），并用买家 token 走通 `status` → `licence`，最后以客户端内嵌公钥**独立**验签通过（纯 Python 重写 P-256，未复用 Go 的 `license.Verify`，并加「篡改 r 必须失败」反向对照）。
+
+
 
 本册建立本身即验证了同步协议 §5 的价值：C 发现缺陷后**守规矩未私改**、按 message 上报；A 的验证修正了其中一条的定级（C-2 从「发行炸弹」降为「契约违背」）——这正是「先登记、后修复」要达成的效果：缺陷不丢，定级不失真。
