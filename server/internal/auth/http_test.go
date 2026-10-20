@@ -254,10 +254,9 @@ func TestTooManyOutstandingTicketsAnswers429(t *testing.T) {
 // The redirect
 // ---------------------------------------------------------------------------
 
-// §15.1 step 7. The callback is a browser-facing GET and answers 200 with no
-// redirect. A redirect here is the reflexive browser-shaped answer and it
-// breaks the flow, because the destination is a page in a browser the desktop
-// process has never heard of. The poller is the channel.
+// Desktop sign-ins answer 200 with instructions while the desktop polls for
+// credentials. Console sign-ins have a separate redirect test and return to
+// their business page in the same tab.
 //
 // The body used to be empty, and that was the bug this test now pins the other
 // way: a 200 with nothing in it renders as a blank white page in the browser

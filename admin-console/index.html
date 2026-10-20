@@ -16,22 +16,22 @@
     <h1>卖家管理后台</h1>
     <p class="login-sub">通过微信开放平台登录，使用管理员微信完成授权。</p>
     <ol class="login-steps">
-      <li>点击下方按钮，在新标签页打开微信官方授权页。</li>
+      <li>点击下方按钮，打开微信官方授权页。</li>
       <li>使用微信扫描官方页面上的二维码并确认授权。</li>
-      <li>回到本页面，登录成功后自动进入后台。</li>
+      <li>确认身份后自动进入业务后台。</li>
     </ol>
 
     <p id="login-status" class="login-status" role="status">正在准备微信登录…</p>
     <p id="login-countdown" class="login-countdown" hidden></p>
 
     <div class="login-actions">
-      <a id="login-authorize" class="btn btn-primary" hidden target="_blank" rel="noopener noreferrer">打开微信授权页</a>
+      <a id="login-authorize" class="btn btn-primary" hidden target="_self" rel="noreferrer">微信扫码登录</a>
       <button id="login-refresh" type="button" class="btn" hidden>重新获取登录链接</button>
     </div>
 
     <p class="login-hint">
       控制台身份标识：<code id="login-install-id">—</code><br>
-      请保持本页面打开。授权完成后无需复制链接或手动刷新页面。
+      授权完成后将自动返回后台，无需切换标签页或手动刷新。
     </p>
   </div>
 </section>

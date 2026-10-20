@@ -26,6 +26,16 @@ mkdirSync(shots, { recursive: true });
 async function startConsoleServer() {
   const server = createServer(async (req, res) => {
     const pathname = new URL(req.url, "http://localhost").pathname.replace(/^\/wechat_auth/, "");
+    const prefix = req.url.startsWith("/wechat_auth/") ? "/wechat_auth" : "";
+    // Go handler redirects only after a validated console callback. Simulate
+    // that boundary here; console_redirect_test.go covers the real handler.
+    if (pathname === "/v1/auth/wechat/callback") {
+      const ticket = new URL(req.url, "http://localhost").searchParams.get("state");
+      const scanned = await fetch(MOCK + "/mock/scan/" + encodeURIComponent(ticket), { method: "POST" });
+      res.writeHead(scanned.ok ? 303 : 400, scanned.ok ? { Location: prefix + "/admin/" } : {});
+      res.end();
+      return;
+    }
     if (pathname.startsWith("/v1/") || pathname === "/healthz") {
       const body = [];
       for await (const chunk of req) body.push(chunk);
@@ -36,7 +46,13 @@ async function startConsoleServer() {
           body: body.length ? Buffer.concat(body) : undefined,
         });
         res.writeHead(upstream.status, { "Content-Type": upstream.headers.get("content-type") || "application/json" });
-        res.end(Buffer.from(await upstream.arrayBuffer()));
+        if (req.method === "POST" && pathname === "/v1/auth/session" && upstream.ok) {
+          const session = await upstream.json();
+          const authURL = new URL(session.authorizeUrl);
+          authURL.searchParams.set("redirect_uri", "http://" + req.headers.host + prefix + "/v1/auth/wechat/callback");
+          session.authorizeUrl = authURL.href;
+          res.end(JSON.stringify(session));
+        } else res.end(Buffer.from(await upstream.arrayBuffer()));
       } catch (_) { res.writeHead(502); res.end(); }
       return;
     }
@@ -73,6 +89,13 @@ async function main() {
 
   const pageErrors = [];
   page.on("pageerror", (e) => pageErrors.push(String(e)));
+  await page.route("https://open.weixin.qq.com/**", async (route) => {
+    const authURL = new URL(route.request().url());
+    const callback = new URL(authURL.searchParams.get("redirect_uri"));
+    callback.searchParams.set("state", authURL.searchParams.get("state"));
+    callback.searchParams.set("code", "mock-auth-code");
+    await route.fulfill({ contentType: "text/html", body: '<a id="mock-authorize" href="' + callback.href.replace(/&/g, "&amp;") + '">模拟微信确认授权</a>' });
+  });
 
   try {
     console.log("[1] 登录视图（微信开放平台官方授权）");
@@ -82,7 +105,7 @@ async function main() {
     await page.waitForSelector("#login-authorize:not([hidden])", { timeout: 8000 });
     const authorizeURL = new URL(await page.getAttribute("#login-authorize", "href"));
     check("授权按钮指向微信官方域名", authorizeURL.origin === "https://open.weixin.qq.com");
-    check("授权页在新标签页打开", await page.getAttribute("#login-authorize", "target") === "_blank");
+    check("授权页在当前标签页打开", await page.getAttribute("#login-authorize", "target") === "_self");
     check("不再加载不可用的普通链接二维码", !requests.some((url) => /\/qr$/.test(url)) && await page.locator("#login-qr").count() === 0);
     check("登录状态提示打开官方授权页", (await page.textContent("#login-status")).includes("打开微信授权页"));
     check("默认请求同源 API", requests.includes(origin + "/v1/auth/session"));
@@ -90,10 +113,14 @@ async function main() {
     await page.screenshot({ path: path.join(shots, "shot-login.png") });
 
     console.log("\n[2] 模拟卖家扫码 → 进入应用");
-    const ticket = authorizeURL.searchParams.get("state");
-    const scan = await fetch(MOCK + "/mock/scan/" + ticket, { method: "POST" }).then((r) => r.json());
-    check("mock 扫码授权成功", scan.status === "authorized");
+    await page.click("#login-authorize");
+    await page.waitForURL("https://open.weixin.qq.com/**");
+    check("微信授权使用同一个标签页", page.context().pages().length === 1);
+    await page.click("#mock-authorize");
     await page.waitForSelector("#view-app:not([hidden])", { timeout: 8000 });
+    check("授权回调自动进入业务后台且地址不携带凭据", page.url() === pageURL);
+    check("返回后台接续原会话，不重新创建登录票", requests.filter((url) => url === origin + "/v1/auth/session").length === 1);
+    check("完成登录后清除临时会话", await page.evaluate(() => sessionStorage.getItem("wcb_admin_login")) === null);
     check("应用视图已展示", await page.isVisible("#view-app"));
     check("当前卖家身份已显示", (await page.textContent("#current-account")).includes("已登录"));
 
@@ -171,8 +198,9 @@ async function main() {
     await page.route("**/v1/admin/requests?*", (route) => route.fulfill({ status: 403, json: { error: { code: "forbidden", message: "无管理员权限" } } }));
     await page.click("#login-refresh");
     await page.waitForSelector("#login-authorize:not([hidden])");
-    const forbiddenTicket = new URL(await page.getAttribute("#login-authorize", "href")).searchParams.get("state");
-    await fetch(MOCK + "/mock/scan/" + forbiddenTicket, { method: "POST" });
+    await page.click("#login-authorize");
+    await page.waitForURL("https://open.weixin.qq.com/**");
+    await page.click("#mock-authorize");
     await page.waitForFunction(() => document.getElementById("login-status").textContent.includes("没有管理员权限"));
     check("非管理员不能进入后台", !await page.isVisible("#view-app"));
     check("403 不会续期且清除凭证", refreshCalls === 0 && await page.evaluate(() => sessionStorage.getItem("wcb_admin_tokens")) === null);
@@ -182,10 +210,12 @@ async function main() {
     await page.goto(origin + "/wechat_auth/admin/index.html");
     await page.waitForSelector("#login-authorize:not([hidden])");
     check("带路径前缀部署使用对应同源 API，忽略遗留跨源覆盖", requests.includes(origin + "/wechat_auth/v1/auth/session"));
-    const prefixTicket = new URL(await page.getAttribute("#login-authorize", "href")).searchParams.get("state");
-    await fetch(MOCK + "/mock/scan/" + prefixTicket, { method: "POST" });
+    await page.click("#login-authorize");
+    await page.waitForURL("https://open.weixin.qq.com/**");
+    await page.click("#mock-authorize");
     await page.waitForSelector("#view-app:not([hidden])");
     check("带前缀部署可完整登录", (await page.textContent("#current-server")) === origin + "/wechat_auth");
+    check("带前缀回调进入对应的业务后台", page.url() === origin + "/wechat_auth/admin/");
 
     console.log("\n[7b] 跨次加载的会话恢复与暂时故障");
     const savedBefore503 = await page.evaluate(() => sessionStorage.getItem("wcb_admin_tokens"));

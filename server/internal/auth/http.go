@@ -250,13 +250,16 @@ func (s *Service) handleCallback(c *gin.Context) {
 		return
 	}
 
-	// §15.1 step 7, still true and still the reason for this handler existing:
-	// the reply is 200 and it is not a redirect. The redirect target would be a
-	// page in a browser the desktop process has never heard of, and the client's
-	// channel is the poll. What that rule does *not* say is that the body must
-	// be empty — an empty 200 renders as a blank white page, which is the one
-	// thing the person who just scanned most needs to be told is not happening.
-	// So: same status, no redirect, and a page that says what to do next.
+	// The console resumes its saved ticket in the same browser tab. Never put
+	// tokens or the ticket in the redirect URL, and derive the destination from
+	// service configuration rather than a caller-supplied return URL.
+	if adminConsoleInstallID.MatchString(result.InstallID) {
+		c.Redirect(http.StatusSeeOther, s.cfg.PublicBaseURL+"/admin/")
+		return
+	}
+
+	// Desktop sign-ins still collect credentials by polling and show the buyer
+	// instructions here. They must not be redirected to the admin console.
 	s.renderCallbackPage(c, pageAuthorized, result.InstallID, http.StatusOK)
 }
 

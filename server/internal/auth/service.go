@@ -11,15 +11,15 @@
 //	POST   /v1/auth/session           -> ticket + authorizeUrl + qrImageUrl + expiresAt
 //	GET    /v1/auth/session/{ticket}  -> {status, tokens?, expiresAt?, account?}
 //	GET    /v1/auth/session/{t}/qr    -> 409, open authorizeUrl in a browser
-//	GET    /v1/auth/wechat/callback   -> 200, empty body, no redirect
+//	GET    /v1/auth/wechat/callback   -> console: 303 to /admin/; desktop: 200 page
 //	POST   /v1/auth/refresh           -> rotated pair, or a reason not to
 //	DELETE /v1/auth/session           -> revoke the whole chain
 //
 // Three mistakes this package is written to make impossible:
 //
-//   - Redirecting from the callback. It is the reflexive thing to do and it
-//     breaks everything: the redirect target is a browser page the desktop
-//     process has never heard of. The poller is the channel.
+//   - Redirecting desktop sign-ins to the admin console. Desktop processes
+//     receive credentials through polling; only console sign-ins return to
+//     the business page in the same browser tab.
 //
 //   - Letting a network blip read as a dead session. A refresh that fails
 //     because WeChat had a bad minute must leave the client's stored refresh
@@ -629,7 +629,8 @@ type CallbackResult struct {
 //
 //  5. The ticket is completed. Only now does a poller see authorized.
 //
-//  6. The caller replies 200 with an empty body. Not a redirect.
+//  6. Console sign-ins return to the business page; desktop sign-ins receive
+//     the buyer instructions. Credentials are delivered through polling.
 func (s *Service) HandleCallback(ctx context.Context, code, state string) (CallbackResult, error) {
 	session, err := s.validateState(ctx, state)
 	if err != nil {

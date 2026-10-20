@@ -14,6 +14,7 @@
   var LS_BASEURL_OVERRIDE = "wcb_admin_baseurl_override";
   var LS_ACTION_LOG = "wcb_admin_action_log";
   var SS_TOKENS = "wcb_admin_tokens";
+  var SS_LOGIN = "wcb_admin_login";
 
   var CONFIG = window.WCB_CONFIG || { baseURL: "", autoRefreshMs: 10000, actionLogLimit: 200 };
 
@@ -294,6 +295,7 @@
 
   async function startLogin() {
     stopLoginPolling();
+    clearPendingLogin();
     var generation = loginGeneration;
     hideAuthorizeLink();
     $("login-refresh").textContent = "重新获取登录链接";
@@ -329,6 +331,7 @@
 
   function endLogin(message) {
     stopLoginPolling();
+    clearPendingLogin();
     hideAuthorizeLink();
     $("login-countdown").hidden = true;
     setLoginStatus(message, { refresh: true });
@@ -388,6 +391,7 @@
 
   async function onAuthorized(res) {
     stopLoginPolling();
+    clearPendingLogin();
     var tokens = {
       accessToken: res.accessToken,
       refreshToken: res.refreshToken,
@@ -443,6 +447,57 @@
     if (tokens && tokens.accessToken) verifyAdmin(tokens);
     else startLogin();
   });
+
+  // Navigation leaves this document, so persist the one-time ticket in this
+  // tab before opening WeChat. The callback returns to /admin/ without placing
+  // credentials in a URL; that page resumes this exact session instead of
+  // creating a new ticket. Stopping the old poller prevents double delivery.
+  $("login-authorize").addEventListener("click", function (event) {
+    if (!loginTicket || Date.now() >= loginExpiresAt) {
+      event.preventDefault();
+      endLogin("登录链接已过期，请重新获取。");
+      return;
+    }
+    try {
+      sessionStorage.setItem(SS_LOGIN, JSON.stringify({
+        ticket: loginTicket, expiresAt: loginExpiresAt, baseURL: api.baseURL,
+      }));
+    } catch (_) {
+      event.preventDefault();
+      setLoginStatus("浏览器无法保存登录会话，请允许本站使用会话存储后重试。", { refresh: true });
+      return;
+    }
+    stopLoginPolling();
+  });
+
+  function clearPendingLogin() {
+    try { sessionStorage.removeItem(SS_LOGIN); } catch (_) {}
+  }
+
+  function loadPendingLogin() {
+    try {
+      var value = JSON.parse(sessionStorage.getItem(SS_LOGIN));
+      if (value && typeof value.ticket === "string" && value.ticket &&
+          Number.isFinite(value.expiresAt) && value.baseURL === api.baseURL) return value;
+    } catch (_) {}
+    return null;
+  }
+
+  function resumeLogin(pending) {
+    stopLoginPolling();
+    $("login-install-id").textContent = installId();
+    hideAuthorizeLink();
+    $("login-refresh").textContent = "重新获取登录链接";
+    if (pending.expiresAt <= Date.now()) {
+      endLogin("登录链接已过期，请重新获取。");
+      return;
+    }
+    loginTicket = pending.ticket;
+    loginExpiresAt = pending.expiresAt;
+    setLoginStatus("正在完成微信登录并进入后台…", { refresh: true });
+    startCountdown();
+    pollLogin(loginTicket, loginGeneration);
+  }
 
   // ------------------------------------------------------------------
   // 会话存取（令牌只进 sessionStorage，不写 localStorage）
@@ -912,9 +967,13 @@
   // ------------------------------------------------------------------
 
   var restored = loadTokens();
+  var pendingLogin = loadPendingLogin();
   if (restored && restored.accessToken) {
+    clearPendingLogin();
     $("login-install-id").textContent = installId();
     verifyAdmin(restored);
+  } else if (pendingLogin) {
+    resumeLogin(pendingLogin);
   } else {
     showLogin();
   }
