@@ -151,18 +151,41 @@
             <TextBlock Style="{StaticResource SectionLabel}" Text="{loc:Loc Key='授权状态'}" />
             <Border Height="1" Background="{StaticResource StrokeColor}" Margin="0,8,0,10" />
             <Border Style="{StaticResource Card}">
-                <StackPanel VerticalAlignment="Center">
-                    <TextBlock x:Name="LicenceStatusText" FontSize="13"
-                               Foreground="{StaticResource InkSecondaryColor}"
-                               TextWrapping="Wrap" />
-                    <TextBlock x:Name="MachineCodeHint" Margin="0,4,0,0" FontSize="12"
-                               Foreground="{StaticResource InkTertiaryColor}"
-                               TextWrapping="Wrap" Visibility="Collapsed" />
-                    <!-- 仅在 MeAsync 成功后出现："会话：演示买家 · 上次活跃 2 小时前"。
-                         失败 / 未登录 / 网络挂 都保持 Collapsed，不打扰用户。 -->
-                    <TextBlock x:Name="SessionInfoText" Margin="0,4,0,0" FontSize="12"
-                               Foreground="{StaticResource InkTertiaryColor}"
-                               TextWrapping="Wrap" Visibility="Collapsed" />
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <!-- 微信头像。The letter block is underneath from the start, not
+                         swapped in on failure: WPF's Image draws nothing at all when a
+                         download fails, so the initial is what shows, and there is no
+                         broken-image glyph to suppress. Collapsed until RenderLicenceState
+                         finds a usable account, because an avatar with nobody to
+                         attribute it to is worse than no avatar. -->
+                    <Grid x:Name="AvatarContainer" Width="32" Height="32"
+                          Margin="0,0,10,0" VerticalAlignment="Center"
+                          Visibility="Collapsed">
+                        <Border CornerRadius="16" Background="{StaticResource BrandSoftColor}">
+                            <TextBlock x:Name="AvatarFallback" FontSize="14" FontWeight="SemiBold"
+                                       Foreground="{StaticResource BrandColor}"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"
+                                       TextAlignment="Center" />
+                        </Border>
+                        <Image x:Name="AvatarImage" Width="32" Height="32">
+                            <Image.Clip>
+                                <RectangleGeometry Rect="0,0,32,32" RadiusX="16" RadiusY="16" />
+                            </Image.Clip>
+                        </Image>
+                    </Grid>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock x:Name="LicenceStatusText" FontSize="13"
+                                   Foreground="{StaticResource InkSecondaryColor}"
+                                   TextWrapping="Wrap" />
+                        <TextBlock x:Name="MachineCodeHint" Margin="0,4,0,0" FontSize="12"
+                                   Foreground="{StaticResource InkTertiaryColor}"
+                                   TextWrapping="Wrap" Visibility="Collapsed" />
+                        <!-- 仅在 MeAsync 成功后出现："会话：演示买家 · 上次活跃 2 小时前"。
+                             失败 / 未登录 / 网络挂 都保持 Collapsed，不打扰用户。 -->
+                        <TextBlock x:Name="SessionInfoText" Margin="0,4,0,0" FontSize="12"
+                                   Foreground="{StaticResource InkTertiaryColor}"
+                                   TextWrapping="Wrap" Visibility="Collapsed" />
+                    </StackPanel>
                 </StackPanel>
             </Border>
         </StackPanel>

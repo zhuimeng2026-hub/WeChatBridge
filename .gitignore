@@ -92,3 +92,9 @@ __pycache__/
 # Exported public-key reference file (P-256 SPKI for the licence verifier).
 # It is a build input reference, not source — keep it local.
 /pubkey.txt
+
+# The seller's payment QR codes, kept on the machine that deploys the service.
+# These are money-receiving codes: they belong to the server's
+# WCB_PAYMENT_CODE_PATH / WCB_CONTACT_QR_PATH configuration, never in the
+# repository — a commit here would publish a live collection code.
+/paypic/

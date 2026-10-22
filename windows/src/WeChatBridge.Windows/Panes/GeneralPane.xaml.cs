@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Reflection;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media.Imaging;
 
 namespace WeChatBridge.Windows.Panes;
 
@@ -13,6 +14,9 @@ public partial class GeneralPane : UserControl
     private readonly Services.ActivationGate _gate;
     private Window? _owner;
     private bool _sessionProbed;
+
+    /// <summary>The avatar URL currently decoded into <c>AvatarImage</c>.</summary>
+    private Uri? _avatarUri;
 
     public GeneralPane() : this(Services.ActivationGate.Current) { }
 
@@ -57,6 +61,70 @@ public partial class GeneralPane : UserControl
         var account = tokens is not null && tokens.IsUsableAt(DateTimeOffset.UtcNow) ? tokens.Account : null;
         SessionInfoText.Text = account is null ? string.Empty : FormatSessionLine(account);
         SessionInfoText.Visibility = account is null ? Visibility.Collapsed : Visibility.Visible;
+
+        // Same account as the line above, so the picture and the name can never
+        // disagree about who is signed in.
+        RenderAccountAvatar(account);
+    }
+
+    /// <summary>
+    /// The WeChat avatar beside the session line, with the nickname's first character
+    /// underneath it at all times.
+    /// <para>
+    /// There is no failure branch on purpose. WPF's <c>Image</c> draws nothing when
+    /// the download fails — not a broken-image glyph, nothing — so the letter
+    /// block below is the entire fallback and needs no <c>DownloadFailed</c> handler
+    /// and no visibility swap. A picture that is still loading behaves the same way,
+    /// which is also why nothing here blocks on the network.
+    /// </para>
+    /// </summary>
+    private void RenderAccountAvatar(AccountView? account)
+    {
+        if (account is null)
+        {
+            AvatarContainer.Visibility = Visibility.Collapsed;
+            AvatarImage.Source = null;
+            AvatarFallback.Text = string.Empty;
+            _avatarUri = null;
+            return;
+        }
+
+        AvatarContainer.Visibility = Visibility.Visible;
+        AvatarFallback.Text = AccountAvatar.Initials(account.DisplayName);
+
+        var uri = AccountAvatar.ResolveUri(account.AvatarUrl, ConfiguredBaseAddress());
+
+        // This runs on every window activation too, and a fresh BitmapImage starts a
+        // fresh download. The server versions the URL by content digest, so an
+        // unchanged URL means an unchanged picture — keep the one already decoded
+        // rather than re-fetching the same bytes every time the user alt-tabs back.
+        if (uri == _avatarUri)
+            return;
+
+        _avatarUri = uri;
+        AvatarImage.Source = uri is null ? null : new BitmapImage(uri);
+    }
+
+    /// <summary>
+    /// The address a relative avatar path is joined onto: the same override the
+    /// activation transport uses, so a dev build pointed at a local server does not
+    /// resolve a relative path against the shipped host.
+    /// </summary>
+    private static string ConfiguredBaseAddress()
+    {
+        // Degrades exactly like ActivationGateway.ResolveBaseAddress(): an override
+        // that is blank or is not a usable absolute URI falls back to the shipped
+        // default rather than being passed on. Checking only for non-blank here
+        // would leave the two paths disagreeing — the transport would recover onto
+        // the default host while this one handed on an unparsable base, the avatar
+        // would quietly degrade to its letter block, and the user would see a
+        // missing picture with nothing to explain it.
+        var configured = Environment.GetEnvironmentVariable(ActivationEndpoint.BaseAddressEnvironmentVariable);
+
+        return !string.IsNullOrWhiteSpace(configured) &&
+               Uri.TryCreate(configured, UriKind.Absolute, out var uri)
+            ? uri.ToString()
+            : ActivationEndpoint.DefaultBaseAddress;
     }
 
     private void OpenActivation_Click(object sender, RoutedEventArgs e)
