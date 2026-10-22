@@ -38,6 +38,25 @@ type Config struct {
 	WeChatAuthURL   string // https://open.weixin.qq.com/connect/qrconnect
 	WeChatAPIBase   string // https://api.weixin.qq.com
 
+	// The official account's credentials, for the unionid bridge.
+	//
+	// These are a *different application* from the website app above: a
+	// different AppID, a different secret, a different set of interfaces.
+	// WeChat has three such applications in common use — the mini programme,
+	// the official account and the open platform — and swapping one for
+	// another is silent everywhere except in the answers: the service starts,
+	// the sign-in works, and the nickname comes back from the wrong place.
+	//
+	// Optional. The bridge is an enhancement: a deployment without these
+	// signs buyers in without a nickname, which is the state the service was
+	// in before the bridge existed and is perfectly usable. Making them
+	// mandatory would refuse to start a service that works, over a feature
+	// that does not. Set them together or not at all — one of the two alone
+	// is a configuration that cannot work and is caught at start-up.
+	MPAppID     string
+	MPAppSecret string
+	MPAPIBase   string // https://api.weixin.qq.com
+
 	// Licence issuing. The private key is a file path for the same reason.
 	LicensePrivateKeyPath string
 
@@ -149,6 +168,10 @@ func Load() (Config, error) {
 		WeChatAuthURL:   env("WCB_WECHAT_AUTH_URL", "https://open.weixin.qq.com/connect/qrconnect"),
 		WeChatAPIBase:   env("WCB_WECHAT_API_BASE", "https://api.weixin.qq.com"),
 
+		MPAppID:     strings.TrimSpace(os.Getenv("WCB_MP_APP_ID")),
+		MPAppSecret: strings.TrimSpace(os.Getenv("WCB_MP_APP_SECRET")),
+		MPAPIBase:   env("WCB_MP_API_BASE", "https://api.weixin.qq.com"),
+
 		LicensePrivateKeyPath: required("WCB_LICENSE_PRIVATE_KEY_PATH"),
 		TokenSigningSecret:    required("WCB_TOKEN_SIGNING_SECRET"),
 
@@ -251,6 +274,23 @@ func (c Config) validate() error {
 	}
 	if c.AccessTokenTTL <= 0 || c.RefreshTokenTTL <= c.AccessTokenTTL {
 		add("token lifetimes are inconsistent: refresh must outlast access")
+	}
+	// The official account's credentials are checked in pairs and against the
+	// website app's. Both checks exist because the failure they catch is
+	// silent: a service configured with the website app's AppID where the
+	// official account's belongs starts cleanly, signs buyers in, and asks
+	// the wrong application for the nickname — which answers with a
+	// perfectly valid answer about a different account.
+	switch {
+	case c.MPAppID != "" && c.MPAppSecret == "":
+		add("WCB_MP_APP_SECRET is required when WCB_MP_APP_ID is set")
+	case c.MPAppSecret != "" && c.MPAppID == "":
+		add("WCB_MP_APP_ID is required when WCB_MP_APP_SECRET is set")
+	case c.MPAppID != "" && c.MPAppID == c.WeChatAppID:
+		add("WCB_MP_APP_ID must not be the website app's AppID (%q): the official "+
+			"account and the website app are different applications, and one that "+
+			"is also the other signs in fine and then asks the wrong application "+
+			"for the nickname", c.MPAppID)
 	}
 	if len(c.TokenSigningSecret) < 32 {
 		add("WCB_TOKEN_SIGNING_SECRET must be at least 32 bytes of entropy")

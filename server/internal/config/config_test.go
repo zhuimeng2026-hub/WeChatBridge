@@ -197,3 +197,76 @@ func TestTrustedProxyList(t *testing.T) {
 		}
 	}
 }
+
+// TestOfficialAccountCredentialsAreCheckedInPairsAndAgainstTheWebsiteApp
+// covers the two ways the official account's credentials can be wrong in a
+// way that is silent everywhere else.
+//
+// A pair with only one half set cannot work, and a pair whose AppID is the
+// website app's is worse: the service starts, the sign-in works, and the
+// nickname is fetched from the wrong application — which answers with a
+// perfectly valid answer about a different account. The check is at
+// start-up because the symptom shows up days later, in a column that is
+// simply empty.
+func TestOfficialAccountCredentialsAreCheckedInPairsAndAgainstTheWebsiteApp(t *testing.T) {
+	cases := []struct {
+		name    string
+		mpID    string
+		mpKey   string
+		webID   string
+		wantErr string // substring; "" means valid
+	}{
+		{
+			name:  "not configured at all",
+			webID: "wx0ebd7da2e72e6be2",
+		},
+		{
+			name:  "a complete, distinct pair",
+			mpID:  "wxde10b66d0c930b78",
+			mpKey: "mp-secret",
+			webID: "wx0ebd7da2e72e6be2",
+		},
+		{
+			name:    "an AppID with no secret",
+			mpID:    "wxde10b66d0c930b78",
+			webID:   "wx0ebd7da2e72e6be2",
+			wantErr: "WCB_MP_APP_SECRET is required",
+		},
+		{
+			name:    "a secret with no AppID",
+			mpKey:   "mp-secret",
+			webID:   "wx0ebd7da2e72e6be2",
+			wantErr: "WCB_MP_APP_ID is required",
+		},
+		{
+			name:    "the website app's AppID used as the official account's",
+			mpID:    "wx0ebd7da2e72e6be2",
+			mpKey:   "mp-secret",
+			webID:   "wx0ebd7da2e72e6be2",
+			wantErr: "must not be the website app's AppID",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c := Config{
+				PublicBaseURL:      "https://api.example.com",
+				WeChatAppID:        tc.webID,
+				MPAppID:            tc.mpID,
+				MPAppSecret:        tc.mpKey,
+				TokenSigningSecret: strings.Repeat("x", 32),
+				AccessTokenTTL:     defaultForTest,
+				RefreshTokenTTL:    defaultForTest * 90,
+			}
+			err := c.validate()
+			switch {
+			case tc.wantErr == "" && err != nil:
+				t.Fatalf("validate rejected a legal arrangement: %v", err)
+			case tc.wantErr != "" && err == nil:
+				t.Fatalf("validate accepted %+v, which is wrong", tc)
+			case tc.wantErr != "" && !strings.Contains(err.Error(), tc.wantErr):
+				t.Fatalf("error does not mention %q: %v", tc.wantErr, err)
+			}
+		})
+	}
+}

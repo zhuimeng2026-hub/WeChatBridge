@@ -18,28 +18,29 @@ public sealed class PollScheduleTests
     [Fact]
     public void TheFirstAttemptWaitsExactlyTheFirstDelay()
     {
-        Assert.Equal(TimeSpan.FromSeconds(1.5), PollSchedule.Login.DelayBefore(0));
+        Assert.Equal(TimeSpan.FromMilliseconds(500), PollSchedule.Login.DelayBefore(0));
         Assert.Equal(TimeSpan.FromSeconds(5), PollSchedule.Activation.DelayBefore(0));
     }
 
     /// <summary>
-    /// The login schedule settles at its ceiling in about thirty seconds, so a user
-    /// fumbling with their phone leaves the app quiet rather than loud: 1.5s, 2.25s,
-    /// 3.375s, 5.0625s, 7.59375s, then ten seconds forever.
+    /// The login schedule settles at its three-second ceiling in about ten seconds,
+    /// so a user fumbling with their phone leaves the app quiet rather than loud:
+    /// 500ms, 750ms, 1.125s, 1.6875s, 2.53125s, then three seconds forever. The
+    /// ceiling is reached at attempt 5 and held from there.
     /// </summary>
     [Fact]
     public void TheLoginScheduleGrowsUntilTheCeilingAndStopsThere()
     {
         var schedule = PollSchedule.Login;
 
-        Assert.Equal(TimeSpan.FromSeconds(2.25), schedule.DelayBefore(1));
-        Assert.Equal(TimeSpan.FromSeconds(3.375), schedule.DelayBefore(2));
-        Assert.Equal(TimeSpan.FromSeconds(5.0625), schedule.DelayBefore(3));
-        Assert.Equal(TimeSpan.FromSeconds(7.59375), schedule.DelayBefore(4));
-        Assert.Equal(TimeSpan.FromSeconds(10), schedule.DelayBefore(5));
-        Assert.Equal(TimeSpan.FromSeconds(10), schedule.DelayBefore(50));
+        Assert.Equal(TimeSpan.FromMilliseconds(750), schedule.DelayBefore(1));
+        Assert.Equal(TimeSpan.FromMilliseconds(1125), schedule.DelayBefore(2));
+        Assert.Equal(TimeSpan.FromMilliseconds(1687.5), schedule.DelayBefore(3));
+        Assert.Equal(TimeSpan.FromMilliseconds(2531.25), schedule.DelayBefore(4));
+        Assert.Equal(TimeSpan.FromSeconds(3), schedule.DelayBefore(5));
+        Assert.Equal(TimeSpan.FromSeconds(3), schedule.DelayBefore(50));
         // Far past the point where the naive multiply-out would overflow TimeSpan.
-        Assert.Equal(TimeSpan.FromSeconds(10), schedule.DelayBefore(10_000));
+        Assert.Equal(TimeSpan.FromSeconds(3), schedule.DelayBefore(10_000));
     }
 
     /// <summary>
@@ -100,15 +101,15 @@ public sealed class PollScheduleTests
     /// <summary>
     /// The counting helper sums the schedule it is given — including the growth —
     /// and stops at the first delay that would overrun the budget. For the login
-    /// schedule inside twenty seconds: 1.5 + 2.25 + 3.375 + 5.0625 + 7.59375 =
-    /// 19.78, and the sixth would push past 29.
+    /// schedule inside twenty seconds: 0.5 + 0.75 + 1.125 + 1.6875 + 2.53125 +
+    /// 3×4 = 18.59, and the ninth would push past 20.
     /// </summary>
     [Fact]
     public void AttemptsWithinCountsTheGrowingWaitsItWouldActuallySpend()
     {
-        Assert.Equal(5, PollSchedule.Login.AttemptsWithin(TimeSpan.FromSeconds(20)));
-        Assert.Equal(0, PollSchedule.Login.AttemptsWithin(TimeSpan.FromSeconds(1)));
-        Assert.Equal(1, PollSchedule.Login.AttemptsWithin(TimeSpan.FromSeconds(1.5)));
+        Assert.Equal(9, PollSchedule.Login.AttemptsWithin(TimeSpan.FromSeconds(20)));
+        Assert.Equal(1, PollSchedule.Login.AttemptsWithin(TimeSpan.FromSeconds(1)));
+        Assert.Equal(2, PollSchedule.Login.AttemptsWithin(TimeSpan.FromSeconds(1.5)));
 
         // Activation starts at five seconds, so the same twenty-second budget fits
         // fewer attempts even though the ceiling is the same.

@@ -74,6 +74,15 @@ func TestAuthorizeURLCarriesEveryParameterWechatNeeds(t *testing.T) {
 	// constant matches itself, and it sailed through the exact commit that
 	// broke sign-in for everyone. Website qrconnect requires snsapi_login,
 	// independently of whether userinfo is available for a particular grant.
+	//
+	// The wider scope fails in three layers that stack: the protocol does not
+	// allow it in qrconnect, this app carries no grant for it (WeChat rejects
+	// the request outright, before a QR code is even rendered), and where a
+	// grant does exist it still inserts a consent screen between the scan and
+	// the redirect that the desktop client has no way to complete or observe.
+	//
+	// Nickname and avatar do not come from a wider login scope; they come from
+	// the unionid → public-account bridge (see client.go).
 	if Scope != "snsapi_login" {
 		t.Errorf("Scope = %q, want website login scope snsapi_login", Scope)
 	}
@@ -299,9 +308,8 @@ func TestErrorsNeverCarryTheSecret(t *testing.T) {
 func TestFetchProfileToleratesAMissingScope(t *testing.T) {
 	t.Parallel()
 
-	// 42003 is still a possible answer — a user who refuses the profile consent,
-	// or an app whose scope was changed after sign-in — and it is not a fault.
-	// Failing a sign-in over a missing display name would be a bad trade.
+	// 42003 is the normal answer, not a fault: the current scope grants no
+	// profile access, and a sign-in must not hinge on a display name.
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"errcode":42003,"errmsg":"insufficient scope"}`))
 	}))
@@ -409,5 +417,60 @@ func TestTransportErrorsDoNotExposeCredentials(t *testing.T) {
 		if !errors.Is(err, context.Canceled) || !IsTransient(err) {
 			t.Errorf("%s: sanitizing the error lost its classification", name)
 		}
+	}
+}
+
+// The token exchange may volunteer a nickname and an avatar even under
+// snsapi_login, and the scope says nothing about whether it does. A response
+// that carries them has given them away for free — no second call, no wider
+// scope, no bridge — so the fields must survive the exchange rather than be
+// dropped on the way to the caller.
+func TestExchangeCodeCarriesTheNicknameAndAvatarWhenTheTokenResponseHasThem(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"access_token":"ACCESS","expires_in":7200,` +
+			`"openid":"oABC","scope":"snsapi_login","unionid":"uXYZ",` +
+			`"nickname":"萌心","headimgurl":"https://thirdwx.qlogo.cn/mmopen/abc/0"}`))
+	}))
+	defer srv.Close()
+
+	c := newTestClient(t, srv)
+	sess, err := c.ExchangeCode(context.Background(), "the-code")
+	if err != nil {
+		t.Fatalf("ExchangeCode: %v", err)
+	}
+	if sess.Nickname != "萌心" {
+		t.Errorf("nickname = %q, want 萌心", sess.Nickname)
+	}
+	if sess.AvatarURL != "https://thirdwx.qlogo.cn/mmopen/abc/0" {
+		t.Errorf("avatar = %q", sess.AvatarURL)
+	}
+}
+
+// The absence of those fields is the ordinary case for a scope that does not
+// grant them, and it must not become a failure: the sign-in stands, and the
+// nickname is simply not known.
+func TestExchangeCodeWithoutANicknameIsStillASuccessfulSignIn(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"access_token":"ACCESS","expires_in":7200,` +
+			`"openid":"oABC","scope":"snsapi_login","unionid":"uXYZ"}`))
+	}))
+	defer srv.Close()
+
+	c := newTestClient(t, srv)
+	sess, err := c.ExchangeCode(context.Background(), "the-code")
+	if err != nil {
+		t.Fatalf("ExchangeCode: %v", err)
+	}
+	if sess.Nickname != "" || sess.AvatarURL != "" {
+		t.Errorf("nickname = %q, avatar = %q, want both empty", sess.Nickname, sess.AvatarURL)
+	}
+	if sess.OpenID != "oABC" {
+		t.Errorf("openid = %q, want oABC", sess.OpenID)
 	}
 }
