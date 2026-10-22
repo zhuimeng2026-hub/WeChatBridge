@@ -14,6 +14,7 @@ namespace WeChatBridge.Windows.Panes;
 public partial class WorkbenchPane : UserControl
 {
     private readonly MainViewModel _model;
+    private readonly Action<string> _copyRequest;
     private readonly ObservableCollection<MaterialRow> _visibleMaterials = [];
     private readonly HashSet<string> _selectedPaths = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> _demoDocuments = new(StringComparer.OrdinalIgnoreCase);
@@ -34,9 +35,10 @@ public partial class WorkbenchPane : UserControl
     private string _activeCaseScope = "";
     private bool _demoMode;
 
-    public WorkbenchPane(MainViewModel model)
+    public WorkbenchPane(MainViewModel model, Action<string>? copyRequest = null)
     {
         _model = model;
+        _copyRequest = copyRequest ?? new Action<string>(Clipboard.SetText);
         InitializeComponent();
         MaterialsList.ItemsSource = _visibleMaterials;
         MaterialStripItems.ItemsSource = _visibleMaterials;
@@ -45,6 +47,7 @@ public partial class WorkbenchPane : UserControl
         DemoButton.Content = L10n.Text("演示资料");
         ChooseVaultButton.Content = L10n.Text("选择知识库");
         SearchBox.ToolTip = L10n.Text("搜索笔记");
+        SearchHint.Text = L10n.Text("搜索笔记");
         DocumentTitle.Text = L10n.Text("选择一篇 Markdown 笔记开始阅读");
         AssistantTitle.Text = L10n.Text("助手工作区");
         AssistantNotice.Text = L10n.Text("离线工作台 · 不会自动调用模型或发送材料");
@@ -139,6 +142,7 @@ public partial class WorkbenchPane : UserControl
 
     private void Search_TextChanged(object sender, TextChangedEventArgs e)
     {
+        if (SearchHint is not null) SearchHint.Visibility = string.IsNullOrEmpty(SearchBox.Text) ? Visibility.Visible : Visibility.Collapsed;
         try { Refilter(); }
         catch (Exception error) { StatusText.Text = L10n.Format($"搜索失败：{error.Message}"); }
     }
@@ -226,6 +230,7 @@ public partial class WorkbenchPane : UserControl
 
     private void ConfigureAssistantBody(bool vertical)
     {
+        ConfigureAssistantHeader(vertical);
         AssistantBody.RowDefinitions.Clear();
         AssistantBody.ColumnDefinitions.Clear();
         if (vertical)
@@ -256,6 +261,41 @@ public partial class WorkbenchPane : UserControl
             }
         }
         ConfigureAssistantFooter(vertical);
+    }
+
+    private void ConfigureAssistantHeader(bool compact)
+    {
+        AssistantHeader.RowDefinitions.Clear();
+        AssistantHeader.ColumnDefinitions.Clear();
+        if (compact)
+        {
+            AssistantHeader.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            AssistantHeader.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            AssistantHeader.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            AssistantHeader.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            Grid.SetRow(AssistantTitleRegion, 0);
+            Grid.SetColumn(AssistantTitleRegion, 0);
+            Grid.SetColumnSpan(AssistantTitleRegion, 2);
+            Grid.SetRow(SelectionCountRegion, 1);
+            Grid.SetColumn(SelectionCountRegion, 0);
+            Grid.SetColumnSpan(SelectionCountRegion, 1);
+            Grid.SetRow(ToolControlRegion, 1);
+            Grid.SetColumn(ToolControlRegion, 1);
+        }
+        else
+        {
+            AssistantHeader.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            AssistantHeader.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            AssistantHeader.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            AssistantHeader.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            Grid.SetRow(AssistantTitleRegion, 0);
+            Grid.SetColumn(AssistantTitleRegion, 0);
+            Grid.SetColumnSpan(AssistantTitleRegion, 1);
+            Grid.SetRow(SelectionCountRegion, 0);
+            Grid.SetColumn(SelectionCountRegion, 1);
+            Grid.SetColumn(ToolControlRegion, 2);
+            Grid.SetRow(ToolControlRegion, 0);
+        }
     }
 
     private void ConfigureAssistantFooter(bool compact)
@@ -389,7 +429,7 @@ public partial class WorkbenchPane : UserControl
             var request = string.IsNullOrWhiteSpace(prompt)
                 ? string.Join("\n\n---\n\n", sectionArray)
                 : $"{prompt}\n\n" + string.Join("\n\n---\n\n", sectionArray);
-            Clipboard.SetText(request);
+            _copyRequest(request);
             _lastRequestSources = selectedPaths.Select(path => new RequestSource(
                 path, path == _selectedPath && passage.Length > 0 ? passage : null)).ToArray();
             _lastRequestPrompt = prompt;

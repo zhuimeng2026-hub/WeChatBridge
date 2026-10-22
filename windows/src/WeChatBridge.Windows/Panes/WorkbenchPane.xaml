@@ -1,7 +1,10 @@
 <UserControl x:Class="WeChatBridge.Windows.Panes.WorkbenchPane"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:loc="clr-namespace:WeChatBridge.Windows">
+             xmlns:loc="clr-namespace:WeChatBridge.Windows"
+             FontFamily="Microsoft YaHei UI, Segoe UI" FontSize="14"
+             UseLayoutRounding="True" SnapsToDevicePixels="True"
+             TextOptions.TextFormattingMode="Display" TextOptions.TextRenderingMode="ClearType">
     <UserControl.Resources>
         <Style x:Key="ToolButton" TargetType="Button" BasedOn="{StaticResource SettingsButton}">
             <Setter Property="Padding" Value="10,5" />
@@ -16,20 +19,20 @@
                 <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                           VerticalAlignment="Center" Margin="3,0,8,0" />
                 <StackPanel Grid.Column="1" Margin="0,2">
-                    <TextBlock Text="{Binding Name}" FontSize="12" Foreground="{StaticResource InkColor}"
+                <TextBlock Text="{Binding Name}" FontSize="13" Foreground="{StaticResource InkColor}"
                                TextTrimming="CharacterEllipsis" />
-                    <TextBlock Text="{Binding RelativePath}" FontSize="10.5" Foreground="{StaticResource InkTertiaryColor}"
+                    <TextBlock Text="{Binding RelativePath}" FontSize="12" Foreground="{StaticResource InkTertiaryColor}"
                                TextTrimming="CharacterEllipsis" />
                 </StackPanel>
             </Grid>
         </DataTemplate>
         <DataTemplate x:Key="AttachmentTemplate">
-            <Button Content="{Binding Name}" Tag="{Binding RelativePath}" Margin="0,2,6,2" Padding="7,4"
-                    Style="{StaticResource SettingsButton}" FontSize="10.5" Click="RevealAttachment_Click" />
+            <Button Content="{Binding Name}" Tag="{Binding RelativePath}" Margin="0,2,6,2" Padding="8,5"
+                    Style="{StaticResource SettingsButton}" FontSize="12" Click="RevealAttachment_Click" />
         </DataTemplate>
         <DataTemplate x:Key="SourceLinkTemplate">
-            <Button Content="{Binding Name}" Tag="{Binding RelativePath}" Padding="6,2" Margin="0,0,6,0"
-                    Style="{StaticResource SettingsButton}" FontSize="10.5" Click="SourceLink_Click" />
+            <Button Content="{Binding Name}" Tag="{Binding RelativePath}" Padding="7,3" Margin="0,0,6,0"
+                    Style="{StaticResource SettingsButton}" FontSize="12" Click="SourceLink_Click" />
         </DataTemplate>
     </UserControl.Resources>
     <Grid x:Name="WorkbenchRoot">
@@ -47,24 +50,30 @@
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <StackPanel VerticalAlignment="Center">
-                <TextBlock x:Name="VaultLabel" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource InkColor}" />
-                <TextBlock x:Name="VaultPath" Margin="0,3,0,0" FontSize="11" Foreground="{StaticResource InkTertiaryColor}"
+                <TextBlock x:Name="VaultLabel" FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource InkColor}" />
+                <TextBlock x:Name="VaultPath" Margin="0,3,0,0" FontSize="12" Foreground="{StaticResource InkTertiaryColor}"
                            TextTrimming="CharacterEllipsis" />
-                <TextBox x:Name="SearchBox" Width="260" HorizontalAlignment="Left" Margin="0,6,0,0" Padding="8,5"
-                         TextChanged="Search_TextChanged" />
+                <Grid Width="300" HorizontalAlignment="Left" Margin="0,6,0,0">
+                    <TextBox x:Name="SearchBox" Padding="10,6" FontSize="13" Background="{StaticResource SurfaceColor}"
+                             BorderBrush="{StaticResource StrokeSoftColor}" BorderThickness="1"
+                             TextChanged="Search_TextChanged" />
+                    <TextBlock x:Name="SearchHint" Margin="12,0,8,0" VerticalAlignment="Center"
+                               Foreground="{StaticResource InkTertiaryColor}" FontSize="13" IsHitTestVisible="False" />
+                </Grid>
             </StackPanel>
             <Button x:Name="RefreshButton" Grid.Column="1" Style="{StaticResource ToolButton}" Margin="0,0,8,0"
-                    Click="Refresh_Click" />
-                <ComboBox x:Name="LayoutSelector" Grid.Column="2" MinWidth="145" Margin="0,0,8,0" VerticalAlignment="Center"
+                    VerticalAlignment="Center" MinHeight="32" Click="Refresh_Click" />
+            <ComboBox x:Name="LayoutSelector" Grid.Column="2" MinWidth="145" MinHeight="32" Margin="0,0,8,0" VerticalAlignment="Center"
                       SelectionChanged="Layout_SelectionChanged">
                 <ComboBoxItem Tag="Reading" />
                 <ComboBoxItem Tag="Case" />
                 <ComboBoxItem Tag="Document" />
             </ComboBox>
             <Button x:Name="DemoButton" Grid.Column="3" Style="{StaticResource ToolButton}" Margin="0,0,8,0"
+                    VerticalAlignment="Center" MinHeight="32"
                     Click="Demo_Click" />
             <Button x:Name="ChooseVaultButton" Grid.Column="4" Style="{StaticResource ToolButton}"
-                    Click="ChooseVault_Click" />
+                    VerticalAlignment="Center" MinHeight="32" Click="ChooseVault_Click" />
         </Grid>
         <Border x:Name="MaterialStrip" Grid.Row="1" Margin="0,0,0,10" Padding="10,7"
                 Background="{StaticResource SunkenColor}" CornerRadius="9" Visibility="Collapsed">
@@ -75,7 +84,7 @@
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
                 <TextBlock x:Name="CaseScopeLabel" VerticalAlignment="Center" Margin="0,0,7,0"
-                           FontSize="10.5" Foreground="{StaticResource InkTertiaryColor}" />
+                           FontSize="12" Foreground="{StaticResource InkTertiaryColor}" />
                 <ComboBox x:Name="CaseSelector" Grid.Column="1" MinWidth="150" Margin="0,0,12,0"
                           VerticalAlignment="Center" SelectionChanged="Case_SelectionChanged" />
                 <ScrollViewer Grid.Column="2" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
@@ -110,8 +119,8 @@
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
                     <StackPanel Margin="0,0,0,10">
-                        <TextBlock x:Name="DocumentTitle" FontSize="20" FontWeight="SemiBold" Foreground="{StaticResource InkColor}" />
-                        <TextBlock x:Name="DocumentPath" Margin="0,3,0,0" FontSize="11" Foreground="{StaticResource InkTertiaryColor}" />
+                        <TextBlock x:Name="DocumentTitle" FontSize="24" FontWeight="SemiBold" Foreground="{StaticResource InkColor}" />
+                        <TextBlock x:Name="DocumentPath" Margin="0,3,0,0" FontSize="12" Foreground="{StaticResource InkTertiaryColor}" />
                     </StackPanel>
                     <ItemsControl x:Name="AttachmentsList" Grid.Row="1" Margin="0,0,0,10" ItemTemplate="{StaticResource AttachmentTemplate}">
                         <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
@@ -119,7 +128,7 @@
                     <TextBox x:Name="DocumentBody" Grid.Row="2" IsReadOnly="True" AcceptsReturn="True"
                              TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" BorderThickness="0"
                              Background="Transparent" Foreground="{StaticResource InkColor}"
-                             FontSize="13" Padding="0" />
+                             FontSize="16" Padding="0" />
                 </Grid>
             </Border>
         </Grid>
@@ -130,30 +139,31 @@
                     <RowDefinition Height="*" />
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
-                <Grid>
+                <Grid x:Name="AssistantHeader">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
-                    <StackPanel>
-                        <TextBlock x:Name="AssistantTitle" FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource InkColor}" />
-                        <TextBlock x:Name="AssistantNotice" Margin="0,2,0,0" FontSize="10.5" Foreground="{StaticResource InkTertiaryColor}" />
+                    <StackPanel x:Name="AssistantTitleRegion">
+                        <TextBlock x:Name="AssistantTitle" FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource InkColor}" />
+                        <TextBlock x:Name="AssistantNotice" Margin="0,2,0,0" FontSize="12" Foreground="{StaticResource InkTertiaryColor}"
+                                   TextWrapping="Wrap" />
                     </StackPanel>
-                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                        <TextBlock x:Name="SelectionCount" VerticalAlignment="Center" FontSize="11"
+                    <StackPanel x:Name="SelectionCountRegion" Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock x:Name="SelectionCount" VerticalAlignment="Center" FontSize="12" TextWrapping="Wrap"
                                    Foreground="{StaticResource InkSecondaryColor}" />
                     </StackPanel>
-                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-                        <TextBlock x:Name="ToolLabel" VerticalAlignment="Center" Margin="0,0,6,0" FontSize="10.5"
+                    <StackPanel x:Name="ToolControlRegion" Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock x:Name="ToolLabel" VerticalAlignment="Center" Margin="0,0,6,0" FontSize="13"
                                    Foreground="{StaticResource InkSecondaryColor}" />
-                        <ComboBox x:Name="ExternalToolSelector" MinWidth="88" VerticalAlignment="Center">
+                        <ComboBox x:Name="ExternalToolSelector" MinWidth="88" MinHeight="32" VerticalAlignment="Center">
                             <ComboBoxItem Content="Codex" Tag="Codex" />
                             <ComboBoxItem Content="Claude" Tag="Claude" />
                             <ComboBoxItem Content="其他" Tag="Other" />
                         </ComboBox>
                         <Button x:Name="CollapseButton" Margin="8,0,0,0" Style="{StaticResource ToolButton}"
-                                Padding="7,3" Click="Collapse_Click" />
+                                Padding="7,3" MinHeight="32" Click="Collapse_Click" />
                     </StackPanel>
                 </Grid>
                 <Grid x:Name="AssistantBody" Grid.Row="1" Margin="0,8,0,8">
@@ -167,11 +177,15 @@
                             <RowDefinition Height="*" />
                             <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
-                        <TextBox x:Name="PromptBox" Padding="9,7" AcceptsReturn="True" TextWrapping="Wrap"
-                                 VerticalScrollBarVisibility="Auto" TextChanged="Prompt_TextChanged" />
-                        <TextBlock x:Name="PromptHint" Margin="10,8,8,8" Foreground="{StaticResource InkTertiaryColor}"
-                                   IsHitTestVisible="False" TextWrapping="Wrap" />
-                        <TextBox x:Name="DraftTitleBox" Grid.Row="1" Margin="0,6,0,0" Padding="8,4" />
+                        <TextBox x:Name="PromptBox" Padding="12" FontSize="15" Background="{StaticResource SurfaceColor}"
+                                 BorderBrush="{StaticResource StrokeSoftColor}" BorderThickness="1"
+                                 AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"
+                                 TextChanged="Prompt_TextChanged" />
+                        <TextBlock x:Name="PromptHint" Margin="13,10,10,10" Foreground="{StaticResource InkTertiaryColor}"
+                                   FontSize="13" IsHitTestVisible="False" TextWrapping="Wrap" />
+                        <TextBox x:Name="DraftTitleBox" Grid.Row="1" Margin="0,6,0,0" Padding="10,6" FontSize="13"
+                                 Background="{StaticResource SurfaceColor}" BorderBrush="{StaticResource StrokeSoftColor}"
+                                 BorderThickness="1" />
                     </Grid>
                     <Grid Grid.Column="2">
                         <Grid.RowDefinitions>
@@ -179,10 +193,12 @@
                             <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
                         <Grid>
-                            <TextBox x:Name="ResultBox" Padding="9,7" AcceptsReturn="True" TextWrapping="Wrap"
-                                     VerticalScrollBarVisibility="Auto" TextChanged="Result_TextChanged" />
-                            <TextBlock x:Name="ResultHint" Margin="10,8,8,8" Foreground="{StaticResource InkTertiaryColor}"
-                                       IsHitTestVisible="False" TextWrapping="Wrap" />
+                            <TextBox x:Name="ResultBox" Padding="12" FontSize="15" Background="{StaticResource SurfaceColor}"
+                                     BorderBrush="{StaticResource StrokeSoftColor}" BorderThickness="1"
+                                     AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"
+                                     TextChanged="Result_TextChanged" />
+                            <TextBlock x:Name="ResultHint" Margin="13,10,10,10" Foreground="{StaticResource InkTertiaryColor}"
+                                       FontSize="13" IsHitTestVisible="False" TextWrapping="Wrap" />
                         </Grid>
                         <ItemsControl x:Name="SourceLinks" Grid.Row="1" Margin="0,6,0,0" ItemTemplate="{StaticResource SourceLinkTemplate}">
                             <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
@@ -196,12 +212,14 @@
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
-                    <TextBlock x:Name="StatusText" VerticalAlignment="Center" FontSize="10.5"
+                    <TextBlock x:Name="StatusText" VerticalAlignment="Center" FontSize="12"
                                Foreground="{StaticResource InkTertiaryColor}" TextTrimming="CharacterEllipsis" />
                     <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="8,0,8,0">
                         <TextBlock x:Name="SaveFolderLabel" VerticalAlignment="Center" Margin="0,0,6,0"
-                                   FontSize="10.5" Foreground="{StaticResource InkSecondaryColor}" />
-                        <TextBox x:Name="SaveFolderBox" Width="86" Padding="6,4" />
+                                   FontSize="13" Foreground="{StaticResource InkSecondaryColor}" />
+                        <TextBox x:Name="SaveFolderBox" Width="86" Padding="8,5" FontSize="13"
+                                 Background="{StaticResource SurfaceColor}" BorderBrush="{StaticResource StrokeSoftColor}"
+                                 BorderThickness="1" />
                     </StackPanel>
                     <Button x:Name="CopyRequestButton" Grid.Column="2" Style="{StaticResource ToolButton}" Margin="0,0,8,0"
                             Click="CopyRequest_Click" />
