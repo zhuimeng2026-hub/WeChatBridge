@@ -107,6 +107,14 @@ public sealed class ObsidianVaultWorkbench
         return attachments.OrderBy(info => info.Name, StringComparer.OrdinalIgnoreCase).ToArray();
     }
 
+    /// <summary>Resolves an existing contained attachment for explicit folder reveal.</summary>
+    public string GetAttachmentPath(string relativePath)
+    {
+        var path = ResolveContained(relativePath);
+        if (!File.Exists(path)) throw new FileNotFoundException("The attachment no longer exists.", path);
+        return path;
+    }
+
     /// <summary>Saves a new Markdown note beneath the vault analysis folder; existing files are never overwritten.</summary>
     public string SaveNewAnalysis(string title, string markdown)
     {

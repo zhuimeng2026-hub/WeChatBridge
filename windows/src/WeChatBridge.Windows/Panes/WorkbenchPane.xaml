@@ -24,9 +24,8 @@
             </Grid>
         </DataTemplate>
         <DataTemplate x:Key="AttachmentTemplate">
-            <Border Margin="0,2,6,2" Padding="7,4" CornerRadius="6" Background="{StaticResource SunkenColor}">
-                <TextBlock Text="{Binding Name}" FontSize="10.5" Foreground="{StaticResource InkSecondaryColor}" />
-            </Border>
+            <Button Content="{Binding Name}" Tag="{Binding RelativePath}" Margin="0,2,6,2" Padding="7,4"
+                    Style="{StaticResource SettingsButton}" FontSize="10.5" Click="RevealAttachment_Click" />
         </DataTemplate>
         <DataTemplate x:Key="SourceLinkTemplate">
             <Button Content="{Binding Name}" Tag="{Binding RelativePath}" Padding="6,2" Margin="0,0,6,0"
@@ -45,6 +44,7 @@
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <StackPanel VerticalAlignment="Center">
                 <TextBlock x:Name="VaultLabel" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource InkColor}" />
@@ -55,13 +55,15 @@
             </StackPanel>
             <Button x:Name="RefreshButton" Grid.Column="1" Style="{StaticResource ToolButton}" Margin="0,0,8,0"
                     Click="Refresh_Click" />
-            <ComboBox x:Name="LayoutSelector" Grid.Column="2" MinWidth="145" Margin="0,0,8,0" VerticalAlignment="Center"
+                <ComboBox x:Name="LayoutSelector" Grid.Column="2" MinWidth="145" Margin="0,0,8,0" VerticalAlignment="Center"
                       SelectionChanged="Layout_SelectionChanged">
                 <ComboBoxItem Tag="Reading" />
                 <ComboBoxItem Tag="Case" />
-                <ComboBoxItem Tag="Document" IsEnabled="False" />
+                <ComboBoxItem Tag="Document" />
             </ComboBox>
-            <Button x:Name="ChooseVaultButton" Grid.Column="3" Style="{StaticResource ToolButton}"
+            <Button x:Name="DemoButton" Grid.Column="3" Style="{StaticResource ToolButton}" Margin="0,0,8,0"
+                    Click="Demo_Click" />
+            <Button x:Name="ChooseVaultButton" Grid.Column="4" Style="{StaticResource ToolButton}"
                     Click="ChooseVault_Click" />
         </Grid>
         <Border x:Name="MaterialStrip" Grid.Row="1" Margin="0,0,0,10" Padding="10,7"
@@ -93,6 +95,8 @@
             </Grid.ColumnDefinitions>
             <Border x:Name="NavigatorRegion" Grid.Column="0" Background="{StaticResource SunkenColor}" CornerRadius="10" Padding="10">
                 <DockPanel>
+                    <TreeView x:Name="FolderTree" BorderThickness="0" Background="Transparent" Visibility="Collapsed"
+                              SelectedItemChanged="FolderTree_SelectionChanged" />
                     <ListBox x:Name="MaterialsList" BorderThickness="0" Background="Transparent"
                              ItemTemplate="{StaticResource MaterialTemplate}" SelectionChanged="Materials_SelectionChanged" />
                 </DockPanel>

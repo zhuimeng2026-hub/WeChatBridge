@@ -107,6 +107,28 @@ public sealed class UiSmokeTests
                     ((TextBox)workbench.FindName("DraftTitleBox")).Text = "沟通记录分析草稿-" + language;
                     if (previewDirectory is not null)
                         RenderWorkbench(workbench, $"workbench-reading-first-{language}", previewDirectory);
+                    var layoutSelector = (ComboBox)workbench.FindName("LayoutSelector");
+                    var materialStrip = (Border)workbench.FindName("MaterialStrip");
+                    var navigator = (Border)workbench.FindName("NavigatorRegion");
+                    layoutSelector.SelectedIndex = 1;
+                    workbench.UpdateLayout();
+                    Assert.Equal(Visibility.Visible, materialStrip.Visibility);
+                    Assert.Equal(Visibility.Collapsed, navigator.Visibility);
+                    Assert.Equal(Visibility.Visible, ((Border)workbench.FindName("AssistantRegion")).Visibility);
+                    if (previewDirectory is not null)
+                        RenderWorkbench(workbench, $"workbench-case-workspace-{language}", previewDirectory);
+                    layoutSelector.SelectedIndex = 2;
+                    workbench.UpdateLayout();
+                    Assert.Equal(Visibility.Visible, ((TreeView)workbench.FindName("FolderTree")).Visibility);
+                    Assert.Equal(Visibility.Collapsed, materials.Visibility);
+                    Assert.Equal(Visibility.Visible, navigator.Visibility);
+                    if (previewDirectory is not null)
+                        RenderWorkbench(workbench, $"workbench-document-workbench-{language}", previewDirectory);
+                    layoutSelector.SelectedIndex = 0;
+                    workbench.UpdateLayout();
+                    Assert.Contains("后续材料：签收回执", ((TextBox)workbench.FindName("ResultBox")).Text);
+                    Assert.Equal("沟通记录分析草稿-" + language, ((TextBox)workbench.FindName("DraftTitleBox")).Text);
+                    Assert.Contains("1", ((TextBlock)workbench.FindName("SelectionCount")).Text);
                     ((Button)workbench.FindName("SaveNoteButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                     var savedNote = Path.Combine(vaultRoot, "分析", "沟通记录分析草稿-" + language + ".md");
                     Assert.True(File.Exists(savedNote));
@@ -114,6 +136,12 @@ public sealed class UiSmokeTests
                     Assert.Contains("[[当事人/陈某/CASE-2026-018/沟通记录.md]]", File.ReadAllText(savedNote));
                     // Keep the source fixture identical for the next language pass.
                     File.Delete(savedNote);
+                    ((Button)workbench.FindName("DemoButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    Assert.Equal(2, materials.Items.Count);
+                    Assert.Contains("示例资料", ((TextBox)workbench.FindName("DocumentBody")).Text);
+                    Assert.True(((ItemsControl)workbench.FindName("AttachmentsList")).Items.Count > 0);
+                    ((Button)workbench.FindName("SaveNoteButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    Assert.Equal(L10n.Text("示例资料仅在内存中；请选择真实知识库后再保存"), ((TextBlock)workbench.FindName("StatusText")).Text);
                     var textImport = new TextImportWindow("测试聊天文字");
                     textImport.Show();
                     Assert.True(((Button)textImport.FindName("ImportButton")).IsEnabled);
