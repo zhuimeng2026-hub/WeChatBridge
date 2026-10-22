@@ -13,3 +13,7 @@ Owner: Codex; implementation delegated to gpt-6-luna at the user’s request.
 | Remote push / CI start | blocked | automatic review rejected public branch publication; awaiting explicit user approval after local work |
 
 All dependency installs, builds and tests are reserved for GitHub Actions per user preference. Source review only in this environment. No public branch or review build is claimed to exist.
+
+## CI round 1
+
+2026-10-22: user approved the public push. Branch publication succeeded through the GitHub connector; run 39776282888 found missing System.IO imports in the WPF pane. Added the explicit import; awaiting the next CI run. The earlier publication block is resolved.
