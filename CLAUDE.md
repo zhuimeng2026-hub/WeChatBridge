@@ -51,7 +51,22 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 常用命令
 
-### macOS（需 macOS + Xcode；本文件作者在 Windows 上无法运行这些）
+### 这台机器上能跑什么（Linux，2026-10-22 实测）
+
+**只有 Go 服务端与 Node 那一半能在这台机器上跑。** `dotnet` 与 `swift` 都不在 PATH，
+所以 Windows 端与 macOS 端的编译/测试**在本机完全跑不了**——那两节命令要在
+Windows（装 .NET 10 SDK）或 macOS（装 Xcode）上执行，本机只能读不能跑。
+
+本机可用：Go 1.26.2（`/usr/local/go`）、Node v22.22.1、psql 客户端 14、
+Chromium 152（snap）。**PostgreSQL 服务端跑在 127.0.0.1:5433**
+（`psql` 只有客户端没有 `postgres` 二进制，别指望能自建实例）。
+
+**`go.mod` 写 `go 1.26`，本机装的就是 1.26.2，所以裸跑 `go build` / `go test` 不会去下载
+toolchain**，`GOTOOLCHAIN=auto` 保持默认即可。（`GOTOOLCHAIN=go1.26.9` 那条是**镜像机**
+的绕法——发行版装的是 Go 1.22；模块缓存里确实有
+`toolchain@v0.0.1-go1.26.9.linux-amd64`，显式指定能命中缓存。）
+
+### macOS（需 macOS + Xcode；本机是 Linux，跑不了）
 
 ```bash
 cd macos
@@ -64,10 +79,10 @@ CONFIG=release Scripts/make-app.sh            # 装配 dist/微信流.app（主�
 Scripts/install-dev-build.sh                  # 装到 ~/Applications，让扩展真正注册
 ```
 
-### Windows
+### Windows（需 Windows + .NET 10 SDK；本机是 Linux，跑不了）
 
 ```bash
-# dotnet 10.0.402 SDK 已在本机 PATH 上，不需要 export。
+# dotnet 10.0.402 SDK 在 Windows 开发机的 PATH 上，不需要 export。
 # Edition 必须同时传给 restore / build / test，只传给 build 会让测试跑在另一个 edition 上
 dotnet restore windows/WeChatBridge.Windows.sln -p:WeChatBridgeEdition=Perpetual
 dotnet build   windows/WeChatBridge.Windows.sln -c Release --no-restore -p:WeChatBridgeEdition=Perpetual
@@ -112,105 +127,110 @@ powershell -ExecutionPolicy Bypass -File windows/scripts/Test-NoNetworkCode.ps1 
 
 ```bash
 cd server
-go build ./... && go vet ./... && go test ./...     # 实测 10 个包全绿
+go build ./... && go vet ./... && go test ./...     # 实测 11 个包全绿（14 个包，3 个无测试）
 go test ./internal/license/ -run TestVerify -v     # 单包单测试
 ```
 
-**`GOTOOLCHAIN=go1.26.9` 是 Linux 镜像机的绕法，在本机（Windows）上不要加。** `go.mod` 写
-`go 1.26`；发行版镜像装的是 Go 1.22，裸跑 `go test ./...` 会去下载 toolchain，在只能走内部
-镜像的机器上得到 `toolchain not available`——**这看着像网络问题，实际是版本没选对**：对应
-toolchain 早已在 `$(go env GOMODCACHE)/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64` 里，
-显式指定即可命中缓存。**本机装的是 Go 1.26.2，缓存里只有 `go1.26.5.windows-amd64`**——在这台
-机器上加 `GOTOOLCHAIN=go1.26.9` 反而会去下载一个本地没有的版本。
+`go test ./...` 全绿**不需要**真实 PostgreSQL、微信凭据或网络——每个外部依赖都在接口后面，测试用 pgxmock / fake store 顶替。**但 pgxmock 只断言查询字符串，从不执行它**：`store/postgres` 里那些真正要紧的语义——部分唯一索引的并发冲突（`activation_requests_live_install_idx` 是 `UNIQUE … WHERE status='pending'`）、条件 UPDATE 守卫实际影响几行、隐式行序——在 pgxmock 下**隐形**（fake store 实现的是 fake 自己写的规则，SQL 改回有 bug 的那一版整包照样绿）。这条缝由真库测试补上，见下节。
 
-`go test ./...` 全绿**不需要**真实 PostgreSQL、微信凭据或网络——每个外部依赖都在接口后面，测试用 pgxmock / fake store 顶替。**但 pgxmock 只断言查询字符串，从不执行它**：`store/postgres` 里那些真正要紧的语义——部分唯一索引的并发冲突（`activation_requests_live_install_idx` 是 `UNIQUE … WHERE status='pending'`）、条件 UPDATE 守卫实际影响几行、隐式行序——一行都没被真跑过。覆盖它们是 A-⑧ 的活，需要真库。
+**这条缝不是理论上的。** §11.7 M-5 发出去的查询，其全部意义就是「轮询器该等哪一行」，而**把 SQL 改回含 bug 的那一版，整个包依然全绿**——因为测它的是一个 fake，而 fake 实现什么规则就验证什么规则。
 
-**这条缝不是理论上的。** §11.7 M-5 发出去的查询，其全部意义就是「轮询器该等哪一行」，而**把 SQL 改回含 bug 的那一版，整个包依然全绿**——因为测它的是一个 fake，而 fake 实现什么规则就验证什么规则。下面的真库测试就是为这条缝补的。
-
-#### 真库测试怎么跑（A-⑧，2026-10-20 起）
-
-`store/postgres` 里文件名带 `_realdb_test.go` 的测试对着**真实 PostgreSQL** 跑，开关是环境变量：
-
-```bash
-# 建一个专用库（别指生产）
-su postgres -c "psql -c 'CREATE DATABASE wcb_verify OWNER wcb;'"
-
-export WCB_TEST_DATABASE_URL="postgres://wcb:wcb@127.0.0.1:5432/wcb_verify?sslmode=disable"
-export GOTOOLCHAIN=go1.26.9        # Linux 镜像机的绕法，本机不要加
-go test ./internal/store/postgres/ -count=1 -v
-```
-
-**不设 `WCB_TEST_DATABASE_URL` 时这些测试整体 skip**，所以 CI（无库）零影响——这是刻意的：一个只在某个人笔记本上跑的测试，会悄悄地不再被跑。代价是它们**在 CI 上不生效**，谁改坏了得自己记得跑。
-
-**Linux 部署机上已经有一套现成的。** 2026-10-22 实测：PG 16.15 在跑，角色 `wcb`
-口令 `wcb`，专用库 `wcb_verify` 已建好（还有同名的 `wcb` 库供服务端自己跑）。所以在那台
-机器上不用再 `su postgres` 建库，直接：
-
-```bash
-export WCB_TEST_DATABASE_URL="postgres://wcb:wcb@127.0.0.1:5432/wcb_verify?sslmode=disable"
-export GOTOOLCHAIN=go1.26.9     # 这台的默认 go 是 1.22，go.mod 写 go 1.26，必须显式指定
-go test ./internal/store/postgres/ -count=1 -v
-```
-
-实测 **198 项通过 / 0 失败**（含子测试）。注意这台机器**默认 `go` 是 1.22.2**——
-不加 `GOTOOLCHAIN=go1.26.9` 会去下载 toolchain，在只能走内部镜像的机器上得到
-`toolchain not available`；缓存里有 `go1.26.9.linux-amd64`，显式指定即命中。
-**这台机器没有 dotnet**，所以 C# 侧的测试在 Windows 上跑，`go` 侧的在这里跑。
-
-三点实现决定：
-
-- **用 `migrations.FS` 的真 `.up.sql` 建库，不用手抄 DDL。** 手抄件是 schema 的第二份描述，两者不一致那天，继续变绿的是手抄件。
-- **每个测试一个独立 schema**（迁移 + 全新表，结束 `DROP SCHEMA CASCADE`），所以 `t.Parallel()` 是真并行，不靠「清空表」那种让套件对顺序敏感的隔离方式。
-- **fixture 常要直插 SQL。** `CreateActivationRequest` 刻意把 `status` 写成 `'pending'`——公共方法到不了「已确认但已吊销」这类状态，用 `mustInsertRequest` / `mustInsertBinding`。
+**主线仍是 PostgreSQL 版。** SQLite 版（评估文档 `docs/design/sqlite-migration.zh-CN.md`
+结论是「可行、范围比预期小」，领域层 182 个业务测试零改动，只重写 store 包的方言）
+的成果由 **tag `sqlite-migration-2026-10-19`** 钉住——**分支本身已从远端删除**：
+`git branch feat/sqlite-migration sqlite-migration-2026-10-19` 即可取回，
+切换手册在 `docs/design/sqlite-switchover.zh-CN.md`。切库是单独一条分支的活。
 
 #### 本机 PostgreSQL（供 A-⑧ 集成测试）
 
-**这台 Windows 机器上没有 PostgreSQL**：`psql` / `pg_isready` 都不在 PATH，也没有任何本地
-服务在跑。下面的步骤是 Linux 部署机的做法，本机照抄会失败。服务端在本机起得来的两条路：
-
-1. **`server/mock/server.js`（契约 mock）** —— 零依赖、无数据库、无签名。见下节。
-2. **SQLite 版** —— 评估文档 `docs/design/sqlite-migration.zh-CN.md`
-   结论是「可行、范围比预期小」，领域层 182 个业务测试零改动，只重写 store 包的方言。
-   **主线 `feat/pg-client-integration` 仍是 PostgreSQL 版**，切库是单独一条分支的活。
-   那条分支的成果由 tag `sqlite-migration-2026-10-19` 钉住（分支本身已从远端删除）：
-   `git branch feat/sqlite-migration sqlite-migration-2026-10-19` 即可取回，
-   切换手册在 `docs/design/sqlite-switchover.zh-CN.md`。
-
-Linux 部署机上的步骤（**不是本机**）：
-
-服务端的持久层需要一个真实例。它跟 CI 无关（CI 根本不测服务端），纯属本地开发依赖。
+**本机有一个现成的 PostgreSQL 跑在 127.0.0.1:5433**（不是默认的 5432！），库 `wcb`、
+角色 `wcb`，凭据在仓库根的 `.env` 里（`.env` 被 gitignore，mode 600）。七张表已由服务端自己
+跑完迁移建好（`accounts` / `auth_sessions` / `activation_requests` / `licence_bindings` /
+`auth_handoffs` / `account_avatars` + `schema_migrations` 台账）。
 
 ```bash
-apt-get install -y --no-install-recommends postgresql-16 postgresql-client-16
-pg_isready -h 127.0.0.1                                    # 16 装完即由 systemd 拉起
-
-# 建角色与库，然后让 server 自己跑迁移（不要手灌 SQL，
-# 否则 schema_migrations 台账缺失，启动时会撞 "relation already exists"）
-su postgres -c "psql -c \"CREATE ROLE wcb LOGIN PASSWORD 'wcb'\""
-su postgres -c "createdb -O wcb wcb"
+# 真库测试：设了 WCB_TEST_DATABASE_URL 才跑，否则整包 skip（CI 没库，也不受影响）
+cd server && WCB_TEST_DATABASE_URL="postgres://wcb:<密码>@127.0.0.1:5433/wcb?sslmode=disable" \
+  go test ./internal/store/postgres/ -count=1 -v     # 本机实测 198 项通过 / 0 失败
 ```
 
-启动需要五个变量，缺一即拒（`config.required`）：
+`store/postgres` 里文件名带 `_realdb_test.go` 的测试对着**真实 PostgreSQL** 跑。
+三个实现决定（`realdb_harness_test.go`）：
+
+- **用 `migrations.FS` 的真 `.up.sql` 建库，不用手抄 DDL。** 手抄件是 schema 的第二份描述，
+  两者不一致那天，继续变绿的是手抄件。
+- **每个测试一个独立 schema**（迁移 + 全新表，结束 `DROP SCHEMA CASCADE`），所以
+  `t.Parallel()` 是真并行，不靠「清空表」那种让套件对顺序敏感的隔离方式。
+- **fixture 常要直插 SQL。** `CreateActivationRequest` 刻意把 `status` 写成 `'pending'`——
+  公共方法到不了「已确认但已吊销」这类状态，用 `mustInsertRequest` / `mustInsertBinding`。
+
+**A-⑧ 只覆盖了 `store/postgres` 一层。** `auth` / `activation` / `admin` 打的仍是 fake store，
+所以「把 SQL 改回含 bug 的那一版整个包依然全绿」这件事对它们**依然成立**；
+`cmd/wcb` 装配层与迁移器本身仍无真库端到端。缺口登记在 `docs/progress/pg-client-integration.md`。
+
+**起服务端**（读仓库根的 `.env`）：
 
 ```bash
-WCB_DATABASE_URL="postgres://wcb:wcb@127.0.0.1:5432/wcb?sslmode=disable" \
-WCB_WECHAT_APP_ID=wxtest WCB_WECHAT_APP_SECRET=secret \
-WCB_LICENSE_PRIVATE_KEY_PATH=/path/to/ec-p256.pk8.pem \
-WCB_TOKEN_SIGNING_SECRET=<≥32 字节> \
-WCB_HTTP_ADDR=:18901 GIN_MODE=release ./cmd/wcb
+cd server && set -a && . ../.env && set +a && go run ./cmd/wcb
 ```
 
-监听地址是 `WCB_HTTP_ADDR`（默认 `:8080`），**不是** `WCB_ADDR`。`WCB_ADMIN_OPENIDS` 留空时 admin 路由整个不挂载（404 而非全信任，见下文）。
+`.env` 里已配好 `WCB_DATABASE_URL`（指 5433）、`WCB_MP_APP_ID` / `WCB_MP_APP_SECRET`、
+`WCB_LICENSE_PRIVATE_KEY_PATH`（`/opt/wcb-secrets/license-private.pem`，mode 600）、
+`WCB_AVATAR_DIR`（`/opt/wcb-data/avatars`）、`WCB_HTTP_ADDR=:8099`。
+**`WCB_ADMIN_OPENIDS` 是空的，所以 admin 路由整个不挂载**（404 而非全信任，见下文）——
+本机起服务端时这是预期行为，不是故障。
 
-**常驻占用实测 85 MB**（PG 16.15 空闲态，6 个进程 RSS 求和，共享内存被重复计入，实际更低）。在 3.6 GiB / 2 vCPU 的机器上约占 `available` 的 3%，不必为它调 `shared_buffers`。
+**⚠️ 本机已经有一个 `wcb-bin` 跑在 8099 上**（PID 见 `ss -ltnp | grep 8099`，
+二进制 `/tmp/wcb-bin`，日志 `/tmp/wcb.log`）。**别用 `go run` 去抢这个端口**——会得到
+`bind: address already in use`。更不要 `> /tmp/wcb.log` 重定向：**那会截断正在被服务写的日志**
+（服务以 `O_APPEND` 打开，所以它会继续写，但历史没了）。要重启就停掉旧进程再起。
+
+监听地址是 `WCB_HTTP_ADDR`（默认 `:8080`），**不是** `WCB_ADDR`。
+
+**常驻占用实测 85 MB**（PG 空闲态，6 个进程 RSS 求和，共享内存被重复计入，实际更低）。在 3.6 GiB / 2 vCPU 的机器上约占 `available` 的 3%，不必为它调 `shared_buffers`。
+
+#### 两台 Linux 机器的 PostgreSQL 别搞混
+
+**这台（`/opt/WeChatBridge` 所在机）** 与 **「Linux 部署机」** 是**两台不同的机器**，
+端口、口令、PG 版本、Go 版本全都不同。写文档或跑测试时先确认自己在哪台上：
+
+| | 本机 | Linux 部署机 |
+|---|---|---|
+| PG | **15.18**，端口 **5433** | 16.15，端口 5432 |
+| 库 | `wcb`（服务端自用） | `wcb` + 专用 `wcb_verify` |
+| 口令 | `wcb_local_dev_only` | `wcb` |
+| Go | **1.26.2**（裸跑即可，不需 `GOTOOLCHAIN`） | **默认 1.22.2**，必须显式 `GOTOOLCHAIN=go1.26.9` |
+
+本机 5432 是**空的**，5433 上跑着的是 Alpine 编译的 PG 15.18——**照抄部署机那条命令
+（`127.0.0.1:5432/wcb_verify` + 口令 `wcb`）在本机会连不上**。本机用上面那条
+（`:5433/wcb` + `.env` 里的口令）。
+
+**注意真库测试有两条「不存在」的风险**：不设 `WCB_TEST_DATABASE_URL` 时**整包 skip**，
+所以「测试绿」可能只是「没跑」——**看 `-v` 输出里有没有 `--- PASS` 行，别只看 `ok` 那一行**。
+另外真库覆盖**只对 PG 写**：SQLite 那条线把 store 整体重写了，PG 的 `_realdb_test.go`
+在切库时会随 `store/postgres/` 一起消失。
 
 ### 契约 mock 与卖家后台（Windows 端的前后端，不在 CI 里）
 
 ```bash
 node server/mock/server.js --port 8901     # 零依赖 Node，契约 mock；字段/状态码/错误信封与真服务端逐字节一致
-cd admin-console && node test/smoke.mjs     # 契约冒烟 28 项（实测全过）；mock 必须在跑
-cd admin-console && node test/browser.mjs   # 浏览器级 17 项，需 playwright-core + 本机 Chrome（可选）
+cd admin-console && node test/smoke.mjs     # 契约冒烟 34 项（实测全过）；mock 必须在跑
+cd admin-console && node test/browser.mjs   # 浏览器级，需 playwright-core + 本机 Chrome（可选）
 ```
+
+**mock 默认端口 8901 在本机已被别的进程占着**（一个无关的 Python 服务）。换端口即可，
+但 `smoke.mjs` 打的是 `config.baseURL`（默认 `http://127.0.0.1:8901`），所以**换端口要同时
+告诉它**，否则它会连到占用者上然后报「未找到可用的契约 mock」：
+
+```bash
+node server/mock/server.js --port 8917 &
+cd admin-console && WCB_TEST_BASE_URL=http://127.0.0.1:8917 node test/smoke.mjs
+```
+
+或者让它自己拉起 mock（`WCB_MOCK_SCRIPT` 指向 `server/mock/server.js`）。
+
+`browser.mjs` 在本机跑不了：`playwright-core` 没装（`npm ls` 是空的），而 Chromium 152 在。
+它是**可选**的——`smoke.mjs` 覆盖的是契约，`browser.mjs` 覆盖的是 DOM 接线 / 渲染 / 弹窗。
 
 mock 的诚实边界写在 `server/mock/README.md`：签名与 QR PNG 都是占位，任意非空 bearer/admin 密码都接受。真实 handler 已在 `feat/server-convergence` 落地，**mock 该删了但还留着**——它是当前唯一能在无 PostgreSQL 的机器上跑通客户端全流程的手段。
 
@@ -306,6 +326,17 @@ avatar/    微信头像的内容寻址本地缓存。**只按魔数嗅探类型�
            （说 image/png 却吐 HTML 的是门户劫持）；只走 https 且只允许微信域名
            （点锚定后缀，不是子串）；文件名 = 字节的 SHA-256，所以摘要即 ETag。
            「头像是租约不是地址」——微信的 headimgurl 几天就过期。
+wechat/    微信 API 客户端。client.go = 网站应用（换 token / 取资料），
+           mp.go = **公众号**客户端（unionid 桥接用），qr.go = 二维码 PNG。
+           **mp.go 的 access_token 是单飞刷新**（一个应用只持有一个有效 token，
+           并发换 token 会让除最后一个外全部当场失效）+ 提前 5 分钟续期 +
+           **日预算 2000 次本地拦下**（微信的公布上限，超了 token 被吊销且无从诊断）。
+           mp_live_test.go 是 env 门控的真机测试（`WCB_MP_APP_ID` / `WCB_MP_APP_SECRET`），
+           CI 不跑——它花的是真账号的日预算。
+httpx/     错误信封与 request-id 中间件（**`{error:{code,message,request_id}}`**
+           + `X-Request-Id` 头），全仓库的错误形状都从这里出。
+config/    全部配置来自环境变量，**没有 flag**。每个字段都有「本地能跑、线上明显不对」
+           的默认值，所以半配置部署在启动时就炸，而不是在第一个客户身上。
 cmd/wcb/   唯一入口：装配、迁移执行、优雅关闭
 store/     接口在 store.go，实现在 store/postgres
 ```
@@ -317,6 +348,28 @@ store/     接口在 store.go，实现在 store/postgres
 `GET /v1/accounts/:id/avatar` **刻意不鉴权**——WPF 的 `Image` 控件发不出 `Authorization` 头；
 安全性靠「路径是 UUID（无从枚举）+ 身体本来就是公开的微信头像 + 不带任何账号信息」三条撑着。
 没有 `WriteTimeout`（写到一半超时的许可证是坏许可证）。
+
+#### 微信的三套凭据不可混用（最容易静默出错的一处）
+
+微信开放平台有**三个不同的应用**：`WCB_WECHAT_APP_ID`（**网站应用**，扫码登录用）、
+`WCB_MP_APP_ID`（**公众号**，unionid 桥接用）、以及小程序 appid。**三者 appid 各不相同。**
+
+`WCB_MP_APP_ID` / `WCB_MP_APP_SECRET` 是**成对**的：只给一个会在启动时被拒（这半种配置根本
+不可能工作）。**它们还是可选的**——桥接是增强不是命脉，没配这对凭据的部署照样能登录，
+只是没有昵称头像。**强制必填会让一个能用的服务因为一个非必需功能起不来。**
+
+`config.validate` 里有一条**防填反**校验：`WCB_MP_APP_ID` **不得等于**网站应用的 AppID。
+理由是那种错法**在任何其他层都是静默的**——服务起得来、登录正常、然后拿错了应用去问昵称，
+对方给出一个完全合法但属于另一个账号的答案。
+
+**主路径已经不需要桥接了。** 开放平台用 `sns_login` 登录时，**换 token 的响应里就带
+nickname / headimgurl**（2026-10-20 用户提供的实测事实）。代码原先**根本没解析这两个字段**
+——微信给了也丢掉。现在解析了，且 `HandleCallback` 里**session 是第一来源**：
+`FetchProfile` 的调用**只能改进、不能抹掉**（一个答不出东西的调用不许擦掉登录时已经拿到的）。
+`scope` 决定的是 `/sns/userinfo` 答不答，**不决定换 token 时已经说了什么**。
+
+**日志里不打人名。** 回调打的是 `token_nickname` / `token_avatar` 这类布尔值——
+昵称是一个人的名字，属于 `accounts` 表那一行，不属于日志。
 
 **表已经不止 4 张。** `0001_init.up.sql` 建 4 张（`accounts` / `auth_sessions` /
 `activation_requests` / `licence_bindings`），之后又加了三处迁移：
@@ -374,7 +427,7 @@ ent=PRO        ← 大写、排序、去重后逗号连接
 
 **本地的中文字符串 .ps1 必须是 UTF-8 with BOM。** PowerShell 5.1 会把无 BOM 的文件按系统 ANSI 代码页（中文 Windows 上是 GBK）读，静默毁掉字符串而不报错。反过来 `.bat` 必须纯 ASCII——cmd 同样按 ANSI 读。`Directory.Build.props` 也带中文，同理。`LayoutWiringTests` 会守住 `FirstRun.ps1` 的头三个字节。
 
-**本地化是单向的。** `L10n.Text("中文")` 的 key 就是中文字符串本身（miss 时原样返回，所以每个用户可见中文字符串都是自己的翻译 key），英文只存在于 `Core/Localization/en.json`（74KB，EmbeddedResource）。XAML 侧用 `{loc:Loc Key='中文'}`。加新文案 = 改代码里的中文 + 在 en.json 补一条，`LocalizationTests` 会断言两边的复合格式占位符索引集合完全一致。
+**本地化是单向的。** `L10n.Text("中文")` 的 key 就是中文字符串本身（miss 时原样返回，所以每个用户可见中文字符串都是自己的翻译 key），英文只存在于 `Core/Localization/en.json`（72KB，EmbeddedResource）。XAML 侧用 `{loc:Loc Key='中文'}`。加新文案 = 改代码里的中文 + 在 en.json 补一条，`LocalizationTests` 会断言两边的复合格式占位符索引集合完全一致。
 
 **`tests/…/TempInbox.cs` 是绝不能碰真实 `%LOCALAPPDATA%` 的 fixture。** 所有测试经由它拿一个临时 Inbox 根。
 
@@ -395,35 +448,52 @@ ent=PRO        ← 大写、排序、去重后逗号连接
 
 **当前 CI 不测 Go 服务端，也不测 `admin-console`**（`ci.yml` 只有 macOS 与 Windows 两个 job）。服务端的全绿、后台的冒烟全绿都只在你本地成立。另有两条不在 `ci.yml` 里的 workflow：`windows-sign.yml`（手动 dispatch，走 SignPath）与 `pages.yml`（`site/**` 推到 GitHub Pages，即 macOS 的 Sparkle 更新源）。
 
-## 三分支并行开发协议
+## 并行开发协议
 
-**这轮已经合完了**（`487231c` server、`0762a85` admin，`feat/client-license-gate` 与 `feat/windows-portable-usb` 也都已在 `main` 的祖先里）。协议本身仍是下一次并行开工时的规矩，规则见 `docs/design/progress-sync-protocol.zh-CN.md` 与 `branch-work-assignment.zh-CN.md`：
+**早期那轮已经合完了**（`487231c` server、`0762a85` admin，`feat/client-license-gate` 与 `feat/windows-portable-usb` 也都已在 `main` 的祖先里）。协议本身仍是下一次并行开工时的规矩，规则见 `docs/design/progress-sync-protocol.zh-CN.md` 与 `branch-work-assignment.zh-CN.md`：
 
 - **一个分支同一时刻只允许一台机器写。** 交接只能先确认对方 24 小时内不会回来。
-- **看板路径按分支隔离**：`docs/progress/{server-convergence,admin-console,client-license-gate}.md`，只有各自主人写，git 层面零冲突。**看板与代码同一个 commit**——「先 push 代码回头补看板」，补的那次永远不来。
+  **⚠️ 这条在本机被常态违反**——`/opt/WeChatBridge` 长期有多个独立 Claude 会话同时跑，
+  动 `main` 前先查：`for p in $(pgrep -x claude); do printf "%s %s\n" "$p" "$(readlink /proc/$p/cwd)"; done`
+  外加 `git log --oneline --since='30 minutes ago'`（有你没做过的提交 = 有人也在写）。
+  2026-10-20 实测发生过：另一个会话把分支合进 `main`，`main` 在对话期间凭空前进。
+- **看板路径按分支隔离**：`docs/progress/<分支名>.md`，只有各自主人写，git 层面零冲突。**看板与代码同一个 commit**——「先 push 代码回头补看板」，补的那次永远不来。
 - **commit 带任务编号**：`feat(server): [A-③] …`，`git log --oneline` 即进度流水。子任务粒度，不攒大 commit。
 - **契约冻结**：license canonical 格式、auth 端点、httpx 错误码体系禁止私改。发现缺字段 → 先改 `docs/design/buyout-flow-convergence.zh-CN.md` §11.3 并推送，各分支跟进。§11.7 是缺陷与变更登记册。
 - **工作区用 git worktree 隔离**（历史上真出过未跟踪文件跨分支的事故）。stash 栈在主检出与所有 worktree 间共享，`git stash` / `git stash pop` 会和其他会话抢——用 WIP commit，或 `git stash push -u -m "<唯一标签>"` 后立刻记下 SHA、用 `apply <sha>` 不用 `pop`。
 - 沙箱类环境里 git 网络操作会**静默失败或超时**（特征是 `Empty reply from server`，同时 curl 正常——别误判成凭据问题），必须在沙箱外跑。
 
-看板本身就是进度源，别只看文档：`docs/progress/*.md` 里 ⬜ / ⏳ 的行是**代码尚未落地**，`server-convergence.md` 的 A-⑧（全量集成测试）与 `client-license-gate.md` 的 C-⑥ / S5 / S6（mock 全流程）都还没做完。
+看板本身就是进度源，别只看文档：`docs/progress/*.md` 里 ⬜ / ⏳ 的行是**代码尚未落地**。
+最新的一块工作是 **`unionid-bridge`**（看板 `docs/progress/unionid-bridge.md`；分支已归档，
+成果在 tag `archive/feat-unionid-bridge`，但 U-⓪ 与 U-③ 已经合进 `main`）：U-⓪ 与 U-③ 已落地，
+**U-④（unionid→openid 那一跳）卡在接口未派发**——`cgi-bin/user/getid` 这个路径**根本不存在**，
+而主路径（换 token 的响应自带昵称头像）一旦在真机成立，桥接就不必做了。
+**下一步是一次真机扫码看日志里的 `token_nickname`**，不是写代码。
 
 ## 已知缺口（别当成新 bug 去排查）
 
-- **`origin` 上没有 `server/`、`admin-console/`，也没有 `CLAUDE.md`。** `origin` =
-  `freestylefly/WeChatBridge`，只同步 `macos/` `windows/` `shared/` `site/` `docs/`；
-  **服务端与卖家后台只存在于 fork `zmuimeng`（`zhuimeng2026-hub/WeChatBridge`）**。
-  推 `origin` 会因为没有写权限而失败；`git clone origin` 拿到的仓库里**没有服务端**。
-  「没 push = 没发生」是这套并行协议的第一条原则，唯一的共享通道是 fork。
+- **`origin` 是 fork `zhuimeng2026-hub/WeChatBridge`，`upstream` 才是 `freestylefly/WeChatBridge`。**
+  **方向别记反了**（本文件 2026-10-22 之前记反了）：`origin/main` 上**有** `server/` `admin-console/`
+  `CLAUDE.md`；`upstream/main` 上**没有**——上游只同步 `macos/` `windows/` `shared/` `site/` `docs/`。
+  所以「推 origin 会因为没有写权限而失败」是**旧**说法：现在推 origin 推到的是 fork，推得上去。
+  **`upstream` 必须长期保留**：它是与 freestylefly 对比的唯一持久锚点（`git fetch upstream &&
+  git rev-list --left-right --count main...upstream/main`），删掉就只能重新 `ls-remote`。
+  清理 remote 时只处理 `origin`。当前 `main` 领先 `upstream/main` 137 个提交。
 - **`site/appcast.xml` 现在装的是「Dukou」这个别的产品的 feed。** 里面零条 WeChatBridge 记录，
   每一条都指向 `github.com/qzz0518/Dukou` 的 dmg，签名也是用我们不持有的密钥签的。
   `site/WeChatBridge-0.1.13.md`～`0.1.15.md` 的发布说明在，但**不在 feed 里**。
   换句话说，macOS 的 Sparkle 更新源目前是断的——`pages.yml` 照发不误，发的是别人的更新源。
-- **`docs/progress/` 下的看板已按分支隔离。** 现有四块：`server-convergence` /
-  `admin-console` / `client-license-gate` / `pg-client-integration`（2026-10-19 建立，
-  A-⑧ 那一轮补的）。`feat/client-license-gate` 的分支已于 2026-10-22 归档后删除，
-  成果由 tag `archive/feat-client-license-gate` 钉住——**它的看板还在仓库里，
-  但那已是历史记录，不再是活的进度源**。
+- **当前分支是 `main`，不是 `feat/pg-client-integration`。** 看板目录现在有**八块**
+  （`server-convergence` / `admin-console` / `client-license-gate` / `client-license-gate.resume` /
+  `pg-client-integration` / `unionid-bridge` / `delivery-quota` / `login-perf-and-ux`），
+  所以「docs/progress/ 下没有当前分支的看板」这句已过期。
+  **但看板多不等于分支多**：2026-10-22 做过一轮分支清理，`feat/client-license-gate`、
+  `feat/delivery-quota`、`feat/pg-client-integration`、`feat/unionid-bridge` 都已归档，
+  成果由 tag `archive/<分支名>` 钉住。**这些分支对应的看板从此是历史记录，不再是活的进度源**——
+  只有还在远端存在的分支（`main` 与 `feat/pg-client-integration`）的看板是活的。
+  远端分支清单：`git branch -r | grep origin/`。
+  **`delivery-quota` 那块会推翻一条已登记的产品决策**（「门禁不锁任何功能」），
+  但它卡在 Q-① 六条口径未拍板上——**在拍板之前，那条决策仍然有效**。
 - **`windows/src` 下不存在 `Cloud/`、`CloudQr/`、`Billing/` 目录。** 版本隔离机制全部建好并被 CI 守着，但订阅形态的源码还没有落地，所以 `Test-NoNetworkCode.ps1` 在 Subscription 下会打印 SKIPPED。
 - **`LicensePublicKeys.PlaceholderKeyV1` 这个名字是历史遗留，内容已经是真公钥。**
   2026-10-19 起编译进客户端的就是服务端现役签发私钥的另一半（私钥在服务端
@@ -440,15 +510,20 @@ ent=PRO        ← 大写、排序、去重后逗号连接
   只剩 `ActivationContract.cs` 的注释里还提了一句 `RedeemEndpoint.BaseAddress`——那是一句悬空的
   注释（它引用的类型已经不在了），不是活代码。
 - **`BuyoutProductID` 与 `httpx.CodeWrongProduct` 目前没有任何消费方**：字段被读进 `Config` 就没人用，错误码定义了也没有处理器返回。两者都是兑换码时代的残留，产品校验随兑换码一起退役了。默认值是 `wechatbridge-windows-buyout`，**但今天既没有服务端校验它，也没有客户端拿它比对**——别以为存在这条校验路径。
+  同理，`httpx` 里还留着 `CodeCodeRedeemed` / `CodeCodeExpired` / `CodeCodeRevoked` /
+  `CodeInstallMismatch` 四个兑换码时代的错误码，**同样没有任何处理器会返回它们**。
+  「错误码定义了」不等于「这条错误路径存在」。
 - **Go 与 C# 的许可证信封仍有一处不一致**：base64（Go 用 std）对 base64url（C# `Base64Url`）。目前靠 C# 解码器的宽松映射兜住，实测可 roundtrip；一旦有人给 C# 加严格字母表校验就会当场炸。时间戳那处（int64 vs `DateTimeOffset`）已由 `b822761` 修复。成因与排查路径见 `windows/docs/LICENCE-ENVELOPE-WIRE-CONTRACT.zh-CN.md`。
-- **`server/mock/server.js` 该删了但还留着**（`server/mock/README.md` 自己写着「真实 handler 落地后本文件删除」）。它现在是有用的——无 PostgreSQL 时唯一能跑通客户端全流程的东西——但它的签名是占位，envelope 过不了客户端内嵌公钥。**它跟真服务端逐字节一致的部分是路由、字段名、状态码、错误信封**；签名与二维码 PNG 是占位。
+- **`server/mock/server.js` 该删了但还留着**（`server/mock/README.md` 自己写着「真实 handler 落地后本文件删除」）。它现在是有用的——**本机有真库，所以它的独占领地只剩「无库时跑通客户端全流程」这一条**；但它的签名是占位，envelope 过不了客户端内嵌公钥。**它跟真服务端逐字节一致的部分是路由、字段名、状态码、错误信封**；签名与二维码 PNG 是占位。
 - **`admin-console` 的台账页许可证号列现在由服务端返回**（`GET /v1/admin/requests` 的 item 带
   `licenseId`，设计文档 §11.7 M-2 补齐）。本机 localStorage 日志降级成兜底，不是唯一来源。
   卖家还有一个此前没有的路径：`POST /v1/admin/reject`（§11.7 M-4）——原先卖家只能说「是」和「收」，
   不能说「不」。
 - **`Tests/FolderDeliveryTests.swift` 的 11 个测试不在任何 target 里**，`swift test` 从不编译它们。
 - **`App.swift` / `ShareEntryProbe.swift` / `AppLink.swift` / `ShareFailure.swift` 引用的 ADR-0005 / ADR-0006 在仓库里不存在。**
-- **`ci.yml` 只在 `[main, feat/windows-port]` 上触发**，当前分支不在其中，本地必须自己跑。
+- **`ci.yml` 只在 `[main, feat/windows-port]` 上触发。** 当前分支就是 `main`，所以**推上去会跑**；
+  但 CI **只有 macOS 与 Windows 两个 job，不测 Go 服务端，也不测 `admin-console`**——
+  服务端的全绿、后台的冒烟全绿都只在你本地成立。
 - **macOS 端自 2026-10-04 起基本停更**（`git log -- macos/` 的最后一条），而 `server/` 与
-  `windows/` 每天都在动。macOS 的命令在本机（Windows）上**完全跑不了**——需要 macOS + Xcode。
+  `windows/` 每天都在动。macOS 的命令在本机（Linux）上**完全跑不了**——需要 macOS + Xcode。
   macOS 侧现在主要是 CI 里的那个 job 还在守着。
