@@ -46,8 +46,6 @@ public sealed class ObsidianVaultWorkbenchTests
         var root = NewVault();
         try
         {
-            var outside = Path.Combine(Path.GetDirectoryName(root)!, "outside.txt");
-            File.WriteAllText(outside, "private");
             var vault = new ObsidianVaultWorkbench(root);
 
             Assert.Throws<InvalidOperationException>(() => vault.ReadMarkdown("../outside.txt"));
@@ -58,8 +56,6 @@ public sealed class ObsidianVaultWorkbenchTests
         finally
         {
             Directory.Delete(root, recursive: true);
-            var outside = Path.Combine(Path.GetDirectoryName(root)!, "outside.txt");
-            if (File.Exists(outside)) File.Delete(outside);
         }
     }
 

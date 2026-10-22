@@ -43,3 +43,20 @@
 ## 低成本模型执行说明
 
 执行模型：`gpt-6-luna`；按方案 3 → 2 → 1 串行。每阶段复用已落地 Core 与状态，不重新生成共享基础设施。编码任务与复核任务分离；高层检查真实可用性、安全保存与 CI，而非仅检查文件存在。
+
+## 落地代码定位
+
+| 职责 | 文件 / 入口 |
+| --- | --- |
+| 布局和控件 | `windows/src/WeChatBridge.Windows/Panes/WorkbenchPane.xaml` |
+| 共享状态和交互 | `windows/src/WeChatBridge.Windows/Panes/WorkbenchPane.xaml.cs` |
+| 当前方案分支 | `LayoutSelector` → `ApplyLayout("Document")` |
+| 库文件读取、附件发现、新建笔记 | `windows/src/WeChatBridge.Windows.Core/Obsidian/ObsidianVaultWorkbench.cs` |
+| 主程序入口 | `MainWindow.xaml` / `MainWindow.xaml.cs` → 知识工作台 |
+| 文件行为测试 | `windows/tests/WeChatBridge.Windows.Tests/ObsidianVaultWorkbenchTests.cs` |
+| 原生交互与截图 | `windows/tests/WeChatBridge.Windows.AppTests/UiSmokeTests.cs` |
+| 云端校验和评审构建 | `.github/workflows/workbench-review.yml` |
+
+三个方案的布局代码共用这组文件；本目录独立保留本方案的方法和原始参考图。
+
+当前阅读器显示只读 Markdown 文本，附件以文件信息和定位方式展示；完整 Markdown 富文本渲染、PDF 内嵌阅读与 OCR 均未接入。保存包含请求时间、所选工具、提示词与来源引用；同名输出会自动编号以保留旧文件。
