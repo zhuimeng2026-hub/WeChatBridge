@@ -5,8 +5,8 @@ Owner: Codex; implementation delegated to gpt-6-luna at the user’s request.
 | Task | Status | Evidence |
 | --- | --- | --- |
 | WB-0 preserve three references and implementation plans | complete | 9053dd9 |
-| WB-3 reading-first + shared vault service | source implemented; runtime validation pending | this commit; Windows source reviewed statically |
-| WB-2 case workspace | pending | follows WB-3 checkpoint |
+| WB-3 reading-first + shared vault service | source implemented; runtime validation pending | 578bb4b |
+| WB-2 case workspace | source implemented; runtime validation pending | this commit; folder scope, material strip, dual pane |
 | WB-1 document workbench | pending | follows WB-2 checkpoint |
 | WB-QA CI and screenshot workflow | prepared; not executed | .github/workflows/workbench-review.yml |
 | WB-QA native visual comparison | blocked | design-qa.md |

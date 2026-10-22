@@ -16,18 +16,23 @@ public partial class WorkbenchPane : UserControl
     private IReadOnlyList<string> _markdownPaths = [];
     private string? _selectedPath;
     private string? _loadedVaultPath;
+    private string? _resultVaultPath;
     private bool _hasLoadedVault;
     private int _refreshGeneration;
     private IReadOnlyList<RequestSource> _lastRequestSources = [];
     private string? _lastRequestPrompt;
+    private string? _lastRequestTool;
     private DateTimeOffset? _lastRequestAt;
     private bool _assistantCollapsed;
+    private bool _syncMaterialSelection;
+    private string _activeCaseScope = "";
 
     public WorkbenchPane(MainViewModel model)
     {
         _model = model;
         InitializeComponent();
         MaterialsList.ItemsSource = _visibleMaterials;
+        MaterialStripItems.ItemsSource = _visibleMaterials;
         VaultLabel.Text = L10n.Text("本地 Obsidian 知识库");
         RefreshButton.Content = L10n.Text("刷新");
         ChooseVaultButton.Content = L10n.Text("选择知识库");
@@ -45,6 +50,18 @@ public partial class WorkbenchPane : UserControl
         SaveFolderBox.ToolTip = L10n.Text("在知识库内的保存文件夹");
         SaveFolderLabel.Text = L10n.Text("保存到");
         CollapseButton.Content = L10n.Text("收起");
+        ToolLabel.Text = L10n.Text("复制到");
+        ExternalToolSelector.SelectedIndex = 0;
+        var layoutItems = LayoutSelector.Items.OfType<ComboBoxItem>().ToArray();
+        layoutItems[0].Content = L10n.Text("阅读优先");
+        layoutItems[1].Content = L10n.Text("案件工作区");
+        layoutItems[2].Content = L10n.Text("资料工作台");
+        LayoutSelector.SelectedIndex = 0;
+        CaseScopeLabel.Text = L10n.Text("当前案件");
+        CaseSelector.Items.Add(new ComboBoxItem { Content = L10n.Text("所有案件"), Tag = "" });
+        CaseSelector.SelectedIndex = 0;
+        ToolLabel.Text = L10n.Text("复制到");
+        NewDraftButton.Content = L10n.Text("新建分析");
         UpdateHints();
         CopyRequestButton.Content = L10n.Text("复制材料与提示词");
         SaveNoteButton.Content = L10n.Text("保存为新笔记");
@@ -78,8 +95,164 @@ public partial class WorkbenchPane : UserControl
         catch (Exception error) { StatusText.Text = L10n.Format($"搜索失败：{error.Message}"); }
     }
 
+    private void Layout_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (LayoutSelector.SelectedItem is not ComboBoxItem { Tag: string tag }) return;
+        ApplyLayout(tag);
+    }
+
+    private void ApplyLayout(string layout)
+    {
+        if (layout == "Document") return; // Enabled when the third customer layout lands.
+        var assistantOnSide = layout == "Case";
+        var assistantInBody = assistantOnSide || layout == "Document";
+        var readerFirst = layout == "Reading";
+
+        if (AssistantRegion.Parent is Panel oldParent) oldParent.Children.Remove(AssistantRegion);
+        if (assistantInBody) ContentLayout.Children.Add(AssistantRegion);
+        else WorkbenchRoot.Children.Add(AssistantRegion);
+
+        if (readerFirst)
+        {
+            WorkbenchRoot.RowDefinitions[1].Height = new GridLength(1, GridUnitType.Star);
+            AssistantHeight.Height = new GridLength(_assistantCollapsed ? 48 : 250);
+            Grid.SetRow(ContentLayout, 1);
+            Grid.SetRow(MaterialStrip, 1);
+            MaterialStrip.Visibility = Visibility.Collapsed;
+            ContentLayout.ColumnDefinitions.Clear();
+            ContentLayout.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(205) });
+            ContentLayout.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(12) });
+            ContentLayout.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            NavigatorRegion.Visibility = Visibility.Visible;
+            Grid.SetColumn(NavigatorRegion, 0);
+            Grid.SetColumn(DocumentRegion, 2);
+            AssistantRegion.Margin = new Thickness(0, 12, 0, 0);
+            Grid.SetRow(AssistantRegion, 2);
+            Grid.SetColumn(AssistantRegion, 0);
+            CollapseButton.Visibility = Visibility.Visible;
+            AssistantBody.Visibility = _assistantCollapsed ? Visibility.Collapsed : Visibility.Visible;
+            AssistantFooter.Visibility = _assistantCollapsed ? Visibility.Collapsed : Visibility.Visible;
+            ConfigureAssistantBody(false);
+        }
+        else
+        {
+            WorkbenchRoot.RowDefinitions[1].Height = GridLength.Auto;
+            AssistantHeight.Height = new GridLength(1, GridUnitType.Star);
+            Grid.SetRow(MaterialStrip, 1);
+            Grid.SetRow(ContentLayout, 2);
+            MaterialStrip.Visibility = Visibility.Visible;
+            NavigatorRegion.Visibility = assistantOnSide ? Visibility.Collapsed : Visibility.Visible;
+            ContentLayout.ColumnDefinitions.Clear();
+            if (assistantOnSide)
+            {
+                ContentLayout.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                ContentLayout.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(12) });
+                ContentLayout.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                Grid.SetColumn(DocumentRegion, 0);
+                Grid.SetColumn(AssistantRegion, 2);
+            }
+            else
+            {
+                ContentLayout.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(205) });
+                ContentLayout.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(12) });
+                ContentLayout.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                ContentLayout.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(12) });
+                ContentLayout.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                Grid.SetColumn(NavigatorRegion, 0);
+                Grid.SetColumn(DocumentRegion, 2);
+                Grid.SetColumn(AssistantRegion, 4);
+            }
+            AssistantRegion.Margin = new Thickness(0);
+            Grid.SetRow(AssistantRegion, 0);
+            CollapseButton.Visibility = Visibility.Collapsed;
+            AssistantBody.Visibility = Visibility.Visible;
+            AssistantFooter.Visibility = Visibility.Visible;
+            ConfigureAssistantBody(assistantOnSide);
+        }
+    }
+
+    private void ConfigureAssistantBody(bool vertical)
+    {
+        AssistantBody.RowDefinitions.Clear();
+        AssistantBody.ColumnDefinitions.Clear();
+        if (vertical)
+        {
+            AssistantBody.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            AssistantBody.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+            AssistantBody.RowDefinitions.Add(new RowDefinition { Height = new GridLength(8) });
+            AssistantBody.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+            if (AssistantBody.Children.Count >= 2)
+            {
+                Grid.SetRow(AssistantBody.Children[0], 0);
+                Grid.SetColumn(AssistantBody.Children[0], 0);
+                Grid.SetRow(AssistantBody.Children[1], 2);
+                Grid.SetColumn(AssistantBody.Children[1], 0);
+            }
+        }
+        else
+        {
+            AssistantBody.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            AssistantBody.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(8) });
+            AssistantBody.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            if (AssistantBody.Children.Count >= 2)
+            {
+                Grid.SetRow(AssistantBody.Children[0], 0);
+                Grid.SetColumn(AssistantBody.Children[0], 0);
+                Grid.SetRow(AssistantBody.Children[1], 0);
+                Grid.SetColumn(AssistantBody.Children[1], 2);
+            }
+        }
+        ConfigureAssistantFooter(vertical);
+    }
+
+    private void ConfigureAssistantFooter(bool compact)
+    {
+        AssistantFooter.RowDefinitions.Clear();
+        AssistantFooter.ColumnDefinitions.Clear();
+        if (compact)
+        {
+            AssistantFooter.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            AssistantFooter.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            AssistantFooter.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            AssistantFooter.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            Grid.SetRow(StatusText, 0);
+            Grid.SetColumn(StatusText, 0);
+            Grid.SetColumnSpan(StatusText, 2);
+            Grid.SetRow(SaveFolderLabel.Parent as UIElement ?? SaveFolderLabel, 1);
+            Grid.SetColumn(SaveFolderLabel.Parent as UIElement ?? SaveFolderLabel, 0);
+            Grid.SetRow(CopyRequestButton, 1);
+            Grid.SetColumn(CopyRequestButton, 1);
+            Grid.SetRow(NewDraftButton, 2);
+            Grid.SetColumn(NewDraftButton, 0);
+            Grid.SetRow(SaveNoteButton, 2);
+            Grid.SetColumn(SaveNoteButton, 1);
+            if (AssistantFooter.RowDefinitions.Count < 3)
+                AssistantFooter.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        }
+        else
+        {
+            for (var i = 0; i < 5; i++) AssistantFooter.ColumnDefinitions.Add(new ColumnDefinition { Width = i == 0 ? new GridLength(1, GridUnitType.Star) : GridLength.Auto });
+            AssistantFooter.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            Grid.SetRow(StatusText, 0);
+            Grid.SetColumn(StatusText, 0);
+            Grid.SetColumnSpan(StatusText, 1);
+            Grid.SetRow(SaveFolderLabel.Parent as UIElement ?? SaveFolderLabel, 0);
+            Grid.SetColumn(SaveFolderLabel.Parent as UIElement ?? SaveFolderLabel, 1);
+            Grid.SetRow(CopyRequestButton, 0);
+            Grid.SetColumn(CopyRequestButton, 2);
+            Grid.SetRow(NewDraftButton, 0);
+            Grid.SetColumn(NewDraftButton, 3);
+            Grid.SetRow(SaveNoteButton, 0);
+            Grid.SetColumn(SaveNoteButton, 4);
+        }
+    }
+
     private void Prompt_TextChanged(object sender, TextChangedEventArgs e) => UpdateHints();
-    private void Result_TextChanged(object sender, TextChangedEventArgs e) => UpdateHints();
+    private void Result_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (!string.IsNullOrWhiteSpace(ResultBox.Text)) _resultVaultPath = _model.ObsidianVaultPath;
+        UpdateHints();
+    }
 
     private void UpdateHints()
     {
@@ -90,6 +263,9 @@ public partial class WorkbenchPane : UserControl
     private void Materials_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (MaterialsList.SelectedItem is not MaterialRow row) return;
+        _syncMaterialSelection = true;
+        MaterialStripItems.SelectedItem = row;
+        _syncMaterialSelection = false;
         _selectedPath = null;
         DocumentTitle.Text = L10n.Text("选择一篇 Markdown 笔记开始阅读");
         DocumentPath.Text = "";
@@ -103,6 +279,8 @@ public partial class WorkbenchPane : UserControl
             DocumentPath.Text = row.RelativePath;
             DocumentBody.Text = document;
             AttachmentsList.ItemsSource = _vault?.ListAttachments(row.RelativePath);
+            if (LayoutSelector.SelectedItem is ComboBoxItem { Tag: "Reading" })
+                CaseSelector.SelectedIndex = 0;
             if (string.IsNullOrWhiteSpace(DraftTitleBox.Text) || DraftTitleBox.Text == L10n.Text("新建分析草稿"))
                 DraftTitleBox.Text = row.Name.EndsWith(".md", StringComparison.OrdinalIgnoreCase)
                     ? row.Name[..^3] + "分析草稿"
@@ -117,6 +295,21 @@ public partial class WorkbenchPane : UserControl
             AttachmentsList.ItemsSource = null;
             StatusText.Text = L10n.Format($"读取失败：{error.Message}");
         }
+    }
+
+    private void MaterialStrip_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_syncMaterialSelection || MaterialStripItems.SelectedItem is not MaterialRow row) return;
+        MaterialsList.SelectedItem = row;
+        DocumentBody.Focus();
+    }
+
+    private void Case_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (CaseSelector.SelectedItem is not ComboBoxItem { Tag: string scope }) return;
+        _activeCaseScope = scope;
+        try { Refilter(); }
+        catch (Exception error) { StatusText.Text = L10n.Format($"筛选失败：{error.Message}"); }
     }
 
     private void CopyRequest_Click(object sender, RoutedEventArgs e)
@@ -144,10 +337,10 @@ public partial class WorkbenchPane : UserControl
             _lastRequestSources = selectedPaths.Select(path => new RequestSource(
                 path, path == _selectedPath && passage.Length > 0 ? passage : null)).ToArray();
             _lastRequestPrompt = prompt;
+            _lastRequestTool = SelectedTool();
             _lastRequestAt = DateTimeOffset.Now;
-            StatusText.Text = passage.Length > 0
-                ? L10n.Format($"已复制 {selectedPaths.Count} 份材料，含当前选中段落；请自行粘贴到所选工具")
-                : L10n.Format($"已复制 {selectedPaths.Count} 份材料；请自行粘贴到所选工具");
+            StatusText.Text = L10n.Format($"已复制 {selectedPaths.Count} 份材料到剪贴板；请粘贴至 {SelectedTool()}")
+                + (passage.Length > 0 ? L10n.Text("（含当前选中段落）") : "");
         }
         catch (Exception error)
         {
@@ -160,6 +353,11 @@ public partial class WorkbenchPane : UserControl
         if (_vault is null)
         {
             StatusText.Text = L10n.Text("请先选择 Obsidian 知识库");
+            return;
+        }
+        if (!string.Equals(_resultVaultPath, _model.ObsidianVaultPath, StringComparison.OrdinalIgnoreCase))
+        {
+            StatusText.Text = L10n.Text("当前结果与知识库不匹配；请新建分析或重新粘贴结果");
             return;
         }
         if (string.IsNullOrWhiteSpace(ResultBox.Text))
@@ -178,7 +376,7 @@ public partial class WorkbenchPane : UserControl
                 + "## 请求记录\n\n"
                 + (_lastRequestAt is null
                     ? "本草稿由用户手动整理；没有从工作台复制请求。\n"
-                    : $"复制到剪贴板时间：{_lastRequestAt:yyyy-MM-dd HH:mm:ss zzz}\n\n提示词：\n\n{_lastRequestPrompt}\n")
+                    : $"复制到剪贴板时间：{_lastRequestAt:yyyy-MM-dd HH:mm:ss zzz}\n\n选择的工具：{_lastRequestTool}\n\n提示词：\n\n{_lastRequestPrompt}\n")
                 + "\n## 参考材料\n\n" + (sources.Length == 0 ? "- （未选择材料）" : string.Join("\n", sources)) + "\n";
             var destination = new ObsidianVaultWorkbench(_model.ObsidianVaultPath!, SaveFolderBox.Text.Trim());
             var savedPath = destination.SaveNewAnalysis(DraftTitleBox.Text, markdown);
@@ -193,20 +391,28 @@ public partial class WorkbenchPane : UserControl
     private async Task RefreshVaultAsync()
     {
         var generation = ++_refreshGeneration;
+        var root = _model.ObsidianVaultPath;
+        var sameVault = _hasLoadedVault && string.Equals(_loadedVaultPath, root, StringComparison.OrdinalIgnoreCase);
         _hasLoadedVault = false;
-        _selectedPath = null;
-        _selectedPaths.Clear();
-        _lastRequestSources = [];
-        _lastRequestPrompt = null;
-        _lastRequestAt = null;
+        if (!sameVault)
+        {
+            _selectedPath = null;
+            _selectedPaths.Clear();
+            _lastRequestSources = [];
+            _lastRequestPrompt = null;
+            _lastRequestTool = null;
+            _lastRequestAt = null;
+        }
         _markdownPaths = [];
         _visibleMaterials.Clear();
-        DocumentBody.Clear();
-        DocumentPath.Text = "";
-        AttachmentsList.ItemsSource = null;
-        SourceLinks.ItemsSource = null;
-        DocumentTitle.Text = L10n.Text("选择一篇 Markdown 笔记开始阅读");
-        var root = _model.ObsidianVaultPath;
+        if (!sameVault)
+        {
+            DocumentBody.Clear();
+            DocumentPath.Text = "";
+            AttachmentsList.ItemsSource = null;
+            SourceLinks.ItemsSource = null;
+            DocumentTitle.Text = L10n.Text("选择一篇 Markdown 笔记开始阅读");
+        }
         VaultPath.Text = string.IsNullOrWhiteSpace(root) ? L10n.Text("尚未设置知识库") : root;
         if (string.IsNullOrWhiteSpace(root) || !Directory.Exists(root))
         {
@@ -225,6 +431,7 @@ public partial class WorkbenchPane : UserControl
             var paths = await Task.Run(vault.ListMarkdownFiles);
             if (generation != _refreshGeneration || !string.Equals(root, _model.ObsidianVaultPath, StringComparison.OrdinalIgnoreCase)) return;
             _markdownPaths = paths;
+            PopulateCaseChoices(paths);
             _loadedVaultPath = root;
             _hasLoadedVault = true;
             Refilter();
@@ -244,9 +451,11 @@ public partial class WorkbenchPane : UserControl
         var previousPath = _selectedPath;
         var query = SearchBox.Text.Trim();
         _visibleMaterials.Clear();
-        foreach (var path in _markdownPaths.Where(path => query.Length == 0
+        foreach (var path in _markdownPaths.Where(path => (_activeCaseScope.Length == 0
+                         || string.Equals(Path.GetDirectoryName(path)?.Replace('\\', '/'), _activeCaseScope, StringComparison.OrdinalIgnoreCase))
+                     && (query.Length == 0
                      || Path.GetFileName(path).Contains(query, StringComparison.CurrentCultureIgnoreCase)
-                     || path.Contains(query, StringComparison.CurrentCultureIgnoreCase)))
+                     || path.Contains(query, StringComparison.CurrentCultureIgnoreCase))))
         {
             var row = new MaterialRow(path, Path.GetFileName(path)) { IsSelected = _selectedPaths.Contains(path) };
             row.SelectionChanged = () => SetSelected(path);
@@ -256,8 +465,31 @@ public partial class WorkbenchPane : UserControl
         {
             var selected = _visibleMaterials.FirstOrDefault(item => item.RelativePath == previousPath);
             if (selected is not null) MaterialsList.SelectedItem = selected;
+            else if (_activeCaseScope.Length > 0)
+            {
+                _selectedPath = null;
+                DocumentTitle.Text = L10n.Text("选择一篇 Markdown 笔记开始阅读");
+                DocumentPath.Text = "";
+                DocumentBody.Clear();
+                AttachmentsList.ItemsSource = null;
+            }
         }
         UpdateSelectionCount();
+    }
+
+    private void PopulateCaseChoices(IReadOnlyList<string> paths)
+    {
+        var previous = _activeCaseScope;
+        CaseSelector.SelectionChanged -= Case_SelectionChanged;
+        CaseSelector.Items.Clear();
+        CaseSelector.Items.Add(new ComboBoxItem { Content = L10n.Text("所有案件"), Tag = "" });
+        foreach (var folder in paths.Select(path => Path.GetDirectoryName(path)?.Replace('\\', '/')).OfType<string>()
+                     .Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(folder => folder, StringComparer.CurrentCultureIgnoreCase))
+            CaseSelector.Items.Add(new ComboBoxItem { Content = folder, Tag = folder });
+        var target = CaseSelector.Items.OfType<ComboBoxItem>().FirstOrDefault(item => Equals(item.Tag, previous)) ?? (ComboBoxItem)CaseSelector.Items[0];
+        CaseSelector.SelectedItem = target;
+        _activeCaseScope = target.Tag as string ?? "";
+        CaseSelector.SelectionChanged += Case_SelectionChanged;
     }
 
     private void UpdateSelectionCount()
@@ -285,6 +517,7 @@ public partial class WorkbenchPane : UserControl
     {
         if (sender is not Button { Tag: string path }) return;
         SearchBox.Clear();
+        CaseSelector.SelectedIndex = 0;
         var row = _visibleMaterials.FirstOrDefault(item => item.RelativePath.Equals(path, StringComparison.OrdinalIgnoreCase));
         if (row is not null) MaterialsList.SelectedItem = row;
         DocumentBody.Focus();
@@ -307,6 +540,27 @@ public partial class WorkbenchPane : UserControl
         AssistantFooter.Visibility = _assistantCollapsed ? Visibility.Collapsed : Visibility.Visible;
         CollapseButton.Content = _assistantCollapsed ? L10n.Text("展开") : L10n.Text("收起");
     }
+
+    private void NewDraft_Click(object sender, RoutedEventArgs e)
+    {
+        _selectedPaths.Clear();
+        foreach (var row in _visibleMaterials) row.IsSelected = false;
+        _lastRequestSources = [];
+        _lastRequestPrompt = null;
+        _lastRequestTool = null;
+        _lastRequestAt = null;
+        PromptBox.Clear();
+        ResultBox.Clear();
+        _resultVaultPath = _model.ObsidianVaultPath;
+        DraftTitleBox.Text = L10n.Text("新建分析草稿");
+        DocumentBody.Select(0, 0);
+        UpdateSelectionCount();
+        StatusText.Text = L10n.Text("已开始新的分析草稿");
+    }
+
+    private string SelectedTool() => ExternalToolSelector.SelectedItem is ComboBoxItem item
+        ? item.Tag as string == "Other" ? L10n.Text("其他") : item.Tag?.ToString() ?? "Codex"
+        : "Codex";
 
     private sealed class MaterialRow(string relativePath, string name)
     {

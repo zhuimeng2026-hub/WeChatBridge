@@ -82,6 +82,64 @@ public sealed class ObsidianVaultWorkbenchTests
         finally { Directory.Delete(root, recursive: true); }
     }
 
+    [Fact]
+    public void RejectsOversizedNotesAndAbsoluteSaveFolders()
+    {
+        var root = NewVault();
+        try
+        {
+            var source = Path.Combine(root, "large.md");
+            using (var stream = File.Create(source)) stream.SetLength(2 * 1024 * 1024 + 1);
+            var vault = new ObsidianVaultWorkbench(root);
+
+            Assert.Throws<InvalidOperationException>(() => vault.ReadMarkdown("large.md"));
+            Assert.Throws<ArgumentException>(() => new ObsidianVaultWorkbench(root, Path.GetTempPath()));
+            Assert.Throws<ArgumentException>(() => vault.ReadMarkdown(source));
+            Assert.Throws<ArgumentException>(() => vault.SaveNewAnalysis("blank", " "));
+            Assert.False(Directory.Exists(Path.Combine(root, "分析")));
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    [Fact]
+    public void OmitsConfigurationDirectoriesAndKeepsNestedAnalysisInsideVault()
+    {
+        var root = NewVault();
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(root, ".obsidian"));
+            File.WriteAllText(Path.Combine(root, ".obsidian", "private.md"), "configuration");
+            var vault = new ObsidianVaultWorkbench(root, "case/分析");
+            var saved = vault.SaveNewAnalysis("result", "# Result");
+
+            Assert.Equal("case/分析/result.md", saved);
+            Assert.Equal(new[] { saved }, vault.ListMarkdownFiles());
+            Assert.Equal("# Result", vault.ReadMarkdown(saved));
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    [Fact]
+    public void FindsExporterAttachmentsInSubfoldersWithoutFollowingOutsideLinks()
+    {
+        var root = NewVault();
+        try
+        {
+            var caseFolder = Path.Combine(root, "case");
+            Directory.CreateDirectory(Path.Combine(caseFolder, "附件"));
+            File.WriteAllText(Path.Combine(caseFolder, "record.md"),
+                "# Record\n原始归档：[[附件/archive.zip]]\n![[附件/photo.png|照片]]\n[[../../outside.pdf]]");
+            File.WriteAllBytes(Path.Combine(caseFolder, "附件", "archive.zip"), [1]);
+            File.WriteAllBytes(Path.Combine(caseFolder, "附件", "photo.png"), [2, 3]);
+
+            var attachments = new ObsidianVaultWorkbench(root).ListAttachments("case/record.md");
+
+            Assert.Equal(new[] { "case/附件/archive.zip", "case/附件/photo.png" },
+                attachments.Select(item => item.RelativePath));
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
     private static string NewVault()
     {
         var root = Path.Combine(Path.GetTempPath(), "wcb-vault-" + Guid.NewGuid().ToString("N"));

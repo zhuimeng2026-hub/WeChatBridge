@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace WeChatBridge.Windows.Core;
 
@@ -59,21 +60,51 @@ public sealed class ObsidianVaultWorkbench
         return File.ReadAllText(path, Encoding.UTF8);
     }
 
-    /// <summary>Lists non-Markdown files beside a note as attachments; their contents are never parsed or copied.</summary>
+    /// <summary>
+    /// Lists adjacent files and vault-contained wiki-link attachments. Existing
+    /// archive notes put their originals in 附件/, rather than beside the note.
+    /// Attachment bytes are never included in a model request by this reader.
+    /// </summary>
     public IReadOnlyList<ObsidianAttachment> ListAttachments(string relativeMarkdownPath)
     {
+        var markdown = ReadMarkdown(relativeMarkdownPath);
         var notePath = ResolveContained(relativeMarkdownPath);
-        if (!string.Equals(Path.GetExtension(notePath), ".md", StringComparison.OrdinalIgnoreCase))
-            throw new InvalidOperationException("Attachments can only be listed for a Markdown note.");
         var folder = Path.GetDirectoryName(notePath)!;
-        if (!Directory.Exists(folder)) return [];
-        return Directory.EnumerateFiles(folder)
-            .Select(path => new FileInfo(path))
-            .Where(info => (info.Attributes & FileAttributes.ReparsePoint) == 0
-                && !string.Equals(info.Extension, ".md", StringComparison.OrdinalIgnoreCase))
-            .OrderBy(info => info.Name, StringComparer.OrdinalIgnoreCase)
-            .Select(info => new ObsidianAttachment(Path.GetRelativePath(_vaultRoot, info.FullName).Replace('\\', '/'), info.Name, info.Length))
-            .ToArray();
+        var candidates = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var path in Directory.EnumerateFiles(folder)) candidates.Add(path);
+        foreach (Match match in Regex.Matches(markdown, @"!?\[\[(?<path>[^\]#|]+)(?:[#|][^\]]*)?\]\]"))
+        {
+            var link = match.Groups["path"].Value.Trim();
+            if (Path.IsPathRooted(link) || link.Contains(':')) continue;
+            try
+            {
+                // Obsidian resolves the exporter’s 附件/... links beside its note.
+                var local = Path.GetRelativePath(_vaultRoot, Path.GetFullPath(Path.Combine(folder, link)));
+                candidates.Add(ResolveContained(local));
+            }
+            catch (Exception error) when (error is ArgumentException or InvalidOperationException or IOException)
+            {
+                // An optional broken/outside attachment must not hide the note.
+            }
+        }
+        var attachments = new List<ObsidianAttachment>();
+        foreach (var candidate in candidates)
+        {
+            try
+            {
+                var relative = Path.GetRelativePath(_vaultRoot, candidate);
+                var info = new FileInfo(ResolveContained(relative));
+                if (!info.Exists || (info.Attributes & FileAttributes.ReparsePoint) != 0
+                    || info.Name.StartsWith(".", StringComparison.Ordinal)
+                    || string.Equals(info.Extension, ".md", StringComparison.OrdinalIgnoreCase)) continue;
+                attachments.Add(new ObsidianAttachment(relative.Replace('\\', '/'), info.Name, info.Length));
+            }
+            catch (Exception error) when (error is ArgumentException or InvalidOperationException or IOException or UnauthorizedAccessException)
+            {
+                // Metadata is best-effort; the original archive remains untouched.
+            }
+        }
+        return attachments.OrderBy(info => info.Name, StringComparer.OrdinalIgnoreCase).ToArray();
     }
 
     /// <summary>Saves a new Markdown note beneath the vault analysis folder; existing files are never overwritten.</summary>
@@ -84,7 +115,7 @@ public sealed class ObsidianVaultWorkbench
         var folder = ResolveContained(_analysisFolder);
         Directory.CreateDirectory(folder);
         // A folder can be replaced with a junction after initial path resolution.
-        // Resolve again after creation so saving never follows an existing link.
+        // Recheck after creation to reject any junction that is already present.
         _ = ResolveContained(_analysisFolder);
         var basePath = Path.Combine(folder, safeTitle + ".md");
         for (var attempt = 0; attempt < 1000; attempt++)

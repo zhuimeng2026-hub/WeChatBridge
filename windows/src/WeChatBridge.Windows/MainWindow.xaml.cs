@@ -118,9 +118,14 @@ public partial class MainWindow : Window
             return;
         if (tab == AppTab.Workbench)
         {
-            MinWidth = 1000;
-            Width = Math.Max(Width, 1180);
-            Height = Math.Max(Height, 850);
+            // Expand the workbench without placing its persistent controls below
+            // the taskbar on common 1366x768 customer review displays.
+            var area = SystemParameters.WorkArea;
+            MinWidth = Math.Min(1000, area.Width);
+            Width = Math.Max(MinWidth, Math.Min(Math.Max(Width, 1180), area.Width));
+            Height = Math.Max(MinHeight, Math.Min(Math.Max(Height, 850), area.Height));
+            Left = Math.Max(area.Left, Math.Min(Left, area.Right - Width));
+            Top = Math.Max(area.Top, Math.Min(Top, area.Bottom - Height));
         }
         else
         {

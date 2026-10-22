@@ -33,7 +33,7 @@
                     Style="{StaticResource SettingsButton}" FontSize="10.5" Click="SourceLink_Click" />
         </DataTemplate>
     </UserControl.Resources>
-    <Grid>
+    <Grid x:Name="WorkbenchRoot">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
@@ -44,36 +44,64 @@
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <StackPanel VerticalAlignment="Center">
                 <TextBlock x:Name="VaultLabel" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource InkColor}" />
                 <TextBlock x:Name="VaultPath" Margin="0,3,0,0" FontSize="11" Foreground="{StaticResource InkTertiaryColor}"
                            TextTrimming="CharacterEllipsis" />
+                <TextBox x:Name="SearchBox" Width="260" HorizontalAlignment="Left" Margin="0,6,0,0" Padding="8,5"
+                         TextChanged="Search_TextChanged" />
             </StackPanel>
             <Button x:Name="RefreshButton" Grid.Column="1" Style="{StaticResource ToolButton}" Margin="0,0,8,0"
                     Click="Refresh_Click" />
-            <Button x:Name="ChooseVaultButton" Grid.Column="2" Style="{StaticResource ToolButton}"
+            <ComboBox x:Name="LayoutSelector" Grid.Column="2" MinWidth="145" Margin="0,0,8,0" VerticalAlignment="Center"
+                      SelectionChanged="Layout_SelectionChanged">
+                <ComboBoxItem Tag="Reading" />
+                <ComboBoxItem Tag="Case" />
+                <ComboBoxItem Tag="Document" IsEnabled="False" />
+            </ComboBox>
+            <Button x:Name="ChooseVaultButton" Grid.Column="3" Style="{StaticResource ToolButton}"
                     Click="ChooseVault_Click" />
         </Grid>
-        <Grid Grid.Row="1">
+        <Border x:Name="MaterialStrip" Grid.Row="1" Margin="0,0,0,10" Padding="10,7"
+                Background="{StaticResource SunkenColor}" CornerRadius="9" Visibility="Collapsed">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="180" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <TextBlock x:Name="CaseScopeLabel" VerticalAlignment="Center" Margin="0,0,7,0"
+                           FontSize="10.5" Foreground="{StaticResource InkTertiaryColor}" />
+                <ComboBox x:Name="CaseSelector" Grid.Column="1" MinWidth="150" Margin="0,0,12,0"
+                          VerticalAlignment="Center" SelectionChanged="Case_SelectionChanged" />
+                <ScrollViewer Grid.Column="2" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                    <ListBox x:Name="MaterialStripItems" BorderThickness="0" Background="Transparent"
+                             SelectionMode="Single" ItemTemplate="{StaticResource MaterialTemplate}"
+                             SelectionChanged="MaterialStrip_SelectionChanged">
+                        <ListBox.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate></ListBox.ItemsPanel>
+                    </ListBox>
+                </ScrollViewer>
+            </Grid>
+        </Border>
+        <Grid x:Name="ContentLayout" Grid.Row="1">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="205" />
                 <ColumnDefinition Width="12" />
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
-            <Border Grid.Column="0" Background="{StaticResource SunkenColor}" CornerRadius="10" Padding="10">
+            <Border x:Name="NavigatorRegion" Grid.Column="0" Background="{StaticResource SunkenColor}" CornerRadius="10" Padding="10">
                 <DockPanel>
-                    <TextBox x:Name="SearchBox" DockPanel.Dock="Top" Margin="0,0,0,8" Padding="8,5"
-                             TextChanged="Search_TextChanged" />
                     <ListBox x:Name="MaterialsList" BorderThickness="0" Background="Transparent"
                              ItemTemplate="{StaticResource MaterialTemplate}" SelectionChanged="Materials_SelectionChanged" />
                 </DockPanel>
             </Border>
-            <Border Grid.Column="2" Background="{StaticResource SurfaceColor}" BorderBrush="{StaticResource StrokeSoftColor}"
+            <Border x:Name="DocumentRegion" Grid.Column="2" Background="{StaticResource SurfaceColor}" BorderBrush="{StaticResource StrokeSoftColor}"
                     BorderThickness="1" CornerRadius="10" Padding="20">
                 <Grid>
                     <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
@@ -91,7 +119,7 @@
                 </Grid>
             </Border>
         </Grid>
-        <Border Grid.Row="2" Margin="0,12,0,0" Background="{StaticResource SunkenColor}" CornerRadius="10" Padding="12">
+        <Border x:Name="AssistantRegion" Grid.Row="2" Margin="0,12,0,0" Background="{StaticResource SunkenColor}" CornerRadius="10" Padding="12">
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
@@ -102,6 +130,7 @@
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
                     <StackPanel>
                         <TextBlock x:Name="AssistantTitle" FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource InkColor}" />
@@ -110,7 +139,16 @@
                     <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                         <TextBlock x:Name="SelectionCount" VerticalAlignment="Center" FontSize="11"
                                    Foreground="{StaticResource InkSecondaryColor}" />
-                        <Button x:Name="CollapseButton" Margin="10,0,0,0" Style="{StaticResource ToolButton}"
+                    </StackPanel>
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock x:Name="ToolLabel" VerticalAlignment="Center" Margin="0,0,6,0" FontSize="10.5"
+                                   Foreground="{StaticResource InkSecondaryColor}" />
+                        <ComboBox x:Name="ExternalToolSelector" MinWidth="88" VerticalAlignment="Center">
+                            <ComboBoxItem Content="Codex" Tag="Codex" />
+                            <ComboBoxItem Content="Claude" Tag="Claude" />
+                            <ComboBoxItem Content="其他" Tag="Other" />
+                        </ComboBox>
+                        <Button x:Name="CollapseButton" Margin="8,0,0,0" Style="{StaticResource ToolButton}"
                                 Padding="7,3" Click="Collapse_Click" />
                     </StackPanel>
                 </Grid>
@@ -163,7 +201,9 @@
                     </StackPanel>
                     <Button x:Name="CopyRequestButton" Grid.Column="2" Style="{StaticResource ToolButton}" Margin="0,0,8,0"
                             Click="CopyRequest_Click" />
-                    <Button x:Name="SaveNoteButton" Grid.Column="3" Style="{StaticResource PrimaryButton}"
+                    <Button x:Name="NewDraftButton" Grid.Column="3" Style="{StaticResource ToolButton}" Margin="0,0,8,0"
+                            Click="NewDraft_Click" />
+                    <Button x:Name="SaveNoteButton" Grid.Column="4" Style="{StaticResource PrimaryButton}"
                             Padding="12,5" MinHeight="30" Click="SaveNote_Click" />
                 </Grid>
             </Grid>
