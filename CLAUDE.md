@@ -282,12 +282,15 @@ Core 里的功能包（`windows/src/WeChatBridge.Windows.Core/`）：
 ```
 WeChatBridge.Windows ──► Core ──► (仅 BCL)
 WeChatBridge.ShareTarget ──► Core
-                     └────► (Link 主项目的 11 个源文件，无 ProjectReference)
+                     └────► (Link 主项目的 9 个 .cs + 2 个 .xaml，无 ProjectReference)
 ```
 
 `WeChatBridge.Windows.Core` 是 `net10.0`（**不是** `-windows`）、无 WPF、**零 NuGet 引用**——这个保证是显式的，由测试守着。
 
-ShareTarget 从主程序 Link 了 11 个文件（XAML 选入口浮层等），让同一个面板在助手宿主里长得一模一样。代价：AppTests 对两个项目引用都设 `ReferenceOutputAssembly="false"`（否则 CS0433 类型二义），改用 `CopyShareTargetForProcessTests` 复制 exe 跑进程级测试。
+ShareTarget 从主程序 Link 了 **11 个文件：9 个 `.cs` + 2 个 `.xaml`**（`EntryPickerWindow.xaml{,.cs}`、
+`AppTheme.xaml`、本地化扩展、`AppSettings` / `AppLogos` / `Converters` / `HistoryLabels`、
+`ShareEntryCatalog`、`WeChatUiTitleReader`、`WeChatOcrTitleReader`），
+让同一个选入口浮层在助手宿主里长得一模一样。代价：AppTests 对两个项目引用都设 `ReferenceOutputAssembly="false"`（否则 CS0433 类型二义），改用 `CopyShareTargetForProcessTests` 复制 exe 跑进程级测试。
 
 **分享注册**：稀疏 MSIX 只提供身份、程序在包外（`uap10:AllowExternalContent`）。`AppxManifest.xml` 的 `DisplayName` 里**绝不能出现连续的「微信 / WeChat / Weixin」**——微信会直接隐藏这类目标，所以全仓库写的是微`<U+2060>`信流。
 
@@ -381,7 +384,7 @@ nickname / headimgurl**（2026-10-20 用户提供的实测事实）。代码原�
 
 ### 客户端侧：Activation 三件套（`windows/`）
 
-`Core/Activation/`（AccountService / ActivationService / PollSchedule / GateState）+ `Windows/Activation/`（LoginWindow / PurchaseWindow / 两个 Controller / `HttpActivationTransport`）。注意 `HttpActivationTransport` 在 **WPF 工程**里而不在 Core——Core 的 `System.Net.*` 白名单只有三条 `NetworkInformation`，放一个 `HttpClient` 进去 `EditionIsolationTests` 当场红。
+`Core/Activation/`（AccountService / ActivationService / PollSchedule / GateState）+ `Windows/Activation/`（LoginWindow / PurchaseWindow / 两个 Controller / `HttpActivationTransport`）。注意 `HttpActivationTransport` 在 **WPF 工程**里而不在 Core——Core 的 `System.Net.*` TypeRef 白名单只有 `NetworkInformation` 命名空间下的那三个类型，放一个 `HttpClient` 进去 `EditionIsolationTests` 当场红。
 
 启动门禁是 `ActivationGate.Decide` 这个**纯函数**：`Licensed`/`Portable` 不开页，`Anonymous` 开登录页，`SignedIn` 直接接购买页，`Rejected`/`LicenseUnverifiable` 提示联系卖家。
 
@@ -423,9 +426,13 @@ ent=PRO        ← 大写、排序、去重后逗号连接
 
 **用户数据只有三个根，其余全部由 `AppLayout` 派生。** 新增落盘点必须走它，否则便携版会把一部分状态写到 U 盘、一部分写到本机——这在拔盘之前完全看不出来。`LayoutWiringTests.NoSourceFileResolvesLocalAppDataOutsideTheAllowlist` 守着这条。
 
-**Core 不得命名任何网络类型。** `EditionIsolationTests` 用 `System.Reflection.Metadata` 读编译产物，按**精确集合相等**断言 Core 的 `System.Net.*` TypeRef 只有三条 `NetworkInformation`（离线恢复用的 MAC 锚点）。`Test-NoNetworkCode.ps1` 的白名单已含 `System.Net.Http` / `Http.Headers` / `Primitives`，所以 HTTP 动词放 WPF 工程即可，两个白名单都不用动。脚本里写着「若要加第四条，先停下来」——那是产品决策，不是测试修复。
+**Core 不得命名任何网络类型。** `EditionIsolationTests` 用 `System.Reflection.Metadata` 读编译产物，按**精确集合相等**断言 Core 的 `System.Net.*` TypeRef **恰好等于**这三个：`System.Net.NetworkInformation.NetworkInformationException` / `.NetworkInterface` / `.PhysicalAddress`（离线恢复用的 MAC 锚点，全在 `NetworkInformation` 命名空间下）。测试里另有一条断言**白名单本身只能以 `System.Net.NetworkInformation.` 开头**——有人往里加 `System.Net.Http` 让构建变绿，就在这里被挡住。`Test-NoNetworkCode.ps1` 的白名单（扫描的是**两个**程序集，不只是 Core）已含 `System.Net.Http` / `Http.Headers` / `Primitives`，所以 HTTP 动词放 WPF 工程即可，两个白名单都不用动。脚本里写着「若要加第四条，先停下来」——那是产品决策，不是测试修复。
 
 **本地的中文字符串 .ps1 必须是 UTF-8 with BOM。** PowerShell 5.1 会把无 BOM 的文件按系统 ANSI 代码页（中文 Windows 上是 GBK）读，静默毁掉字符串而不报错。反过来 `.bat` 必须纯 ASCII——cmd 同样按 ANSI 读。`Directory.Build.props` 也带中文，同理。`LayoutWiringTests` 会守住 `FirstRun.ps1` 的头三个字节。
+
+**这条规则目前有一个漏网的违反者：`windows/scripts/register-dev.ps1` 没有 BOM，却有中文**（第 22 / 46 / 106 行往注册日志里写「失败」「已同步图标资源到外部内容目录：」「成功」）。中文 Windows 上跑 `register-dev.ps1`，日志里这三句是乱码。**不是功能故障**（写的是给人看的日志，不是逻辑），但它正是这条规则要防的东西。`LayoutWiringTests` 只守 `FirstRun.ps1` 一个文件，所以没人拦它。
+另有三个 `.ps1` 也没有 BOM，但**中文只出现在注释里**（`build-installer.ps1` 只有一个破折号，`msi/build-bundle.ps1` 与 `msi/Register-ShareTarget.ps1` 的「微信流」在注释中）——只读不执行，乱码不影响功能，优先级低。
+`build-app.ps1` **没有中文也没有 BOM**，所以它不受这条规则约束（它是无 BOM 的纯 ASCII）。
 
 **本地化是单向的。** `L10n.Text("中文")` 的 key 就是中文字符串本身（miss 时原样返回，所以每个用户可见中文字符串都是自己的翻译 key），英文只存在于 `Core/Localization/en.json`（72KB，EmbeddedResource）。XAML 侧用 `{loc:Loc Key='中文'}`。加新文案 = 改代码里的中文 + 在 en.json 补一条，`LocalizationTests` 会断言两边的复合格式占位符索引集合完全一致。
 
@@ -479,10 +486,20 @@ ent=PRO        ← 大写、排序、去重后逗号连接
   **`upstream` 必须长期保留**：它是与 freestylefly 对比的唯一持久锚点（`git fetch upstream &&
   git rev-list --left-right --count main...upstream/main`），删掉就只能重新 `ls-remote`。
   清理 remote 时只处理 `origin`。当前 `main` 领先 `upstream/main` 137 个提交。
-- **`site/appcast.xml` 现在装的是「Dukou」这个别的产品的 feed。** 里面零条 WeChatBridge 记录，
-  每一条都指向 `github.com/qzz0518/Dukou` 的 dmg，签名也是用我们不持有的密钥签的。
-  `site/WeChatBridge-0.1.13.md`～`0.1.15.md` 的发布说明在，但**不在 feed 里**。
-  换句话说，macOS 的 Sparkle 更新源目前是断的——`pages.yml` 照发不误，发的是别人的更新源。
+- **macOS 的自动更新是**故意关掉**的，不是「feed 坏了」。** `Resources/Info.plist` 里
+  `SUEnableAutomaticChecks` 是 `false`，而且**根本没有 `SUFeedURL` 这个键**。
+  `Scripts/check-release-config.sh` 第 8 节会在「自动检查关着却存在 `SUFeedURL`」时
+  **直接 `exit 1`**——所以「把 feed 指到 pages.yml 上」不是修复，是会让出包失败的改动。
+  `AppUpdater` 因此永远 `isConfigured == false`，状态栏的更新入口是死的，这是**预期状态**。
+  `site/appcast.xml` 里装的是「Dukou」这个别的产品的 feed（零条 WeChatBridge 记录，
+  每条都指向 `github.com/qzz0518/Dukou` 的 dmg，签名用的是我们不持有的密钥）——
+  **这是 fork 留下的遗产**：App 的 `NSHumanReadableCopyright` 自己写着「基于 Dukou（渡口）二次开发」，
+  `pages.yml` 照发不误，但**应用端根本不读它**。
+  **真正的坑在 `Scripts/release.sh`**：它生成新 appcast 时会把 `site/appcast.xml`
+  当作**上一个 feed** 复制进去（`cp "$REPO_ROOT/site/appcast.xml" ...`），
+  于是 Dukou 的条目会被**继承进**新的 WeChatBridge feed。发版前必须先把那个文件换掉。
+  （另有一处代码注释与现状不符：`AppUpdater.swift` 说「release bundle carries the feed」，
+  而 plist 里没有 feed 键——注释过期，代码是对的。）
 - **当前分支是 `main`，不是 `feat/pg-client-integration`。** 看板目录现在有**八块**
   （`server-convergence` / `admin-console` / `client-license-gate` / `client-license-gate.resume` /
   `pg-client-integration` / `unionid-bridge` / `delivery-quota` / `login-perf-and-ux`），
@@ -496,11 +513,16 @@ ent=PRO        ← 大写、排序、去重后逗号连接
   但它卡在 Q-① 六条口径未拍板上——**在拍板之前，那条决策仍然有效**。
 - **`windows/src` 下不存在 `Cloud/`、`CloudQr/`、`Billing/` 目录。** 版本隔离机制全部建好并被 CI 守着，但订阅形态的源码还没有落地，所以 `Test-NoNetworkCode.ps1` 在 Subscription 下会打印 SKIPPED。
 - **`LicensePublicKeys.PlaceholderKeyV1` 这个名字是历史遗留，内容已经是真公钥。**
-  2026-10-19 起编译进客户端的就是服务端现役签发私钥的另一半（私钥在服务端
-  `/etc/wechatbridge/license-ec.pk8.pem`，PKCS#8 / mode 600），端到端验签实测通过。
   **名字里的 "Placeholder" 不描述内容**——文件自己的注释写着「改名被刻意留在换值那次之外，
   因为文件当时要交给另一个开发者，改名会多一次 diff；这名字是历史，不是描述」。
   看到 "Placeholder" 就当成占位串跳过，是这个仓库里最容易犯的误判。
+  **但要分清「哪把私钥」**：客户端内嵌的公钥对应的是**生产服务端**那把私钥
+  （部署机上的 `/etc/wechatbridge/license-ec.pk8.pem`）。
+  **本机没有那把私钥**——本机 `.env` 指的 `/opt/wcb-secrets/license-private.pem` 是**另一把**，
+  `/tmp/vector-test-key.pem` 是第三把（生成测试向量用的）。
+  2026-10-22 实测：**用本机私钥签的许可证，验不过客户端内嵌的那把公钥**
+  （实测 `ecdsa.Verify` = false）。所以「本机签发成功 → 客户端说验不过」**不是 bug**，
+  是钥匙本来就不配对。要在本机做端到端验签，得先把客户端内嵌公钥换成本机这把的 SPKI。
 - **收款码与卖家微信号现在在服务端，不在客户端。** `C#` 侧已经没有 `SellerWeChat` 这个字段了；
   收款码 / 联系人码 / 卖家微信号分别由 `WCB_PAYMENT_CODE_PATH` / `WCB_CONTACT_QR_PATH` /
   `WCB_SELLER_WECHAT` 提供，渲染在微信回调页上。客户端那张损坏的占位收款图已删除。
