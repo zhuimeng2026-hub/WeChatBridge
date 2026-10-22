@@ -81,19 +81,36 @@ CLAUDE.md 此前（2026-10-19 09:39）落后于代码，且有几处**会主动�
 - [x] 买断版网络命名空间门禁通过（6 个产品程序集）
 - [x] 卖家后台契约冒烟 28/28（对着 `server/mock/server.js`）
 - [x] 一键脚本实测：构建 → 门禁 → 注册 → 身份自检 → 启动
-- [ ] 真 PostgreSQL 集成测试（A-⑧，**仍归 `server-convergence` 看板**）
+- [x] 真 PostgreSQL 集成测试（A-⑧，**store/postgres 一层**）——`_realdb_test.go` 系列，
+      `WCB_TEST_DATABASE_URL` 开关，不设即 skip 故 CI 无影响。2026-10-22 在 Linux 部署机
+      （PG 16.15）对 `wcb_verify` 实跑：**198 项通过 / 0 失败**（含子测试），`go build/vet/test
+      ./...` 全绿。覆盖与剩余缺口见 `server-convergence` 看板 A-⑧ 一行。
+- [ ] 真 PostgreSQL 集成测试的**外层**（A-⑧ 剩余部分）：`store` 之外的 `auth` /
+      `activation` / `admin` 包仍只有 fake store——fake 实现什么规则就验证什么规则，
+      §11.7 M-5 那条查询的读侧若改回有 bug 的版本，`activation` 包依然全绿。
+      另：`cmd/wcb` 装配层与迁移器本身仍无真库端到端。
 
 ## 阻塞项
 
-- **真 PostgreSQL 集成测试仍未做**（A-⑧）：`store/postgres` 的部分唯一索引并发冲突
+- **（已解）真 PostgreSQL 集成测试**（A-⑧）：`store/postgres` 的部分唯一索引并发冲突
   （`activation_requests_live_install_idx` 是 `UNIQUE … WHERE status='pending'`）、条件 UPDATE
-  实际影响几行、隐式行序——一行都没被真库跑过。pgxmock 只断言查询字符串，从不执行它。
-  本机没有 PostgreSQL，而**主线仍是 PG 版**（SQLite 版在 `feat/sqlite-migration` 待命）。
+  实际影响几行、隐式行序——pgxmock 只断言查询字符串，从不执行它，那条缝已经用
+  `_realdb_test.go` 系列补上（骨架用真 `.up.sql` 建库、每测试独立 schema、结束 DROP CASCADE）。
+  **仍未补的**是 `store` 之外那三层：`auth` / `activation` / `admin` 打的仍是 fake store，
+  所以「查询改回有 bug 的那一版整个包依然全绿」这件事对它们依然成立。
+- **主线仍是 PG 版**（SQLite 版在 `feat/sqlite-migration` 待命，成果由 tag
+  `sqlite-migration-2026-10-19` 钉住）。真库测试因此**只能对 PG 写**：SQLite 那条线的
+  store 已被整体重写，PG 的 `_realdb_test.go` 在切库时会随 `store/postgres/` 一起消失。
+  选库之前若要让真库覆盖跟着走，得在 SQLite 侧重写一遍——这是切换的真实代价之一，
+  评估文档里没有列它。
 
 ## 备注
 
-- 本分支与 `zmuimeng/feat/pg-client-integration` **0/0 同步**。
+- 本分支的成果已并入 `zmuimeng/main`（`004cf6f` 并入 A-⑧ 之前的那批；A-⑧ 的五个 commit
+  与头像那一笔由 `00ca10a` 带进 main）。本分支与 `zmuimeng/main` 同点，**它是集成分支的
+  名字，不是「还有一批没并的东西」的证据**——差别只在看板上还没记完的那几条。
 - `origin`（`freestylefly/WeChatBridge`）上**没有** `server/`、`admin-console/` 与
-  `CLAUDE.md`——服务端只存在于 fork。推 origin 会因无写权限失败。
-- 另一条 worktree `C:/WeChatBridge/.worktrees/client-license-gate` 归 `feat/client-license-gate`，
-  与本分支互不影响；它的看板由那边维护，本分支不改。
+  `CLAUDE.md`——服务端只存在于 fork `zhuimeng`（本机对 `origin` 无写权限，推它会失败）。
+- `feat/client-license-gate` 已于 2026-10-22 **归档后删除**：只剩的两个 commit 被 main 上
+  更晚、组织方式更好的实现覆盖（`FakeActivationTransport` 已抽成共享文件），合过来会撞
+  类型重复定义。成果由 tag `archive/feat-client-license-gate` 钉住。

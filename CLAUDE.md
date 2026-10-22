@@ -142,6 +142,21 @@ go test ./internal/store/postgres/ -count=1 -v
 
 **不设 `WCB_TEST_DATABASE_URL` 时这些测试整体 skip**，所以 CI（无库）零影响——这是刻意的：一个只在某个人笔记本上跑的测试，会悄悄地不再被跑。代价是它们**在 CI 上不生效**，谁改坏了得自己记得跑。
 
+**Linux 部署机上已经有一套现成的。** 2026-10-22 实测：PG 16.15 在跑，角色 `wcb`
+口令 `wcb`，专用库 `wcb_verify` 已建好（还有同名的 `wcb` 库供服务端自己跑）。所以在那台
+机器上不用再 `su postgres` 建库，直接：
+
+```bash
+export WCB_TEST_DATABASE_URL="postgres://wcb:wcb@127.0.0.1:5432/wcb_verify?sslmode=disable"
+export GOTOOLCHAIN=go1.26.9     # 这台的默认 go 是 1.22，go.mod 写 go 1.26，必须显式指定
+go test ./internal/store/postgres/ -count=1 -v
+```
+
+实测 **198 项通过 / 0 失败**（含子测试）。注意这台机器**默认 `go` 是 1.22.2**——
+不加 `GOTOOLCHAIN=go1.26.9` 会去下载 toolchain，在只能走内部镜像的机器上得到
+`toolchain not available`；缓存里有 `go1.26.9.linux-amd64`，显式指定即命中。
+**这台机器没有 dotnet**，所以 C# 侧的测试在 Windows 上跑，`go` 侧的在这里跑。
+
 三点实现决定：
 
 - **用 `migrations.FS` 的真 `.up.sql` 建库，不用手抄 DDL。** 手抄件是 schema 的第二份描述，两者不一致那天，继续变绿的是手抄件。
@@ -154,9 +169,12 @@ go test ./internal/store/postgres/ -count=1 -v
 服务在跑。下面的步骤是 Linux 部署机的做法，本机照抄会失败。服务端在本机起得来的两条路：
 
 1. **`server/mock/server.js`（契约 mock）** —— 零依赖、无数据库、无签名。见下节。
-2. **SQLite 版（`feat/sqlite-migration` 分支）** —— 评估文档 `docs/design/sqlite-migration.zh-CN.md`
+2. **SQLite 版** —— 评估文档 `docs/design/sqlite-migration.zh-CN.md`
    结论是「可行、范围比预期小」，领域层 182 个业务测试零改动，只重写 store 包的方言。
    **主线 `feat/pg-client-integration` 仍是 PostgreSQL 版**，切库是单独一条分支的活。
+   那条分支的成果由 tag `sqlite-migration-2026-10-19` 钉住（分支本身已从远端删除）：
+   `git branch feat/sqlite-migration sqlite-migration-2026-10-19` 即可取回，
+   切换手册在 `docs/design/sqlite-switchover.zh-CN.md`。
 
 Linux 部署机上的步骤（**不是本机**）：
 
@@ -401,9 +419,11 @@ ent=PRO        ← 大写、排序、去重后逗号连接
   每一条都指向 `github.com/qzz0518/Dukou` 的 dmg，签名也是用我们不持有的密钥签的。
   `site/WeChatBridge-0.1.13.md`～`0.1.15.md` 的发布说明在，但**不在 feed 里**。
   换句话说，macOS 的 Sparkle 更新源目前是断的——`pages.yml` 照发不误，发的是别人的更新源。
-- **`docs/progress/` 下没有当前分支（`feat/pg-client-integration`）的看板。** 协议要求
-  「看板与代码同一个 commit」，现有三块看板（`server-convergence` / `admin-console` /
-  `client-license-gate`）属于另外三条分支。
+- **`docs/progress/` 下的看板已按分支隔离。** 现有四块：`server-convergence` /
+  `admin-console` / `client-license-gate` / `pg-client-integration`（2026-10-19 建立，
+  A-⑧ 那一轮补的）。`feat/client-license-gate` 的分支已于 2026-10-22 归档后删除，
+  成果由 tag `archive/feat-client-license-gate` 钉住——**它的看板还在仓库里，
+  但那已是历史记录，不再是活的进度源**。
 - **`windows/src` 下不存在 `Cloud/`、`CloudQr/`、`Billing/` 目录。** 版本隔离机制全部建好并被 CI 守着，但订阅形态的源码还没有落地，所以 `Test-NoNetworkCode.ps1` 在 Subscription 下会打印 SKIPPED。
 - **`LicensePublicKeys.PlaceholderKeyV1` 这个名字是历史遗留，内容已经是真公钥。**
   2026-10-19 起编译进客户端的就是服务端现役签发私钥的另一半（私钥在服务端
