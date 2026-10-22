@@ -29,6 +29,12 @@ public sealed class UiSmokeTests
                 var config = Path.Combine(fixture.Root, "config");
                 using var scenes = new SceneService(config);
                 var model = new MainViewModel(fixture.Paths, config, false, scenes: scenes, copyPayload: _ => { });
+                var vaultRoot = Path.Combine(fixture.Root, "vault");
+                var sampleCase = Path.Combine(vaultRoot, "当事人", "陈某", "CASE-2026-018");
+                Directory.CreateDirectory(sampleCase);
+                File.WriteAllText(Path.Combine(sampleCase, "沟通记录.md"),
+                    "# 沟通记录\n\n10 月 21 日：双方确认设备已经送达。\n\n10 月 22 日：仍待补充签收回执。\n");
+                model.ObsidianVaultPath = vaultRoot;
                 var source = fixture.WriteSource("sample.zip", "");
                 using (var zip = new System.IO.Compression.ZipArchive(File.OpenWrite(source), System.IO.Compression.ZipArchiveMode.Create))
                 using (var writer = new StreamWriter(zip.CreateEntry("聊天记录.txt").Open()))
@@ -84,6 +90,30 @@ public sealed class UiSmokeTests
                             Assert.Equal("示例收集", model.CollectionRows.Single(r => r.Id == collectionId).Title);
                         }
                     }
+                    var workbench = new WorkbenchPane(model);
+                    workbench.Activate();
+                    WaitFor(() => ((ListBox)workbench.FindName("MaterialsList")).Items.Count == 1);
+                    workbench.Measure(new Size(1440, 1000));
+                    workbench.Arrange(new Rect(0, 0, 1440, 1000));
+                    workbench.UpdateLayout();
+                    var materials = (ListBox)workbench.FindName("MaterialsList");
+                    Assert.Single(materials.Items);
+                    materials.SelectedIndex = 0;
+                    Assert.Contains("设备已经送达", ((TextBox)workbench.FindName("DocumentBody")).Text);
+                    Assert.True(((TextBox)workbench.FindName("DocumentBody")).IsReadOnly);
+                    Descendants<CheckBox>(workbench).Single().IsChecked = true;
+                    Assert.Contains("1", ((TextBlock)workbench.FindName("SelectionCount")).Text);
+                    ((TextBox)workbench.FindName("ResultBox")).Text = "人工整理示例：\n- 已记录设备送达。\n- 后续材料：签收回执。\n\n（此段由测试夹具提供，不是模型输出。）";
+                    ((TextBox)workbench.FindName("DraftTitleBox")).Text = "沟通记录分析草稿-" + language;
+                    if (previewDirectory is not null)
+                        RenderWorkbench(workbench, $"workbench-reading-first-{language}", previewDirectory);
+                    ((Button)workbench.FindName("SaveNoteButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    var savedNote = Path.Combine(vaultRoot, "分析", "沟通记录分析草稿-" + language + ".md");
+                    Assert.True(File.Exists(savedNote));
+                    Assert.Contains("微信流未调用模型", File.ReadAllText(savedNote));
+                    Assert.Contains("[[当事人/陈某/CASE-2026-018/沟通记录.md]]", File.ReadAllText(savedNote));
+                    // Keep the source fixture identical for the next language pass.
+                    File.Delete(savedNote);
                     var textImport = new TextImportWindow("测试聊天文字");
                     textImport.Show();
                     Assert.True(((Button)textImport.FindName("ImportButton")).IsEnabled);
@@ -329,5 +359,21 @@ public sealed class UiSmokeTests
         encoder.Save(stream);
         canvas.Child = null;
         return height;
+    }
+
+    private static void RenderWorkbench(FrameworkElement content, string name, string directory)
+    {
+        Directory.CreateDirectory(directory);
+        var canvas = new Border { Background = (Brush)Application.Current.Resources["BackgroundColor"], Child = content };
+        canvas.Measure(new Size(1488, 1056));
+        canvas.Arrange(new Rect(0, 0, 1488, 1056));
+        canvas.UpdateLayout();
+        var bitmap = new RenderTargetBitmap(1488, 1056, 96, 96, PixelFormats.Pbgra32);
+        bitmap.Render(canvas);
+        var encoder = new PngBitmapEncoder();
+        encoder.Frames.Add(BitmapFrame.Create(bitmap));
+        using var stream = File.Create(Path.Combine(directory, name + ".png"));
+        encoder.Save(stream);
+        canvas.Child = null;
     }
 }
