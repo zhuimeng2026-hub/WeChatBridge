@@ -494,7 +494,7 @@ public partial class WorkbenchPane : UserControl
                 + $"## {L10n.Text("请求记录")}\n\n"
                 + (_lastRequestAt is null
                     ? L10n.Text("本草稿由用户手动整理；没有从工作台复制请求。") + "\n"
-                    : L10n.Format($"复制到剪贴板时间：{_lastRequestAt.ToString("yyyy-MM-dd HH:mm:ss zzz", L10n.Culture)}") + "\n\n"
+                    : L10n.Format($"复制到剪贴板时间：{_lastRequestAt.Value.ToString("yyyy-MM-dd HH:mm:ss zzz", L10n.Culture)}") + "\n\n"
                       + L10n.Format($"选择的工具：{_lastRequestTool}") + "\n\n"
                       + L10n.Text("提示词：") + "\n\n" + _lastRequestPrompt + "\n")
                 + $"\n## {L10n.Text("参考材料")}\n\n" + (sources.Length == 0 ? "- " + L10n.Text("（未选择材料）") : string.Join("\n", sources)) + "\n";
