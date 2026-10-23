@@ -371,11 +371,20 @@ func (s *Service) Revoke(ctx context.Context, licenseID string) error {
 // through a machine change, which is the whole point of reissue.
 func (s *Service) signEnvelope(installID string, now time.Time) ([]byte, error) {
 	envelope, err := s.signer.Build(license.IssueParams{
-		Subject:      installID,
-		Plan:         license.PlanBuyout,
-		Entitlements: []string{license.EntitlementPro},
-		Lifetime:     s.buyoutLifetime,
-		IssuedAt:     now,
+		Subject: installID,
+		Plan:    license.PlanBuyout,
+		// A buy-out licence unlocks every capability the client knows
+		// (§11.7 M-6). The order here carries no meaning: the canonical
+		// payload sorts and de-duplicates the bits before signing.
+		Entitlements: []string{
+			license.EntitlementPro,
+			license.EntitlementPDF,
+			license.EntitlementExport,
+			license.EntitlementScene,
+			license.EntitlementHistory,
+		},
+		Lifetime: s.buyoutLifetime,
+		IssuedAt: now,
 	})
 	if err != nil {
 		return nil, err

@@ -530,8 +530,19 @@ func TestConfirmSignsAndStoresTheEnvelope(t *testing.T) {
 	if envelope.Plan != license.PlanBuyout {
 		t.Errorf("envelope plan %q, want buyout", envelope.Plan)
 	}
-	if len(envelope.Entitlements) != 1 || envelope.Entitlements[0] != license.EntitlementPro {
-		t.Errorf("envelope entitlements %v, want [PRO]", envelope.Entitlements)
+	if len(envelope.Entitlements) != 5 {
+		t.Errorf("envelope entitlements %v, want the five buy-out entitlements", envelope.Entitlements)
+	}
+	for _, want := range []string{
+		license.EntitlementPro,
+		license.EntitlementPDF,
+		license.EntitlementExport,
+		license.EntitlementScene,
+		license.EntitlementHistory,
+	} {
+		if !license.HasEntitlement(envelope, want) {
+			t.Errorf("envelope entitlements %v, want %s among them", envelope.Entitlements, want)
+		}
 	}
 	if envelope.ExpiresAt != nil {
 		t.Errorf("envelope expires at %v, want perpetual", *envelope.ExpiresAt)

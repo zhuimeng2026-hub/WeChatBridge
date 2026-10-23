@@ -238,9 +238,11 @@ fi
 
 # C5.4 「买断即全功能五枚 entitlement」的决策缺口（见清单 D-3）
 if git show "$MAIN_REF:server/internal/admin/admin.go" 2>/dev/null | grep -q 'EntitlementPro'; then
-  only_pro=1
-  for e in EntitlementPdf EntitlementExport EntitlementScene EntitlementHistory; do
-    git show "$MAIN_REF:server/internal/admin/admin.go" 2>/dev/null | grep -q "$e" && only_pro=0
+  only_pro=0
+  # 四枚都要在：原来「有一个就当不是 PRO-only」，漏掉三枚照样放过；
+  # 而且写的是 EntitlementPdf，常量其实是 EntitlementPDF（PDF 全大写）。
+  for e in EntitlementPDF EntitlementExport EntitlementScene EntitlementHistory; do
+    git show "$MAIN_REF:server/internal/admin/admin.go" 2>/dev/null | grep -q "$e" || only_pro=1
   done
   if [ "$only_pro" -eq 1 ]; then
     say WARN C5.4 "admin 仍只发 EntitlementPro 一枚；「买断即全功能五枚」的裁决尚未登记（清单 D-3）"

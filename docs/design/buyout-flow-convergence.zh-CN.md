@@ -501,4 +501,35 @@ POST /v1/admin/reject    { requestId }   → {}   // 拒绝一单：不签发、
 
 
 
+#### M-6 买断版许可证的 entitlement 枚数：PRO 一枚 → 五枚（2026-10-24 落地并登记）
+
+- **背景**：已归档分支 `feat/server-convergence`（tag `archive/feat-server-convergence`）的 A-⑥
+  admin 半边里，管理员签发的许可证带**五枚** entitlement：PRO / PDF / EXPORT / SCENE / HISTORY。
+  那份实现的注释写明这是 2026-10-18 的产品裁决「买断即全功能」。但那条分支从未并入 main，
+  这段实现也从未进过主干——`server/internal/admin/admin.go` 只发 `EntitlementPro` 一枚，
+  而**本册零命中**：一条决定了「买断版买到什么」的产品决策，在任何文档里都没有出处。
+  换一个人读代码，会以为「买断版只值 PRO 一枚」是既定事实。
+- **核实（2026-10-24）——落地它没有功能风险**：
+  1. **客户端不读这张列表**。`LicenseResolution.IsPro` 来自「验签通过 + 硬件锚点匹配」
+     （`windows/src/WeChatBridge.Windows.Core/Licensing/LicenseResolver.cs`），与信封里带哪几枚
+     entitlement 无关；Go 侧的 `license.HasEntitlement` 至今**无调用方**。
+  2. **验签不受影响**。Go / C# / macOS 三端都按「大写、排序、去重」算 canonical 的 `ent=`，
+     多几枚只是 `ent=` 的内容变了，签名照旧覆盖同一段规范化文本。
+  3. **服务端不按枚数分级**。`license.Verify` 只要求 ent 规范化后非空。
+  4. **常量一直在**。`server/internal/license/license.go` 里五个常量都还在，从没被删过——
+     license 包本来就是按多枚设计的。
+- **裁决（2026-10-24，用户）**：改为五枚，并登记进本册。这是把 2026-10-18 那条裁决变成
+  主干上的有出处的事实，不是新开一个决策。
+- **修复**：`server/internal/admin/admin.go` 的 `signEnvelope` 改发五枚；
+  `server/internal/admin/admin_test.go` 的断言从「恰好一枚 PRO」改成「五枚齐全」
+  （用生产侧同一个 `license.HasEntitlement` 判）。
+- **影响面**：**新签发**的许可证 canonical 的 `ent=` 从 `PRO` 变成
+  `EXPORT,HISTORY,PDF,PRO,SCENE`。存量许可证的字节不动。客户端与服务端都不按枚数分级，
+  所以**无功能差异**——变的只是信封里多了一个列表。
+- **定级**：🟡 决策缺口（无功能差异，但「买断即全功能」此前不是有出处的既定事实）→ ✅ 已落地并登记。
+- **关联**：`docs/progress/server-convergence.md` 的「决策缺口」一节同批更新；
+  tag `archive/feat-server-convergence` 用 `-s ours` 记为已合并（**不取其内容**——那条老树
+  还带着早已退役的兑换码那一整套）。
+
+
 本册建立本身即验证了同步协议 §5 的价值：C 发现缺陷后**守规矩未私改**、按 message 上报；A 的验证修正了其中一条的定级（C-2 从「发行炸弹」降为「契约违背」）——这正是「先登记、后修复」要达成的效果：缺陷不丢，定级不失真。

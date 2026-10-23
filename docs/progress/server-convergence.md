@@ -41,10 +41,10 @@
 - **真冒烟（起服务 + 迁移实跑 + /healthz 200）阻塞于可用 PostgreSQL**：沙箱内无 postgres 实例（探测确认）。启动门禁已实测（无配置 exit 1、库不可达干净失败且不回显密码），其余留待首次部署联调，与 §11.5 的 E/F 外部输入阻塞同类。
 
 
-## 决策缺口（2026-10-23 补登）
+## 决策缺口（2026-10-23 补登 · 2026-10-24 已闭合）
 
 **「买断即全功能」的五枚 entitlement 从未登记。** 已归档的 `feat/server-convergence`
-分支（tag `archive/feat-server-convergence`，**内容从未并入 main**）在 A-⑥ 里让管理员
+分支（tag `archive/feat-server-convergence`）在 A-⑥ 里让管理员
 签发的许可证带五枚 entitlement：PRO / PDF / EXPORT / SCENE / HISTORY，出处是当时的用户裁决。
 
 但主干上 `server/internal/admin/admin.go` 只发 `EntitlementPro` 一枚，而
@@ -57,3 +57,18 @@
 
 **待拍板**：(a) 改成五枚并登记进 §11.7；还是 (b) 明确记录维持 PRO-only 的理由。
 **在拍板之前，两边都别当它是既定事实。**
+
+### 2026-10-24：拍板 (a)，缺口闭合
+
+用户裁决走 (a)：**改成五枚并登记进 §11.7**。这不是新开一个决策，而是把 2026-10-18
+那条裁决变成主干上有出处的事实。
+
+- `server/internal/admin/admin.go` 的 `signEnvelope` 改发五枚；
+  `admin_test.go` 的断言从「恰好一枚 PRO」改成「五枚齐全」。
+- 登记进 `buyout-flow-convergence.zh-CN.md` **§11.7 M-6**（含「为什么无功能风险」的核实：
+  客户端的 `IsPro` 来自验签+机器匹配、不读 ent 列表；Go 侧 `HasEntitlement` 至今无调用方；
+  三端都按排序去重算 canonical）。
+- tag `archive/feat-server-convergence` 用 `-s ours` 记为已合并（**不取其内容**——
+  那条老树还带着早已退役的兑换码那一整套）。
+- 新签发的许可证 canonical 的 `ent=` 从 `PRO` 变成 `EXPORT,HISTORY,PDF,PRO,SCENE`；
+  **存量许可证的字节不动**。
