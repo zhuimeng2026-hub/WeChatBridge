@@ -22,11 +22,11 @@
 |   D-09   |   `pg-client-integration.md` 加归档标记   | ✅ | 568f352 |
 |   D-10   |   `unionid-bridge.md` 加归档标记   | ✅ | f0a4f70 |
 |   D-11   |   `login-perf-and-ux.md` 加归档标记   | ✅ | b3b8672 |
-| D-12 | `progress-sync-protocol.zh-CN.md` 修正 origin/upstream 方向 | ⬜ | **写错远端会把代码推到上游** |
-| D-13 | `progress-sync-protocol.zh-CN.md` worktree 表标注已删除 | ⬜ | |
-| D-14 | `client-license-gate-progress.zh-CN.md` worktree 表去路径 | ⬜ | |
-| D-15 | `client-license-gate-progress.zh-CN.md` 正文去路径 | ⬜ | |
-| D-16 | `branch-work-assignment.zh-CN.md` 标注为历史执行记录 | ⬜ | |
+|  D-12  |  `progress-sync-protocol.zh-CN.md` 修正 origin/upstream 方向  | 🔴 | 应用失败，已回滚 |
+|  D-13  |  `progress-sync-protocol.zh-CN.md` worktree 表标注已删除  | 🔴 | 应用失败，已回滚 |
+|  D-14  |  `client-license-gate-progress.zh-CN.md` worktree 表去路径  | 🔴 | 应用失败，已回滚 |
+|  D-15  |  `client-license-gate-progress.zh-CN.md` 正文去路径  | 🔴 | 应用失败，已回滚 |
+|   D-16   |   `branch-work-assignment.zh-CN.md` 标注为历史执行记录   | ✅ | fb50d3e |
 | D-17 | `.gitignore` 忽略 `/chat-exports/` | ⬜ | 真实微信聊天导出 |
 | D-18 | `CLAUDE.md` 加校验器入口 | ⬜ | |
 | W-01 | workbench 看板状态自洽化 + 补未落地项 | ⬜ | 三处本地化漏项 + 三条视觉缺口 |

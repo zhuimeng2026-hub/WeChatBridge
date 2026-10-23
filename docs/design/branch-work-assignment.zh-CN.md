@@ -1,5 +1,17 @@
 # 三分支并行工作分配（2026-10-18 定稿，3 台机器）
 
+> **⚠️ 本文是历史执行记录，不是当前分工表。**
+>
+> 它记录的是 2026-10-18 那一轮三分支并行（机器 A / B / C）的分工，**那一轮早已结束**：
+> 2026-10-23 三条分支（`feat/server-convergence` / `feat/admin-console` /
+> `feat/client-license-gate`）**全部删除**，成果分别由 tag `archive/feat-server-convergence`、
+> 并入 main、以及 `archive/feat-client-license-gate` 钉住。
+>
+> **协议本身仍然有效**——下一次并行开工时照它办，但把「三分支 / 3 台机器」换成当轮的实际情况。
+> 当前分支与看板状态见 `CLAUDE.md` 与 `docs/progress/`。
+
+
+
 > 设计依据：`buyout-flow-convergence.zh-CN.md` §11（分支划分、API 契约、并行规则）。
 > 本文是执行版：每台机器领哪条分支、干什么、出口标准、git 怎么走。
 
