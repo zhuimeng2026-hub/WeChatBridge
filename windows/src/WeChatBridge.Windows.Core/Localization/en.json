@@ -1002,5 +1002,7 @@
   "已复制 {0} 份材料到剪贴板；请粘贴至 {1}": "Copied {0} materials to the clipboard. Paste them into {1}.",
   "演示附件仅展示文件信息": "Demo attachments display file information only",
   "已在文件夹中定位附件": "Attachment selected in its folder",
-  "定位附件失败：{0}": "Could not reveal attachment: {0}"
+  "定位附件失败：{0}": "Could not reveal attachment: {0}",
+  "分析": "Analysis",
+  "筛选失败：{0}": "Filter failed: {0}"
 }
