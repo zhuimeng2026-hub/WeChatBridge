@@ -5,7 +5,7 @@ OP: replace
 VERIFY: grep -qF '随 worktree 一并丢弃' docs/progress/client-license-gate.md
 COMMIT: docs(client-license-gate): 第 18 行写清 S5 缺口已随 worktree 清空
 ---BEGIN---
-| 18 | AppTests：`HttpActivationTransport` handler 注入 | ⬜ 传输层靠 `IActivationTransport` seam 覆盖，真实 HttpClient 未测。**2026-10-23 更新**：曾有一份 678 行 / 26 例的 `ActivationTransportTests.cs` 躺在已删除的 worktree `D:\WeChatBridge-C` 里（全仓库任何 ref 都没有它），随 worktree 一并丢弃——所以这个缺口现在是**空的**，不是「差一次移植」 |
----SPLIT---
 | 18 | AppTests：`HttpActivationTransport` handler 注入 | ⬜ 传输层靠 `IActivationTransport` seam 覆盖，真实 HttpClient 未测 |
+---SPLIT---
+| 18 | AppTests：`HttpActivationTransport` handler 注入 | ⬜ 传输层靠 `IActivationTransport` seam 覆盖，真实 HttpClient 未测。**2026-10-23 更新**：曾有一份 678 行 / 26 例的 `ActivationTransportTests.cs` 躺在已删除的 worktree `D:\WeChatBridge-C` 里（全仓库任何 ref 都没有它），随 worktree 一并丢弃——所以这个缺口现在是**空的**，不是「差一次移植」 |
 ---END---

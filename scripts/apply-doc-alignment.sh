@@ -27,8 +27,10 @@
 #   OP=prepend  把正文插到文件首行（标题行）之后
 #   OP=append   把正文追加到文件末尾
 #   OP=create   新建文件（文件已存在就报错，不覆盖）
-#   OP=replace  正文里用一行 ---SPLIT--- 分成「旧文」与「新文」两段，
-#               整段精确替换；旧文必须**恰好出现一次**，否则报错回滚
+#   OP=replace  正文里用一行 ---SPLIT--- 分成两段：**旧文在前、新文在后**。
+#               整段精确替换；旧文必须**恰好出现一次**，否则报错回滚。
+#               （写反了的话报错是 NOTFOUND，看起来跟「锚点写错了」一样，
+#                 所以执行器会额外判一次「新文是不是已经在文件里」并明确报出来。）
 #
 # ── 用法 ───────────────────────────────────────────────────────────────────
 #   scripts/apply-doc-alignment.sh --target main
@@ -300,6 +302,14 @@ apply_replace() { # apply_replace <file> <body-file>
 
   if [ $rc -ne 0 ]; then
     msg="$(cat "$out.err" 2>/dev/null || echo '未知错误')"
+    # 「旧文找不到」最常见的原因是**旧文新文写反了**：正文里旧文在前、新文在后，
+    # 而步骤定义写成了新文在前。那样报错只有 NOTFOUND，完全看不出真实原因。
+    # 这里额外判一次：新文若已在文件里，说明八成是写反了。
+    if [ "$msg" = "NOTFOUND" ] && [ -s "$newfile" ]; then
+      if grep -qF -- "$(head -1 "$newfile")" "$target" 2>/dev/null; then
+        msg="NOTFOUND（旧文找不到，但**新文已经在文件里**——旧文/新文写反了。步骤定义的正文应是「旧文 ---SPLIT--- 新文」）"
+      fi
+    fi
     rm -f "$oldfile" "$newfile" "$out" "$out.err" "$bodylf" "$tgtlf"
     echo "替换失败：$msg"
     return 1
@@ -417,7 +427,19 @@ for stepfile in "$STEPDIR"/*.step; do
   hash="$(git rev-parse --short HEAD)"
   resume_mark "$id" "✅" "$hash"
   git add -- "$RESUME" >/dev/null 2>&1
-  git commit -q --amend --no-edit >/dev/null 2>&1
+  # 安全护栏：只在**本次运行刚建的、且尚未出现在任何远端分支上**的提交上做
+  # amend（把状态表里的证据 hash 回填进去）。已经发布的历史一律不改写——
+  # 那是 force-push 该干的事，不是夜间作业该干的。
+  amendable=1
+  for r in $(git for-each-ref --format='%(refname)' refs/remotes/ 2>/dev/null); do
+    if git merge-base --is-ancestor HEAD "$r" 2>/dev/null; then amendable=0; break; fi
+  done
+  if [ "$amendable" -eq 1 ]; then
+    git commit -q --amend --no-edit >/dev/null 2>&1
+  else
+    # 已经发布过的提交不改写，改为把状态表作为独立的一笔提交。
+    git commit -q -m "docs(doc-align): $id 状态回填" >/dev/null 2>&1
+  fi
   PASSED=$((PASSED + 1))
   log "OK    $id → $hash  ($file)"
 done

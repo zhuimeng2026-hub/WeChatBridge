@@ -5,7 +5,7 @@ OP: replace
 VERIFY: grep -qF '该目录已删除' docs/design/client-license-gate-progress.zh-CN.md
 COMMIT: docs(design): client-license-gate 进度文档去掉已删目录的路径
 ---BEGIN---
-后续所有命令在机器 C 的 worktree 目录下执行（**2026-10-23 该目录已删除**）。不要 `cd` 回主检出，也不要在主检出里
----SPLIT---
 后续所有命令在 `D:\WeChatBridge-C` 下执行。不要 `cd` 回主检出，也不要在主检出里
+---SPLIT---
+后续所有命令在机器 C 的 worktree 目录下执行（**2026-10-23 该目录已删除**）。不要 `cd` 回主检出，也不要在主检出里
 ---END---

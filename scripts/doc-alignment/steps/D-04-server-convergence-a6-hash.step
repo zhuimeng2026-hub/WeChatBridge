@@ -5,7 +5,7 @@ OP: replace
 VERIFY: grep -qF 'f19e72e' docs/progress/server-convergence.md
 COMMIT: docs(server-convergence): A-⑥ 证据 commit 改指主干上的等价提交
 ---BEGIN---
-`f19e72e`
----SPLIT---
 `ad457b6`
+---SPLIT---
+`f19e72e`
 ---END---
