@@ -19,7 +19,7 @@
 |   D-06   |   `server-convergence.md` 补登 entitlement 决策缺口   | ✅ | 4bd603e |
 |   D-07   |   `delivery-quota.md` 写明原决策在拍板前仍有效   | ✅ | 9dfc2d5 |
 |   D-08   |   `admin-console.md` 加归档标记   | ✅ | 6937781 |
-| D-09 | `pg-client-integration.md` 加归档标记 | ⬜ | 分支已删，内容已并入 main |
+|   D-09   |   `pg-client-integration.md` 加归档标记   | ✅ | 568f352 |
 | D-10 | `unionid-bridge.md` 加归档标记 | ⬜ | 分支已删；表里三行 ⬜ 仍待办 |
 | D-11 | `login-perf-and-ux.md` 加归档标记 | ⬜ | worktree 记录已过期 |
 | D-12 | `progress-sync-protocol.zh-CN.md` 修正 origin/upstream 方向 | ⬜ | **写错远端会把代码推到上游** |
