@@ -541,11 +541,11 @@ Windows 端新增「知识工作台」面板（阅读优先 / 案件工作区 / 
   **`feat/client-license-gate` 的 worktree（`D:/WeChatBridge-C`）连同三个未跟踪测试文件一并删除**。
   **这些分支对应的看板从此是历史记录，不再是活的进度源**——
   现在还活着的只有 `main` 上的看板，其中知识工作台那块是最新的一块（2026-10-24 已随分支合并进主干）。
-  远端分支清单：`git branch -r | grep origin/`（origin 上现在只剩 `main` 与
-  `feat/obsidian-workbench-variants` 两条；`upstream` 的十二条 = `upstream/main` 本体加十一条
+  远端分支清单：`git branch -r | grep origin/`（origin 上现在只剩 `main` 一条——
+  知识工作台那条分支 2026-10-24 合进 main 之后打了 `archive/feat-obsidian-workbench-variants`
+  tag 就删掉了；`upstream` 的十二条 = `upstream/main` 本体加十一条
   上游 PR 分支，全是上游 PR 合并后的残留，**推不动也不该推**——
   CLAUDE.md 要求 upstream 长期保留作对比锚点）。
-  **⚠️ 但「上游的内容全在 main 里」这句话不能用提交数验证**（2026-10-24 实测）：
   十一条 PR 分支里有**五条**的 tip 不在 `upstream/main` 的历史里，
   `git rev-list --count main..<branch>` 因此报非零
   （`codex/fix-onboarding-content-height` 1、`docs/unified-download-entry` 1、
