@@ -39,13 +39,17 @@ bash scripts/verify-doc-alignment.sh
 
 **真正执行的是一台 Linux 主机**：克隆本仓库，装好 git，挂在 cron 上跑。
 `scripts/nightly-doc-alignment.sh` 是启动器，它做三件事：建 workbench worktree
-（没有就建）→ 两条分支各跑一遍执行器 → 只在**确实有提交**时推 origin。
+（没有就建）→ 两条分支各跑一遍执行器 → 报告各分支领先 origin 多少提交。
 
 挂 cron：
 
 ```cron
 0 1 * * * /path/to/repo/scripts/nightly-doc-alignment.sh >> /path/to/log 2>&1
 ```
+
+**默认不推 origin。** 提交留在本地等人看过；要推就
+`PUSH=1 scripts/nightly-doc-alignment.sh`。无人值守的作业不该自己决定把东西
+发出去——某一步改错了，那笔内容就带着 commit hash 进了远端历史，撤不干净。
 
 **它不安装、不修改任何定时任务**——cron 那行由人写。它在清单跑空时也只提示，
 不去动 crontab。（脚本是幂等的：清单空了它每次跑都是空操作，留着也不会做错事，

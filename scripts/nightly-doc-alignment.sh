@@ -16,6 +16,10 @@
 #
 # 幂等：所有步骤做完后再跑一次，什么都不做直接退出。所以每天跑一次是安全的。
 #
+# **默认不推 origin。** 提交留在本地等人看过；要推就 `PUSH=1 scripts/nightly-doc-alignment.sh`。
+# 无人值守的作业不该自己决定把东西发出去——某一步改错了，那笔内容就带着
+# commit hash 进了远端历史，撤不干净。
+#
 # 这个脚本**不安装、不修改任何定时任务**——cron 那行由人写。它在清单跑空时
 # 也只提示，不去动 cron。
 #
@@ -101,21 +105,40 @@ run_target "$REPO" main      || rc_main=$?
 run_target "$WB_WORKTREE" "$WB_BRANCH" || rc_wb=$?
 
 # ── 推送 ──────────────────────────────────────────────────────────────────────
-# 没 push = 没发生（仓库协议）。但推送是对外操作，所以只在**确实有提交**时才做。
-for target in "$REPO:main" "$WB_WORKTREE:$WB_BRANCH"; do
-  path="${target%%:*}"
-  branch="${target##*:}"
-  ahead="$(git -C "$path" rev-list --count "$branch..origin/$branch" 2>/dev/null || echo 0)"
-  case "$ahead" in
-    ''|*[!0-9]*) ahead=0 ;;
-  esac
-  if [ "$ahead" -gt 0 ]; then
-    banner "push $branch（领先 $ahead 个提交）"
-    git -C "$path" push origin "$branch" 2>&1 | while IFS= read -r line; do log "  $line"; done
-  else
-    log "$branch 没有待推送的提交，跳过。"
-  fi
-done
+# **默认不推。** 推送是对外操作，一个无人值守的夜间作业不该自己决定把东西
+# 发出去——万一某一步改错了，那笔错的内容就带着 commit hash 进了远端历史。
+# 提交本身留在本地等人看过；要推就显式开：
+#
+#     PUSH=1 scripts/nightly-doc-alignment.sh
+#
+# cron 里默认不开。开了之后也仍然只在**确实有提交**时才推。
+if [ "${PUSH:-0}" = "1" ]; then
+  for target in "$REPO:main" "$WB_WORKTREE:$WB_BRANCH"; do
+    path="${target%%:*}"
+    branch="${target##*:}"
+    ahead="$(git -C "$path" rev-list --count "$branch..origin/$branch" 2>/dev/null || echo 0)"
+    case "$ahead" in
+      ''|*[!0-9]*) ahead=0 ;;
+    esac
+    if [ "$ahead" -gt 0 ]; then
+      banner "push $branch（领先 $ahead 个提交）"
+      git -C "$path" push origin "$branch" 2>&1 | while IFS= read -r line; do log "  $line"; done
+    else
+      log "$branch 没有待推送的提交，跳过。"
+    fi
+  done
+else
+  banner "推送已跳过（PUSH 未开启）"
+  for target in "$REPO:main" "$WB_WORKTREE:$WB_BRANCH"; do
+    path="${target%%:*}"
+    branch="${target##*:}"
+    ahead="$(git -C "$path" rev-list --count "$branch..origin/$branch" 2>/dev/null || echo 0)"
+    case "$ahead" in
+      ''|*[!0-9]*) ahead=0 ;;
+    esac
+    log "$branch 领先 origin $ahead 个提交——提交留在本地，要推就 PUSH=1 再跑一次。"
+  done
+fi
 
 # ── 收尾：清单空了只提示，不动 cron ───────────────────────────────────────────
 open=0

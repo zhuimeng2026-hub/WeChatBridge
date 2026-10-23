@@ -11,17 +11,17 @@
 
 | ID | 事项 | 状态 | 备注 |
 |---|---|---|---|
-| D-01 | `client-license-gate.resume.md` 标注退役 | ✅ | 已满足 |
+| D-01 | `client-license-gate.resume.md` 标注退役 | ✅ | 72c5934 |
 | D-02 | `client-license-gate.md` 第 18 行改写（S5 缺口现状） | 🔴 | 应用失败，已回滚 |
 | D-03 | `server-convergence.md` A-⑤ 证据 commit 改指主干等价提交 | 🔴 | 应用失败，已回滚 |
 | D-04 | `server-convergence.md` A-⑥ 证据 commit 改指主干等价提交 | 🔴 | 应用失败，已回滚 |
 | D-05 | `server-convergence.md` A-⑦ 证据 commit 改指主干等价提交 | 🔴 | 应用失败，已回滚 |
-| D-06 | `server-convergence.md` 补登 entitlement 决策缺口 | ✅ | 已满足 |
-| D-07 | `delivery-quota.md` 写明原决策在拍板前仍有效 | ✅ | 已满足 |
-| D-08 | `admin-console.md` 加归档标记 | ✅ | 已满足 |
-| D-09 | `pg-client-integration.md` 加归档标记 | ✅ | 已满足 |
-| D-10 | `unionid-bridge.md` 加归档标记 | ✅ | 已满足 |
-| D-11 | `login-perf-and-ux.md` 加归档标记 | ✅ | 已满足 |
+| D-06 | `server-convergence.md` 补登 entitlement 决策缺口 | ✅ | 2cd96c4 |
+| D-07 | `delivery-quota.md` 写明原决策在拍板前仍有效 | ✅ | 667250f |
+| D-08 | `admin-console.md` 加归档标记 | ✅ | b19cffd |
+| D-09 | `pg-client-integration.md` 加归档标记 | ✅ | 682f20d |
+| D-10 | `unionid-bridge.md` 加归档标记 | ✅ | 15441a1 |
+| D-11 | `login-perf-and-ux.md` 加归档标记 | ✅ | 3f40a59 |
 | D-12 | `progress-sync-protocol.zh-CN.md` 修正 origin/upstream 方向 | 🔴 | 应用失败，已回滚 |
 | D-13 | `progress-sync-protocol.zh-CN.md` worktree 表标注已删除 | 🔴 | 应用失败，已回滚 |
 | D-14 | `client-license-gate-progress.zh-CN.md` worktree 表去路径 | 🔴 | 应用失败，已回滚 |
