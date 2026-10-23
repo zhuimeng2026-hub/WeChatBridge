@@ -1,9 +1,12 @@
-# 知识工作台收尾 · 2026-10-24 会话进度快照
+# 知识工作台收尾 · 2026-10-24 会话进度快照 + 下次任务 TODO
 
 > 这份文件是**一次会话的进度快照**，不是看板。看板在 `docs/progress/`，
 > 那边的机器可读状态表由 `scripts/apply-doc-alignment.sh` 维护。
 > 放在这里是因为 `docs/progress/` 下的直接子文件**数量被校验器 C1.4 数着**
 > （CLAUDE.md 写死了「十块」），临时快照塞进去会让那个数字漂掉。
+>
+> **下次任务从 §7 的 TODO 开始。** 本地 `main` 与 `origin/main` 已经分叉
+> （本地领先 3、落后 10），合并顺序写在那儿，别凭记忆重做。
 
 ## 1. 起因
 
@@ -97,7 +100,74 @@ a7c2215 docs(doc-align): W-03 状态回填（证据 21a83dc）
 3. **再补 CLAUDE.md 两处数字**（面板 6→7、origin 分支数 2→1），走 step 文件流程。
 4. `bash scripts/verify-doc-alignment.sh` 退出码 0，再 push。
 
-## 7. 一条要记住的教训
+## 7. TODO · 下次任务从这里开始
+
+> 状态：本地 `main` 领先 `origin/main` **3** 笔、落后 **10** 笔。
+> 本地那 3 笔的内容已经全部备份在分支 `backup/workbench-followup-2026-10-24`
+> （指向 `29b9e63`；第 3 笔是这份快照本身）。
+
+### 7.1 重建基线（**动手前先 fetch**）
+
+```bash
+git fetch origin --prune
+git log --oneline main..origin/main        # 确认远端又推了什么，别凭这份快照判断
+```
+
+远端那一版是本地的**超集**（多出 L-4 与两个新测试），所以以它为基线：
+
+```bash
+git reset --hard origin/main
+```
+
+### 7.2 把本地独有的三处挑回来
+
+三处都是「分支删掉之后会静默失效」那一类，**远端漏了**：
+
+| 文件 | 改什么 | 为什么远端会漏 |
+|---|---|---|
+| `scripts/verify-doc-alignment.sh` | C1.1 期望的 origin 分支数 `2` → `1` | 远端删了 workbench 分支，却把期望值留在 2 → 现在 origin 只剩 `main` 一条，**每天报 FAIL** |
+| `scripts/nightly-doc-alignment.sh` | `WB_BRANCH` 默认改空，第二个目标**默认不启用** | 远端没动这个脚本 → 夜间作业每天建 worktree 然后撞 `branch not found` |
+| `.github/workflows/workbench-review.yml` | 删掉 `push: branches: [feat/obsidian-workbench-variants]` | 远端没动这个文件 → 触发器写死一条已删除的分支，**永远不会触发** |
+
+参考实现见备份分支：`git show backup/workbench-followup-2026-10-24:scripts/nightly-doc-alignment.sh`。
+
+### 7.3 补 CLAUDE.md 两处数字（**走 step 文件流程，别手改**）
+
+| 位置 | 现在写的 | 应改成 |
+|---|---|---|
+| 第 276 行 | `**界面是 6 个面板**……记录 / 通用 / 入口 / 场景 / 技能中心 / 关于` | **7 个**，多一个「知识工作台」——`AppTab` 枚举里是 `Workbench`，顺序：记录 / 知识工作台 / 通用 / 入口 / 场景 / 技能中心 / 关于 |
+| 第 543 行 | `origin 上现在只剩 main 与 feat/obsidian-workbench-variants 两条` | **只剩 `main` 一条**（那条分支远端已删） |
+
+改法：新建 `scripts/doc-alignment/steps/D-28-*.step` 与 `D-29-*.step`
+（`OP: replace`，正文按「旧文 ---SPLIT--- 新文」写），
+在 `docs/progress/doc-alignment.resume.md` 里**各加一行**（状态 ⬜——
+状态列由执行器写，人只加行），然后：
+
+```bash
+bash scripts/apply-doc-alignment.sh --target main
+bash scripts/verify-doc-alignment.sh      # 退出码 0 才算过
+```
+
+`docs/progress/doc-alignment.md` 的 §3 步骤索引表、§4 待拍板表、§7 出口标准
+也要跟着补 D-28/D-29 两行——那些同样用 step 文件改。
+
+### 7.4 一笔顺带发现的小账
+
+`docs/progress/doc-alignment.md` §5 结尾写着「**待办**：`git push origin --delete
+feat/server-convergence`（远端那条还在）」。**这条已经过期了**——fetch 之后
+origin 上只剩 `main` 一条，那条分支早没了。改那句话时顺手清掉。
+
+### 7.5 需要人拍板（执行器不许动，也不该由 AI 替他定）
+
+- **README / USAGE / PRODUCT_CAPABILITIES 要不要写「知识工作台」**：
+  README 的功能表配图里没有 workbench 截图；`PRODUCT_CAPABILITIES.zh-CN.md`
+  明写「平台：macOS 14 及以上」，而知识工作台是 Windows 独有功能。
+- **V-1~V-3 三条视觉缺口**（富文本渲染 / 应用内模型回复流 / 附件内嵌预览）：
+  V-2 要定模型供应商与 API 配置，还会撞买断版「0 次网络请求」的隐私承诺。
+- **本地那条 `feat/obsidian-workbench-variants`**（`17ddead`，远端已删）：
+  `git branch -d` 需要人显式授权。
+
+## 8. 一条要记住的教训
 
 远端分支 `feat/obsidian-workbench-variants` 在**我还在本地改代码的时候**就被对方
 合并并删除了，而我这边还在按「分支还在」的世界观工作。两边做的是**同一件事**
