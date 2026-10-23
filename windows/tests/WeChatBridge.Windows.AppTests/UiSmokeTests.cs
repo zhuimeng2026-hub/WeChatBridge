@@ -159,7 +159,11 @@ public sealed class UiSmokeTests
                     ((Button)workbench.FindName("SaveNoteButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                     var savedNote = Path.Combine(vaultRoot, L10n.Text("分析"), "沟通记录分析草稿-" + language + ".md");
                     Assert.True(File.Exists(savedNote));
-                    Assert.Contains("微信流未调用模型", File.ReadAllText(savedNote));
+                    // The note speaks the interface's language, so its headings and
+                    // boilerplate are asserted through the same lookup the pane uses.
+                    Assert.Contains(L10n.Text("本笔记由工作台新建。结果由用户粘贴或编辑；微信流未调用模型。"), File.ReadAllText(savedNote));
+                    Assert.Contains("## " + L10n.Text("分析结果"), File.ReadAllText(savedNote));
+                    Assert.Contains("## " + L10n.Text("参考材料"), File.ReadAllText(savedNote));
                     Assert.Contains("[[当事人/陈某/CASE-2026-018/沟通记录.md]]", File.ReadAllText(savedNote));
                     Assert.Contains("请按时间顺序整理现有沟通", File.ReadAllText(savedNote));
                     Assert.DoesNotContain("different live prompt after export", File.ReadAllText(savedNote));
@@ -167,7 +171,8 @@ public sealed class UiSmokeTests
                     File.Delete(savedNote);
                     ((Button)workbench.FindName("DemoButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                     Assert.Equal(2, materials.Items.Count);
-                    Assert.Contains("示例资料", ((TextBox)workbench.FindName("DocumentBody")).Text);
+                    Assert.Contains(L10n.Text("示例资料"), ((TextBox)workbench.FindName("DocumentBody")).Text);
+                    Assert.Contains(L10n.Text("虚构演示内容，仅用于展示工作台操作。"), ((TextBox)workbench.FindName("DocumentBody")).Text);
                     Assert.True(((ItemsControl)workbench.FindName("AttachmentsList")).Items.Count > 0);
                     ((Button)workbench.FindName("SaveNoteButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                     Assert.Equal(L10n.Text("示例资料仅在内存中；请选择真实知识库后再保存"), ((TextBlock)workbench.FindName("StatusText")).Text);

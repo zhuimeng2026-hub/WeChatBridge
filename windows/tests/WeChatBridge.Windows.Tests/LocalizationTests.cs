@@ -62,4 +62,26 @@ public sealed class LocalizationTests
 
         Assert.Equal(" Analysis draft", translations["分析草稿"]);
     }
+
+    /// <summary>
+    /// The note the workbench writes is a document the user takes away, so it
+    /// speaks the interface's language rather than always Chinese. These are the
+    /// strings it is assembled from.
+    /// </summary>
+    [Fact]
+    public void TheWorkbenchNoteIsWrittenInTheInterfaceLanguage()
+    {
+        using var stream = typeof(L10n).Assembly.GetManifestResourceStream("WeChatBridge.Windows.Core.Localization.en.json")!;
+        var translations = JsonSerializer.Deserialize<Dictionary<string, string>>(stream)!;
+
+        Assert.Equal("Analysis result", translations["分析结果"]);
+        Assert.Equal("Request log", translations["请求记录"]);
+        Assert.Equal("Source material", translations["参考材料"]);
+        Assert.Equal("(no material selected)", translations["（未选择材料）"]);
+        Assert.Equal("Copied to the clipboard at: {0}", translations["复制到剪贴板时间：{0}"]);
+        Assert.Equal("Selected tool: {0}", translations["选择的工具：{0}"]);
+        Assert.Equal("Selected passage: {0}", translations["选中段落：{0}"]);
+        Assert.Equal("Sample materials", translations["示例资料"]);
+        Assert.Equal("Sample materials/Project background.md", translations["示例资料/项目背景.md"]);
+    }
 }

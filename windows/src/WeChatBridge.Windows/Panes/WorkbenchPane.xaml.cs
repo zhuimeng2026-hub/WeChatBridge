@@ -102,11 +102,26 @@ public partial class WorkbenchPane : UserControl
         _hasLoadedVault = true;
         _loadedVaultPath = null;
         _demoDocuments.Clear();
-        _demoDocuments["示例资料/项目背景.md"] = "# 示例资料 · 项目背景\n\n> 虚构演示内容，仅用于展示工作台操作，不对应真实个人或案件。\n\n项目代号：青禾设备试点。\n\n2026 年 3 月 12 日，项目组记录首批设备已送达东区仓库。现有记录没有签收回执附件。\n\n## 待核对\n\n- 核对签收数量与采购清单。\n- 等待仓库补充回执。\n";
-        _demoDocuments["示例资料/会议/跟进记录.md"] = "# 示例资料 · 跟进记录\n\n> 虚构演示内容，仅用于展示工作台操作。\n\n2026 年 3 月 14 日的例会决定：由项目协调员在本周五前补齐签收文件，并在下一次会议核对设备数量。\n\n目前没有记录说明文件是否已经提交。\n";
+        // The demo documents are composed from localized sentences: their
+        // translations were already in en.json, the branch just hardcoded the
+        // whole Chinese text. Their paths are localized too — the path is the
+        // material's name, and it ends up in the note's title and links.
+        var projectBackground = L10n.Text("示例资料/项目背景.md");
+        var followUp = L10n.Text("示例资料/会议/跟进记录.md");
+        _demoDocuments[projectBackground] = "# " + L10n.Text("示例资料 · 项目背景") + "\n\n> "
+            + L10n.Text("虚构演示内容，仅用于展示工作台操作，不对应真实个人或案件。") + "\n\n"
+            + L10n.Text("项目代号：青禾设备试点。") + "\n\n"
+            + L10n.Text("2026 年 3 月 12 日，项目组记录首批设备已送达东区仓库。现有记录没有签收回执附件。") + "\n\n"
+            + "## " + L10n.Text("待核对") + "\n\n"
+            + "- " + L10n.Text("核对签收数量与采购清单。") + "\n"
+            + "- " + L10n.Text("等待仓库补充回执。") + "\n";
+        _demoDocuments[followUp] = "# " + L10n.Text("示例资料 · 跟进记录") + "\n\n> "
+            + L10n.Text("虚构演示内容，仅用于展示工作台操作。") + "\n\n"
+            + L10n.Text("2026 年 3 月 14 日的例会决定：由项目协调员在本周五前补齐签收文件，并在下一次会议核对设备数量。") + "\n\n"
+            + L10n.Text("目前没有记录说明文件是否已经提交。") + "\n";
         _demoAttachments.Clear();
-        _demoAttachments["示例资料/项目背景.md"] = ["示例附件：设备清单.pdf", "示例附件：仓库照片.png"];
-        _demoAttachments["示例资料/会议/跟进记录.md"] = ["示例附件：会议议程.pdf"];
+        _demoAttachments[projectBackground] = ["示例附件：设备清单.pdf", "示例附件：仓库照片.png"];
+        _demoAttachments[followUp] = ["示例附件：会议议程.pdf"];
         _markdownPaths = _demoDocuments.Keys.OrderBy(path => path, StringComparer.OrdinalIgnoreCase).ToArray();
         _selectedPaths.Clear();
         _selectedPaths.Add(_markdownPaths[0]);
@@ -470,15 +485,19 @@ public partial class WorkbenchPane : UserControl
         {
             var requestSources = _lastRequestAt is null ? CurrentRequestSources() : _lastRequestSources;
             var sources = requestSources.Select(source => $"- [[{source.Path}]]"
-                + (source.Passage is null ? "" : $"\n  > 选中段落：{source.Passage.Replace("\n", "\n  > ", StringComparison.Ordinal)}")).ToArray();
+                + (source.Passage is null ? "" : "\n  > " + L10n.Format($"选中段落：{source.Passage.Replace("\n", "\n  > ", StringComparison.Ordinal)}"))).ToArray();
             var result = ResultBox.Text.Trim();
-            var markdown = $"# {DraftTitleBox.Text.Trim()}\n\n> 本笔记由工作台新建。结果由用户粘贴或编辑；微信流未调用模型。\n\n"
-                + "## 分析结果\n\n" + result + "\n\n"
-                + "## 请求记录\n\n"
+            // The note speaks the interface's language: it is a document the user
+            // takes away, so it must not read as Chinese in an English UI.
+            var markdown = $"# {DraftTitleBox.Text.Trim()}\n\n> {L10n.Text("本笔记由工作台新建。结果由用户粘贴或编辑；微信流未调用模型。")}\n\n"
+                + $"## {L10n.Text("分析结果")}\n\n" + result + "\n\n"
+                + $"## {L10n.Text("请求记录")}\n\n"
                 + (_lastRequestAt is null
-                    ? "本草稿由用户手动整理；没有从工作台复制请求。\n"
-                    : $"复制到剪贴板时间：{_lastRequestAt:yyyy-MM-dd HH:mm:ss zzz}\n\n选择的工具：{_lastRequestTool}\n\n提示词：\n\n{_lastRequestPrompt}\n")
-                + "\n## 参考材料\n\n" + (sources.Length == 0 ? "- （未选择材料）" : string.Join("\n", sources)) + "\n";
+                    ? L10n.Text("本草稿由用户手动整理；没有从工作台复制请求。") + "\n"
+                    : L10n.Format($"复制到剪贴板时间：{_lastRequestAt.ToString("yyyy-MM-dd HH:mm:ss zzz", L10n.Culture)}") + "\n\n"
+                      + L10n.Format($"选择的工具：{_lastRequestTool}") + "\n\n"
+                      + L10n.Text("提示词：") + "\n\n" + _lastRequestPrompt + "\n")
+                + $"\n## {L10n.Text("参考材料")}\n\n" + (sources.Length == 0 ? "- " + L10n.Text("（未选择材料）") : string.Join("\n", sources)) + "\n";
             var destination = new ObsidianVaultWorkbench(_model.ObsidianVaultPath!, SaveFolderBox.Text.Trim());
             var savedPath = destination.SaveNewAnalysis(DraftTitleBox.Text, markdown);
             StatusText.Text = L10n.Format($"已新建笔记：{savedPath}");
