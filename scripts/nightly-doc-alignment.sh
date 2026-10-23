@@ -92,10 +92,76 @@ run_target() {
     return 10
   fi
 
+  # 分支上没有 doc-alignment 运行时 = 这条分支根本没参与过这套流程。
+  # 工具链和状态表都只存在于 main；分支是从 main 拉出去的老分支，
+  # 压根没有 scripts/ 目录（实测 2026-10-24）。这时候不是「作业坏了」，
+  # 是「这条分支还没被接进来」——记成跳过，把接法写在日志里。
+  if [ ! -f "$path/scripts/apply-doc-alignment.sh" ] || [ ! -f "$path/docs/progress/doc-alignment.resume.md" ]; then
+    local pend
+    pend="$(pending_for_branch "$branch")"
+    if [ "$pend" -eq 0 ]; then
+      log "该工作区没有 doc-alignment 运行时，但状态表里 TARGET 指向这条分支的步骤都已应用——本目标无事可做，跳过。"
+      return 10
+    fi
+    log "该工作区没有 doc-alignment 运行时（缺 scripts/apply-doc-alignment.sh 或 docs/progress/doc-alignment.resume.md），本目标跳过。"
+    log "→ 还有 $pend 项 TARGET 指向这条分支的步骤没应用：得人工应用，或把 main 的 scripts/ 与状态表嫁接进这条分支。"
+    return 10
+  fi
+
   bash "$path/scripts/apply-doc-alignment.sh" --target "$branch" 2>&1 | while IFS= read -r line; do
     log "  $line"
   done
   return "${PIPESTATUS[0]}"
+}
+
+# ── 数「还剩几项没应用」───────────────────────────────────────────────────────
+#
+# ⚠️ 不要用 `grep -E '.*[⬜⏳]'` 这种多字节字符类。cron 的环境是干净的（没有
+# LANG/LC_ALL），grep 的方括号表达式按**字节**解释，`[⬜⏳]` 退化成字节集合，
+# 于是带中文的行几乎全被命中——同一个文件，C locale 下数出 24，UTF-8 locale 下
+# 才是 1（2026-10-24 实测）。执行器自己早就踩过这个坑，它取状态列是逐格精确
+# 比对（apply-doc-alignment.sh:126 的注释写着这件事）。
+# 这里按 | 切列后逐格比对状态字符串，字节语义确定，跟 locale 无关。
+count_open() { # count_open <状态表>
+  awk -F'|' '
+    /^[|][[:space:]]*[A-Z]-[0-9]+[[:space:]]*[|]/ {
+      s = $4
+      gsub(/^[ \t]+/, "", s); gsub(/[ \t]+$/, "", s)
+      if (s != "✅") n++
+    }
+    END { print n + 0 }
+  ' "$1"
+}
+
+# ── 某条分支还有没有待应用的步骤 ──────────────────────────────────────────────
+#
+# 步骤登记表在 main 的状态表里；每个 .step 文件自己写着 TARGET（改哪条分支）。
+# 「TARGET 指向 X 且状态还没 ✅」= X 上还有活要干。
+pending_for_branch() { # pending_for_branch <分支>
+  local br="$1" f id tgt st n=0
+  for f in "$REPO"/scripts/doc-alignment/steps/*.step; do
+    [ -f "$f" ] || continue
+    id="$(sed -n 's/^ID:[[:space:]]*//p' "$f" | head -1 | tr -d '\r')"
+    tgt="$(sed -n 's/^TARGET:[[:space:]]*//p' "$f" | head -1 | tr -d '\r')"
+    [ "$tgt" = "$br" ] || continue
+    st="$(status_of "$id")"
+    [ "$st" = "✅" ] || n=$((n + 1))
+  done
+  echo "$n"
+}
+
+status_of() { # status_of <ID>  —— 状态表里那一行的状态列
+  awk -F'|' -v id="$1" '
+    /^[|][[:space:]]*[A-Z]-[0-9]+[[:space:]]*[|]/ {
+      k = $2
+      gsub(/^[ \t]+/, "", k); gsub(/[ \t]+$/, "", k)
+      if (k == id) {
+        s = $4
+        gsub(/^[ \t]+/, "", s); gsub(/[ \t]+$/, "", s)
+        print s
+        exit
+      }
+    }' "$REPO/docs/progress/doc-alignment.resume.md"
 }
 
 # ── 把工具链送到目标工作区 ──────────────────────────────────────────────────
@@ -197,15 +263,12 @@ fi
 open=0
 board="$REPO/docs/progress/doc-alignment.resume.md"
 if [ -f "$board" ]; then
-  n="$(grep -cE '^\| [DW]-[0-9]+ \|.*[⬜⏳]' "$board" || true)"
-  case "$n" in ''|*[!0-9]*) n=0 ;; esac
-  open="$n"
+  open="$(count_open "$board")"
   log "状态表（main）：尚有 $open 项未应用。"
 fi
 wb_board="$WB_WORKTREE/docs/progress/doc-alignment.resume.md"
 if [ -f "$wb_board" ]; then
-  n="$(grep -cE '^\| [DW]-[0-9]+ \|.*[⬜⏳]' "$wb_board" || true)"
-  case "$n" in ''|*[!0-9]*) n=0 ;; esac
+  n="$(count_open "$wb_board")"
   log "分支上的状态表副本：$n 项未勾（分支快照，可能陈旧，不计入上面的数）。"
 fi
 

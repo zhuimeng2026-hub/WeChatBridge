@@ -460,7 +460,20 @@ fi
 
 log "=== 完成：成功 $PASSED / 失败 $FAILED / 跳过 $SKIPPED ==="
 log "=== 剩余未完成项 ==="
-grep -E '^\| *[A-Z]-[0-9]+ *\|' "$RESUME" | grep -E '[⬜⏳]' || echo "（无）"
+# ⚠️ 同上：不能用 `[⬜⏳]` 这种多字节字符类——cron 的环境没有 LANG，
+# 方括号按字节解释会把几乎每一行都算成「未完成」（实测 C locale 下 24 行 vs 1 行）。
+# 按 | 切列后逐格比对状态字符串，字节语义确定。
+remaining="$(awk -F'|' '
+  /^[|][[:space:]]*[A-Z]-[0-9]+[[:space:]]*[|]/ {
+    s = $4
+    gsub(/^[ \t]+/, "", s); gsub(/[ \t]+$/, "", s)
+    if (s != "✅") print
+  }' "$RESUME")"
+if [ -n "$remaining" ]; then
+  printf '%s\n' "$remaining"
+else
+  echo "（无）"
+fi
 
 [ "$FAILED" -eq 0 ] || exit 1
 exit 0
