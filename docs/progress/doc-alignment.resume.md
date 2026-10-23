@@ -12,11 +12,11 @@
 | ID | 事项 | 状态 | 备注 |
 |---|---|---|---|
 |   D-01   |   `client-license-gate.resume.md` 标注退役   | ✅ | a8a059f |
-| D-02 | `client-license-gate.md` 第 18 行改写（S5 缺口现状） | ⬜ | 测试文件已随 worktree 丢弃 |
-| D-03 | `server-convergence.md` A-⑤ 证据 commit 改指主干等价提交 | ⬜ | `42ccdc8` 在仓库里查不到 |
-| D-04 | `server-convergence.md` A-⑥ 证据 commit 改指主干等价提交 | ⬜ | `ad457b6` 在仓库里查不到 |
-| D-05 | `server-convergence.md` A-⑦ 证据 commit 改指主干等价提交 | ⬜ | `ca2289c` 在仓库里查不到 |
-| D-06 | `server-convergence.md` 补登 entitlement 决策缺口 | ⬜ | 五枚从未登记进 §11.7 |
+|  D-02  |  `client-license-gate.md` 第 18 行改写（S5 缺口现状）  | 🔴 | 应用失败，已回滚 |
+|  D-03  |  `server-convergence.md` A-⑤ 证据 commit 改指主干等价提交  | 🔴 | 应用失败，已回滚 |
+|  D-04  |  `server-convergence.md` A-⑥ 证据 commit 改指主干等价提交  | 🔴 | 应用失败，已回滚 |
+|  D-05  |  `server-convergence.md` A-⑦ 证据 commit 改指主干等价提交  | 🔴 | 应用失败，已回滚 |
+|   D-06   |   `server-convergence.md` 补登 entitlement 决策缺口   | ✅ | 4bd603e |
 | D-07 | `delivery-quota.md` 写明原决策在拍板前仍有效 | ⬜ | Q-① 未拍板 |
 | D-08 | `admin-console.md` 加归档标记 | ⬜ | 分支已删，内容已并入 main |
 | D-09 | `pg-client-integration.md` 加归档标记 | ⬜ | 分支已删，内容已并入 main |

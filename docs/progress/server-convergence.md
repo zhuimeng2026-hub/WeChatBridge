@@ -39,3 +39,22 @@
 ## 阻塞项
 
 - **真冒烟（起服务 + 迁移实跑 + /healthz 200）阻塞于可用 PostgreSQL**：沙箱内无 postgres 实例（探测确认）。启动门禁已实测（无配置 exit 1、库不可达干净失败且不回显密码），其余留待首次部署联调，与 §11.5 的 E/F 外部输入阻塞同类。
+
+
+## 决策缺口（2026-10-23 补登）
+
+**「买断即全功能」的五枚 entitlement 从未登记。** 已归档的 `feat/server-convergence`
+分支（tag `archive/feat-server-convergence`，**内容从未并入 main**）在 A-⑥ 里让管理员
+签发的许可证带五枚 entitlement：PRO / PDF / EXPORT / SCENE / HISTORY，出处是当时的用户裁决。
+
+但主干上 `server/internal/admin/admin.go` 只发 `EntitlementPro` 一枚，而
+`docs/design/buyout-flow-convergence.zh-CN.md` §11.7 里**零命中**——
+这条产品决策**从来没有被登记进任何设计文档**。
+
+今天不产生功能差异：服务端验签只要求 ent 非空（`server/internal/license/license.go`），
+客户端只认一个 bool `IsPro`，macOS 侧同样没有 ent 分级。所以这**不是实现缺口，是决策缺口**——
+换一个人读代码，会以为「买断版只值 PRO 一枚」是既定事实。
+
+**待拍板**：(a) 改成五枚并登记进 §11.7；还是 (b) 明确记录维持 PRO-only 的理由。
+**在拍板之前，两边都别当它是既定事实。**
+
