@@ -1,0 +1,11 @@
+ID: D-26
+TARGET: main
+FILE: docs/progress/doc-alignment.md
+OP: replace
+VERIFY: grep -qF '已合进 `main`' docs/progress/doc-alignment.md
+COMMIT: docs(doc-align): 看板里 workbench 分支的合并决策改成已合并
+---BEGIN---
+| **workbench 分支合不合并** | 三处本地化漏项未修，CI 声称的通过情况需人工核实一次（`gh run view 39777985455`） | 先修漏项再合，还是先合后修 |
+---SPLIT---
+| **workbench 分支合不合并** | **已合进 `main`**（2026-10-24）：CI run 39777985455 对带代码的提交 `5ab4785` 是 success——用 `curl https://api.github.com/repos/<repo>/actions/runs/39777985455` 核实的（`gh` 未登录，`gh run view` 会先去要认证） | 剩下的三处本地化漏项（L-1~L-3）修不修——它们已作为 ⬜ 行登记在主干上的看板上 |
+---END---

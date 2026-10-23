@@ -1,0 +1,37 @@
+ID: D-24
+TARGET: main
+FILE: CLAUDE.md
+OP: replace
+VERIFY: grep -qF '2026-10-24 已合进' CLAUDE.md
+COMMIT: docs: CLAUDE.md 把知识工作台从「在飞分支」改成已合进主干
+---BEGIN---
+看板本身就是进度源，别只看文档：`docs/progress/*.md` 里 ⬜ / ⏳ 的行是**代码尚未落地**。
+最新的一块工作是 **`feat/obsidian-workbench-variants`**（看板
+`docs/progress/feat/obsidian-workbench-variants.md`，只存在于该分支、合并后才进主干）：
+Windows 端新增「知识工作台」面板（阅读优先 / 案件工作区 / 资料工作台三套布局），
+读本地 Obsidian Markdown 库、选材、把请求复制到外部工具、粘贴结果、保存新笔记。
+**三套布局都只做源码级验证**，完整视觉还原被 `design-qa.md` 自判为 `blocked`
+（富文本气泡、应用内模型回复流、附件内嵌预览三项未做）。
+上一块 `unionid-bridge` 的状态：看板 `docs/progress/unionid-bridge.md`；分支已归档，
+成果在 tag `archive/feat-unionid-bridge`，但 U-⓪ 与 U-③ 已经合进 `main`）：U-⓪ 与 U-③ 已落地，
+**U-④（unionid→openid 那一跳）卡在接口未派发**——`cgi-bin/user/getid` 这个路径**根本不存在**，
+而主路径（换 token 的响应自带昵称头像）一旦在真机成立，桥接就不必做了。
+**下一步是一次真机扫码看日志里的 `token_nickname`**，不是写代码。
+---SPLIT---
+看板本身就是进度源，别只看文档：`docs/progress/*.md` 里 ⬜ / ⏳ 的行是**代码尚未落地**。
+最新的一块工作是 **Windows 端的「知识工作台」**（分支 `feat/obsidian-workbench-variants`，
+**2026-10-24 已合进 `main`**；看板 `docs/progress/feat/obsidian-workbench-variants.md`
+也在主干上，是 `docs/progress/` 下唯一的子目录）：
+Windows 端新增「知识工作台」面板（阅读优先 / 案件工作区 / 资料工作台三套布局），
+读本地 Obsidian Markdown 库、选材、把请求复制到外部工具、粘贴结果、保存新笔记。
+**三套布局都只做源码级验证**，完整视觉还原被 `design-qa.md` 自判为 `blocked`
+（富文本气泡、应用内模型回复流、附件内嵌预览三项未做）。
+**分支 CI 已绿**：run 39777985455 对带代码的提交 `5ab4785` 是 success
+（`gh` 未登录，用 `curl https://api.github.com/repos/<repo>/actions/runs/<id>` 核实的）。
+但**看板上仍有 ⬜**：三处本地化漏项（L-1~L-3）与三条视觉缺口（V-1~V-3）尚未落地。
+上一块 `unionid-bridge` 的状态：看板 `docs/progress/unionid-bridge.md`；分支已归档，
+成果在 tag `archive/feat-unionid-bridge`，但 U-⓪ 与 U-③ 已经合进 `main`）：U-⓪ 与 U-③ 已落地，
+**U-④（unionid→openid 那一跳）卡在接口未派发**——`cgi-bin/user/getid` 这个路径**根本不存在**，
+而主路径（换 token 的响应自带昵称头像）一旦在真机成立，桥接就不必做了。
+**下一步是一次真机扫码看日志里的 `token_nickname`**，不是写代码。
+---END---

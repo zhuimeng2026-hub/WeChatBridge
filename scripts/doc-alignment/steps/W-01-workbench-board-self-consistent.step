@@ -1,5 +1,5 @@
 ID: W-01
-TARGET: feat/obsidian-workbench-variants
+TARGET: main
 FILE: docs/progress/feat/obsidian-workbench-variants.md
 OP: replace
 VERIFY: grep -qF 'L-1' docs/progress/feat/obsidian-workbench-variants.md
