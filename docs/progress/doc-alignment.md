@@ -35,28 +35,38 @@ bash scripts/verify-doc-alignment.sh
 执行器**一次触发把能做的都做完**，每步一个独立 commit，步与步之间互不依赖——
 所以中途被打断只丢当前那一步，重跑从断点继续。
 
-### 夜间无人值守
+### 夜间无人值守（Linux）
 
-`scripts/nightly-doc-alignment.ps1` 是启动器，由 Windows 计划任务在 01:00 触发。
-它做三件事：建 workbench worktree（没有就建）→ 两条分支各跑一遍执行器 →
-只在**确实有提交**时推 origin。
+**真正执行的是一台 Linux 主机**：克隆本仓库，装好 git，挂在 cron 上跑。
+`scripts/nightly-doc-alignment.sh` 是启动器，它做三件事：建 workbench worktree
+（没有就建）→ 两条分支各跑一遍执行器 → 只在**确实有提交**时推 origin。
 
-**它不安装、不修改任何计划任务**——注册命令写在脚本头部注释里，由人执行。
-清单跑空时它也只提示该跑什么，不去动账号级的任务状态。（脚本是幂等的：
-清单空了它每次跑都是空操作，留着也不会做错事，只是每天醒来一次。）
+挂 cron：
 
-**异地部署**：脚本**不写死任何路径**——仓库根从 `$PSScriptRoot` 的上一级推导，
-worktree 目录从仓库根的同级推导（`D:\WeChatBridge` → `D:\WeChatBridge-wb`）。
-整个仓库拷到别的机器、别的盘符、别的目录都能直接用，只需重新注册一次计划任务
-（注册命令写在脚本头部注释里）。
+```cron
+0 1 * * * /path/to/repo/scripts/nightly-doc-alignment.sh >> /path/to/log 2>&1
+```
+
+**它不安装、不修改任何定时任务**——cron 那行由人写。它在清单跑空时也只提示，
+不去动 crontab。（脚本是幂等的：清单空了它每次跑都是空操作，留着也不会做错事，
+只是每天醒来一次。）
+
+**异地部署**：脚本**不写死任何路径**——仓库根从脚本自身位置推导（`scripts/` 的上一级），
+worktree 目录从仓库根的同级推导（`<repo>` → `<repo>-wb`）。整个仓库拷到别的机器、
+别的目录、换个用户都能直接用，只需重新挂一次 cron。
 
 **前置条件**（不满足时启动器会拒绝跑，并说明原因）：
 
 | 条件 | 为什么是硬条件 |
 |---|---|
-| 主检出 `D:\WeChatBridge` 停在 `main` | 执行器要求目标分支已检出；一个分支不能同时被两个工作树占用 |
+| 主检出停在 `main` | 执行器要求目标分支已检出；一个分支不能同时被两个工作树占用 |
 | 两个工作区都**没有未提交的改动** | 脏工作区下「改坏了就回滚」会误伤别人的改动——2026-10-23 清 `D:\WeChatBridge-C` 时就是这么丢了三份测试文件 |
 | workbench 分支已推送到 origin | 启动器要推它 |
+
+**行尾**：仓库没有 `.gitattributes` 且开发机 `core.autocrlf` 开着，Windows 上
+checkout 出来是 CRLF。**提交进仓库的 blob 是 LF（CR 字节为 0）**，所以 Linux 上
+clone 出来就是 LF，脚本原生可跑，步骤定义与目标 `.md` 的行尾也一致——执行器里的
+`normalize_body` 会按**目标文件**的约定归一化，两边都能对上。
 
 ## 3. 步骤明细
 
@@ -79,6 +89,7 @@ worktree 目录从仓库根的同级推导（`D:\WeChatBridge` → `D:\WeChatBri
 | D-16 | `branch-work-assignment.zh-CN.md` | 标注为历史执行记录 | 那轮三分支并行早已结束，但协议本身仍有效 |
 | D-17 | `.gitignore` | 忽略 `/chat-exports/` | 真实微信聊天导出（zip + 聊天记录报告 + 微信图片），误 `git add -A` 就会把私人对话提交进仓库 |
 | D-18 | `CLAUDE.md` | 加校验器入口 | |
+| D-19 | `.gitattributes`（新建） | 给 `*.sh` / `*.step` 钉死 LF | 夜间作业跑在 Linux 上，CRLF 脚本会直接 `$'\r': command not found` |
 
 ### workbench 分支（W-01）
 

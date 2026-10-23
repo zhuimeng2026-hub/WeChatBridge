@@ -26,6 +26,7 @@
 #
 #   OP=prepend  把正文插到文件首行（标题行）之后
 #   OP=append   把正文追加到文件末尾
+#   OP=create   新建文件（文件已存在就报错，不覆盖）
 #   OP=replace  正文里用一行 ---SPLIT--- 分成「旧文」与「新文」两段，
 #               整段精确替换；旧文必须**恰好出现一次**，否则报错回滚
 #
@@ -89,6 +90,8 @@ fi
 PASSED=0
 FAILED=0
 SKIPPED=0
+DRYTAG=""
+[ "$DRYRUN" -eq 1 ] && DRYTAG=" (dry-run)"
 
 log() { printf '%s %s\n' "$(date '+%H:%M:%S')" "$*"; }
 
@@ -131,20 +134,29 @@ resume_mark() { # resume_mark <ID> <mark> <note>
   # 状态表也是 CRLF 的，重写时要把行尾补回去，否则改过的行会变成 LF，
   # 文件变成混合行尾（git diff 会整片飘红）
   if grep -q $'\r$' "$RESUME" 2>/dev/null; then eol='\r'; else eol=''; fi
+  # 顺带把**整张表**规范化：分隔符两侧的空白一律去掉再拼回去。
+  # 只整理被改的那一行是不够的——早先那版只在重写单行时处理，别的行仍留着
+  # 手写时的原样，表格于是长短不齐。
   awk -v id="$id" -v mark="$mark" -v note="$note" -v eol="$eol" '
+    function trim(s) { gsub(/^[ \t]+/, "", s); gsub(/[ \t]+$/, "", s); return s }
     BEGIN { done = 0 }
     {
-      if (!done && $0 ~ ("^\\| *" id " *\\|")) {
-        # 保留前两列，重建状态列与备注列
-        n = split($0, f, "|")
+      line = $0
+      if (line ~ /\r$/) { sub(/\r$/, "", line); tail = "\r" } else { tail = "" }
+
+      if (line ~ /^\| *[DW]-[0-9]+ *\|/) {
+        n = split(line, f, "|")
         if (n >= 5) {
-          gsub(/\r$/, "", f[2]); gsub(/\r$/, "", f[3])
-          printf "| %s | %s | %s | %s |%s\n", f[2], f[3], mark, note, eol
-          done = 1
+          k = trim(f[2])
+          desc = trim(f[3])
+          st = trim(f[4])
+          nt  = trim(f[5])
+          if (k == id) { st = mark; nt = note; done = 1 }
+          printf "| %s | %s | %s | %s |%s\n", k, desc, st, nt, eol
           next
         }
       }
-      print
+      print line tail
     }
   ' "$RESUME" > "$tmp" && mv "$tmp" "$RESUME"
 }
@@ -170,6 +182,17 @@ apply_append() { # apply_append <file> <body-file>
   } >> "$target"
 }
 
+apply_create() { # apply_create <file> <body-file>
+  # 建新文件。已存在就报错——「create」撞上一个已存在的文件，说明步骤定义
+  # 与仓库实况脱节了，静默覆盖会毁掉别人的东西。
+  local target="$1" body="$2"
+  if [ -e "$target" ]; then
+    echo "文件已存在，拒绝覆盖：$target"
+    return 1
+  fi
+  cat "$body" > "$target"
+}
+
 apply_replace() { # apply_replace <file> <body-file>
   # 正文用 ---SPLIT--- 分成旧文/新文；旧文必须恰好出现一次。
   #
@@ -187,7 +210,10 @@ apply_replace() { # apply_replace <file> <body-file>
     return 1
   fi
 
-  awk '
+  # ⚠️ awk 的 -v 赋值必须写在程序文本**之前**。放后面的话 awk 会把 -v 当成
+  #    普通参数，变量全成空串，报 "expression for `<' redirection has null
+  #    string value"——这个报错完全不指向真正的原因，值得记一笔。
+  awk -v oldf="$oldfile" -v newf="$newfile" -v targetf="$target" -v outf="$out" '
     function slurp(f,   line, s) {
       s = ""
       while ((getline line < f) > 0) { s = s line "\n" }
@@ -202,9 +228,9 @@ apply_replace() { # apply_replace <file> <body-file>
       if (idx == 0) { print "NOTFOUND" > "/dev/stderr"; exit 1 }
       rest = substr(t, idx + length(o))
       if (index(rest, o) > 0) { print "NOTUNIQUE" > "/dev/stderr"; exit 1 }
-      printf "%s", substr(t, 1, idx - 1) n rest > outf
+      printf("%s", (substr(t, 1, idx - 1) n rest)) > outf
     }
-  ' -v oldf="$oldfile" -v newf="$newfile" -v targetf="$target" -v outf="$out" 2>/tmp/wcb_replace_err.$$
+  ' 2>/tmp/wcb_replace_err.$$
   rc=$?
 
   if [ $rc -ne 0 ]; then
@@ -219,7 +245,7 @@ apply_replace() { # apply_replace <file> <body-file>
 }
 
 # ── 主循环 ─────────────────────────────────────────────────────────────────
-log "=== 文档对齐执行器：target=$TARGET${DRYRUN:+ (dry-run)} ==="
+log "=== 文档对齐执行器：target=$TARGET$DRYTAG ==="
 
 for stepfile in "$STEPDIR"/*.step; do
   [ -e "$stepfile" ] || continue
@@ -243,7 +269,14 @@ for stepfile in "$STEPDIR"/*.step; do
     continue
   fi
 
-  if [ ! -f "$file" ]; then
+  if [ "$op" = "create" ]; then
+    if [ -e "$file" ]; then
+      FAILED=$((FAILED + 1))
+      log "FAIL  $id 是 create 操作，但文件已存在：$file"
+      resume_mark "$id" "🔴" "文件已存在，拒绝覆盖"
+      continue
+    fi
+  elif [ ! -f "$file" ]; then
     FAILED=$((FAILED + 1))
     log "FAIL  $id 目标文件不存在：$file"
     resume_mark "$id" "🔴" "目标文件不存在"
@@ -271,6 +304,7 @@ for stepfile in "$STEPDIR"/*.step; do
     prepend) apply_prepend "$file" "$bodyfile" ;;
     append)  apply_append  "$file" "$bodyfile" ;;
     replace) apply_replace "$file" "$bodyfile" ;;
+    create)  apply_create  "$file" "$bodyfile" ;;
     *) echo "未知的 OP：$op"; rm -f "$bodyfile"; FAILED=$((FAILED+1)); continue ;;
   esac
   rc=$?

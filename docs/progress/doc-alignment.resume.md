@@ -29,4 +29,5 @@
 |   D-16   |   `branch-work-assignment.zh-CN.md` 标注为历史执行记录   | ✅ | fb50d3e |
 |   D-17   |   `.gitignore` 忽略 `/chat-exports/`   | ✅ | bac9f04 |
 |   D-18   |   `CLAUDE.md` 加校验器入口   | ✅ | 2665144 |
+| D-19 | `.gitattributes` 给 `*.sh` / `*.step` 钉死 LF | ⬜ | 夜间作业跑在 Linux 上，CRLF 脚本会直接死 |
 | W-01 | workbench 看板状态自洽化 + 补未落地项 | ⬜ | 三处本地化漏项 + 三条视觉缺口 |

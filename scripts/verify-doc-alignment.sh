@@ -171,18 +171,19 @@ done
 
 for board in $(git ls-tree --name-only "$MAIN_REF" -- docs/progress/ | grep '\.md$'); do
   base="$(basename "$board")"
+  hashes="$(mktemp)"
   git show "$MAIN_REF:$board" 2>/dev/null \
     | grep -E '^\| ([A-Z]-|[0-9]+ \|)' \
     | grep -oE '\b[0-9a-f]{7,40}\b' \
-    | sort -u > /tmp/wcb_hashes.$$ 2>/dev/null || continue
+    | sort -u > "$hashes" 2>/dev/null || true
   while read -r h; do
     [ -n "$h" ] || continue
     git cat-file -e "$h^{commit}" 2>/dev/null || continue
     if ! git merge-base --is-ancestor "$h" "$MAIN_REF" 2>/dev/null; then
       say FAIL C3 "$base 任务表引用的 commit $h 不在 $MAIN_REF 的历史里"
     fi
-  done < /tmp/wcb_hashes.$$
-  rm -f /tmp/wcb_hashes.$$
+  done < "$hashes"
+  rm -f "$hashes"
 done
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -191,17 +192,18 @@ done
 
 for board in $(git ls-tree --name-only "$MAIN_REF" -- docs/progress/ | grep '\.md$'); do
   base="$(basename "$board")"
+  paths="$(mktemp)"
   git show "$MAIN_REF:$board" 2>/dev/null \
     | grep -oE '`(windows|server|macos|shared|admin-console)/[A-Za-z0-9_./-]+\.(cs|go|swift|js|ps1|json|md)`' \
-    | tr -d '`' | sort -u > /tmp/wcb_paths.$$ 2>/dev/null || continue
+    | tr -d '`' | sort -u > "$paths" 2>/dev/null || true
   while read -r p; do
     [ -n "$p" ] || continue
     case "$p" in *'…'*|*'...'*) continue ;; esac
     if ! git cat-file -e "$MAIN_REF:$p" 2>/dev/null; then
       say FAIL C4 "$base 提到的主干文件不存在：$p"
     fi
-  done < /tmp/wcb_paths.$$
-  rm -f /tmp/wcb_paths.$$
+  done < "$paths"
+  rm -f "$paths"
 done
 
 # ─────────────────────────────────────────────────────────────────────────────

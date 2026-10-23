@@ -1,0 +1,22 @@
+ID: D-19
+TARGET: main
+FILE: .gitattributes
+OP: create
+VERIFY: grep -qF '*.sh text eol=lf' .gitattributes
+COMMIT: chore(gitattributes): 给 shell 脚本与步骤定义钉死 LF 行尾
+---BEGIN---
+# Shell scripts and step definitions must stay LF.
+#
+# The nightly job runs on a Linux host, where a CRLF script dies with
+# `$'\r': command not found` before it does anything at all. This repository
+# had no .gitattributes and the development machine has core.autocrlf=true,
+# so nothing else guaranteed it — the committed blobs happened to be LF only
+# because they were authored that way.
+#
+# These two patterns are the only ones that get a rule. In particular the
+# Markdown boards keep their existing (autocrlf-driven) convention: the
+# executor's normalize_body aligns each step body to whatever its target file
+# actually uses, so a mixed repository still works.
+*.sh text eol=lf
+*.step text eol=lf
+---END---
