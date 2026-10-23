@@ -1,0 +1,12 @@
+ID: W-03
+TARGET: main
+FILE: docs/progress/feat/obsidian-workbench-variants.md
+OP: replace
+VERIFY: grep -qF 'L-4 笔记标题后缀' docs/progress/feat/obsidian-workbench-variants.md
+COMMIT: docs(workbench): 笔记标题后缀「分析草稿」也已本地化（L-4）
+---BEGIN---
+| L-3 下拉项 `Content="其他"` 本地化 | ✅ | aef4cc3 |
+---SPLIT---
+| L-3 下拉项 `Content="其他"` 本地化 | ✅ | aef4cc3 |
+| L-4 笔记标题后缀「分析草稿」未本地化 | ✅ | 7059a17 |
+---END---
