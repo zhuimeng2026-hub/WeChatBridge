@@ -11,10 +11,9 @@ Owner: Codex; implementation delegated to gpt-6-luna at the user’s request.
 | WB-QA CI and screenshot workflow | ✅ passed | run 39777985455; source 5ab4785 |
 | WB-QA native visual comparison | ⏳ native layout reviewed; full mock fidelity blocked | design-qa.md |
 | Remote push / CI start | ✅ complete | user approved; published via connector; run 39776531598 |
-| L-1 `en.json` 缺 `筛选失败：{0}` | ⬜ | `WorkbenchPane.xaml.cs:408` |
-| L-2 `SaveFolderBox.Text` 硬编码 `分析` | ⬜ | `WorkbenchPane.xaml.cs:60` |
-| L-3 下拉项 `Content="其他"` 未本地化 | ⬜ | `WorkbenchPane.xaml:163` |
-| V-1 富文本 / 聊天气泡渲染 | ⬜ | `design-qa.md` |
+| L-1 `en.json` 补 `筛选失败：{0}` | ✅ | aef4cc3 |
+| L-2 `SaveFolderBox.Text` 走 `L10n.Text` | ✅ | aef4cc3 |
+| L-3 下拉项 `Content="其他"` 本地化 | ✅ | aef4cc3 || V-1 富文本 / 聊天气泡渲染 | ⬜ | `design-qa.md` |
 | V-2 应用内模型回复流 | ⬜ | `design-qa.md` |
 | V-3 附件内嵌预览 | ⬜ | `design-qa.md` |
 
