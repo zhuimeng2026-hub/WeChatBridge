@@ -31,5 +31,5 @@
 | D-18 | `CLAUDE.md` 加校验器入口 | ✅ | 4d8c85d |
 | D-19 | `.gitattributes` 给 `*.sh` / `*.step` 钉死 LF | ✅ | 0753028 |
 | D-20 | `CLAUDE.md` 不再写死 main 领先 upstream 的提交数 | ✅ | db84209 |
-| D-21 | `CLAUDE.md` 的看板块数对齐到十块 | 🔴 | 应用失败，已回滚 |
+| D-21 | `CLAUDE.md` 的看板块数对齐到十块 | ✅ | c82f3c8 |
 | W-01 | workbench 看板状态自洽化 + 补未落地项 | ⬜ | 三处本地化漏项 + 三条视觉缺口 |
