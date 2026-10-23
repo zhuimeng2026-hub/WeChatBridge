@@ -529,16 +529,17 @@ Windows 端新增「知识工作台」面板（阅读优先 / 案件工作区 / 
 - **看板目录在 `main` 上有十块**：八块历史/在用的（`server-convergence` / `admin-console` /
   `client-license-gate` / `client-license-gate.resume` / `pg-client-integration` /
   `unionid-bridge` / `delivery-quota` / `login-perf-and-ux`），加上文档对齐工具自带的两块
-  （`doc-alignment` 及其机器可读状态表）。在飞分支 `feat/obsidian-workbench-variants` 再自带一块
-  （`docs/progress/feat/obsidian-workbench-variants.md`，随该分支合并才进主干——
-  它是 `docs/progress/` 下唯一的子目录，因为分支名本身含斜杠）。
+  （`doc-alignment` 及其机器可读状态表）。另有 `docs/progress/feat/obsidian-workbench-variants.md`
+  一块在**子目录**里（2026-10-24 随分支合并进主干——它是 `docs/progress/` 下唯一的子目录，
+  因为分支名本身含斜杠），所以**校验器的 C1.4 数不到它**：那个「十块」只算
+  `docs/progress/` 的直接子文件。
   **但看板多不等于分支多**：2026-10-22 与 2026-10-23 做过两轮分支清理，
   `feat/client-license-gate`、`feat/delivery-quota`、`feat/pg-client-integration`、
   `feat/unionid-bridge` 都已归档，2026-10-23 又清掉 `docs/windows-local-verification`、
   `feat/admin-console`、`feat/windows-portable-usb`、`feat/server-convergence`，
   **`feat/client-license-gate` 的 worktree（`D:/WeChatBridge-C`）连同三个未跟踪测试文件一并删除**。
   **这些分支对应的看板从此是历史记录，不再是活的进度源**——
-  现在还活着的只有 `main` 与 `feat/obsidian-workbench-variants` 两条分支的看板。
+  现在还活着的只有 `main` 上的看板，其中知识工作台那块是最新的一块（2026-10-24 已随分支合并进主干）。
   远端分支清单：`git branch -r | grep origin/`（origin 上现在只剩 `main` 与
   `feat/obsidian-workbench-variants` 两条；`upstream` 的十二条 = `upstream/main` 本体加十一条
   上游 PR 分支，全是上游 PR 合并后的残留，**推不动也不该推**——
