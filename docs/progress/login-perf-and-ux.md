@@ -1,5 +1,12 @@
 # 进度看板：feat/login-perf-and-ux（worktree `C:\WeChatBridge\.worktrees\login-perf-and-ux`）
 
+> **归档（2026-10-23）。** 分支 `feat/login-perf-and-ux` 已不存在，它记录的 worktree
+> `C:\WeChatBridge\.worktrees\login-perf-and-ux` 也不存在了。
+> 其成果**已在 `main` 上**（登录链路轮询加速与 UX 改善，见 `87c2f92`）。
+> 本看板从此是历史记录，不是活的进度源。
+
+
+
 > 规则见 `docs/design/progress-sync-protocol.zh-CN.md` §2。
 > 本分支 2026-10-19 19:14 自 `feat/pg-client-integration` HEAD=`386f3f0` 拉出。
 
