@@ -33,5 +33,5 @@
 | D-20 | `CLAUDE.md` 不再写死 main 领先 upstream 的提交数 | ✅ | db84209 |
 | D-21 | `CLAUDE.md` 的看板块数对齐到十块 | ✅ | c82f3c8 |
 | D-22 | `CLAUDE.md` 的 upstream 内容断言改成内容比对口径 | ✅ | 1a71214 |
-| D-23 | 看板里同一条 upstream 断言同步改 | ⬜ | 同一处假象，CLAUDE.md 与看板各写一遍 |
+| D-23 | 看板里同一条 upstream 断言同步改 | ✅ | f05f57c |
 | W-01 | workbench 看板状态自洽化 + 补未落地项 | ⬜ | 三处本地化漏项 + 三条视觉缺口 |
