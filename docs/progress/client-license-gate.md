@@ -2,6 +2,13 @@
 
 > 规则见 `docs/design/progress-sync-protocol.zh-CN.md` §2：只有机器 C 更新本文件，与 commit 同一时刻。
 >
+> 2026-10-24 校准：**S5 缺口补上了**，`archive/feat-client-license-gate` 的内容不再是「只存在于 tag 里」。
+> 那条分支自己只有两笔提交：`502e9ae`（S1 的退避单测）与 `86d0bcd`（一笔文档纠正——当时实测
+> S2–S5 的测试**从未真正跑过**，10 红 649 绿）。S1–S4 早已在主干上并被重写过；**S5 那份测试从未
+> 进过任何 ref**（它在已删除的 worktree 里，删 worktree 时一并没了），所以不是移植而是**重写**：
+> 新增 `ActivationTransportTests.cs`（24 例）。tag 的两笔提交用 `-s ours` 记为已合并，
+> 不取它的内容——强行合并会把早已退役的兑换码那一整套带回来。
+>
 > 2026-10-18 校准：此前看板未随 `d48827f` 更新，C-①/③/⑤ 的数据层与控制器其实已落地。
 > 本表按 `docs/design/client-license-gate-progress.zh-CN.md` 的 0–19 细目重新核对代码后重写。
 > 逐项状态 ⬜ / ⏳ / ✅，⏳ = 已有代码但未收尾或未验证。
@@ -58,9 +65,9 @@
 | 14 | 机器码展示控件 | ✅ 可复制 TextBox + 复制按钮，嵌在购买窗内；通用页另有常驻一行 |
 | 15 | 启动门禁接入 | ✅ `ActivationGate` + `App.xaml.cs` + 通用页 |
 | 16 | 新文案进 `en.json` | ✅ 40 条，登录 + 购买 + 两个控制器 |
-| 17 | Core 单测（退避 / 时间戳 / 登录 / 激活） | ✅ S1–S4 共 80 项：`PollScheduleTests` `cbcaa5d`、`ActivationContractTests` `77c33b2`、`AccountServiceTests` `a1624e3`、`ActivationServiceTests` `7de97be` |
-| 18 | AppTests：`HttpActivationTransport` handler 注入 | ⬜ 传输层靠 `IActivationTransport` seam 覆盖，真实 HttpClient 未测。**2026-10-23 更新**：曾有一份 678 行 / 26 例的 `ActivationTransportTests.cs` 躺在已删除的 worktree `D:\WeChatBridge-C` 里（全仓库任何 ref 都没有它），随 worktree 一并丢弃——所以这个缺口现在是**空的**，不是「差一次移植」 |
-| 19 | 出口 | ⏳ build/test 双形态绿、`-background` 实跑常驻；mock 全流程未跑 |
+| 17 | Core 单测（退避 / 时间戳 / 登录 / 激活） | ✅ S1–S4 都在主干上：`PollScheduleTests` `cbcaa5d`、`ActivationContractTests` `77c33b2`、`AccountServiceTests` `a1624e3`、`ActivationServiceTests` `7de97be`——此后四个文件都被重写过（现在分别是 8 / 19 / 30 / 16 个用例）；2026-10-24 把 tag 版 S1 的「零预算」断言补了回来 |
+| 18 | AppTests：`HttpActivationTransport` handler 注入 | ✅ **2026-10-24 补上**：`ActivationTransportTests.cs`（24 例，注入 `HttpMessageHandler` 走真实 `HttpActivationTransport`，不开 socket）。**不是找回**——原来那份 678 行 / 26 例躺在已删除的 worktree `D:\WeChatBridge-C` 里（全仓库任何 ref 都没有它），随 worktree 一并丢弃；这份是照契约重写的 |
+| 19 | 出口 | ⏳ build/test 双形态绿（含新增的传输层 24 例）、`-background` 实跑常驻；mock 全流程未跑 |
 
 ## 门禁不锁任何东西（与任务书措辞不同）
 

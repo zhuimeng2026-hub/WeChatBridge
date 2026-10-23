@@ -110,6 +110,8 @@ public sealed class PollScheduleTests
         Assert.Equal(9, PollSchedule.Login.AttemptsWithin(TimeSpan.FromSeconds(20)));
         Assert.Equal(1, PollSchedule.Login.AttemptsWithin(TimeSpan.FromSeconds(1)));
         Assert.Equal(2, PollSchedule.Login.AttemptsWithin(TimeSpan.FromSeconds(1.5)));
+        // A budget of zero fits nothing: the first wait alone is over it.
+        Assert.Equal(0, PollSchedule.Login.AttemptsWithin(TimeSpan.Zero));
 
         // Activation starts at five seconds, so the same twenty-second budget fits
         // fewer attempts even though the ceiling is the same.
