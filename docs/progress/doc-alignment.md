@@ -116,7 +116,7 @@ clone 出来就是 LF，脚本原生可跑，步骤定义与目标 `.md` 的行�
 | **`workbench-review.yml` 的 push 触发器** | 写死 `[feat/obsidian-workbench-variants]`，合并后成死代码 | 删掉 push 触发 / 整个删掉 / 并进 `ci.yml` |
 | **README / USAGE / PRODUCT_CAPABILITIES 要不要写「知识工作台」** | 现在零命中，但分支自己的交付文档把它当客户入口 | 分支合了再写，还是现在就补 |
 | **旧计划任务 `WeChatBridge-Resume-LicenseGate`** | 指向已删的 worktree，每次触发只在「找不到清单」退出 1 | 停用（推荐）/ 删除 |
-| **upstream 的 12 条远端跟踪引用** | 内容全在 main 里，推不动也不该推 | 保留（CLAUDE.md 要求 upstream 作对比锚点），只在本地层面 prune |
+| **upstream 的 12 条远端跟踪引用** | 十二条 = `upstream/main` 本体 + 十一条上游 PR 分支。其中五条的 tip 不在 `upstream/main` 的历史里（`git rev-list --count main..<branch>` 报 12 个提交），但**内容全在 main 里**——这是 SHA 层面的假象：上游合并之后分支又被推了同内容不同 SHA 的提交，加上 `macos/` 目录重组搬了路径。判据要用 patch-id / blob 比对，**不能用提交数**（详见 CLAUDE.md 同段） | 保留（CLAUDE.md 要求 upstream 作对比锚点），只在本地层面 prune |
 
 ## 5. 已经做掉的部分（2026-10-23）
 
