@@ -26,8 +26,8 @@
 | D-13 | `progress-sync-protocol.zh-CN.md` worktree 表标注已删除 | 🔴 | 应用失败，已回滚 |
 | D-14 | `client-license-gate-progress.zh-CN.md` worktree 表去路径 | 🔴 | 应用失败，已回滚 |
 | D-15 | `client-license-gate-progress.zh-CN.md` 正文去路径 | 🔴 | 应用失败，已回滚 |
-| D-16 | `branch-work-assignment.zh-CN.md` 标注为历史执行记录 | ✅ | 已满足 |
-| D-17 | `.gitignore` 忽略 `/chat-exports/` | ✅ | 已满足 |
-| D-18 | `CLAUDE.md` 加校验器入口 | ✅ | 已满足 |
-| D-19 | `.gitattributes` 给 `*.sh` / `*.step` 钉死 LF | ⬜ | 夜间作业跑在 Linux 上，CRLF 脚本会直接死 |
+| D-16 | `branch-work-assignment.zh-CN.md` 标注为历史执行记录 | ✅ | 79cf94e |
+| D-17 | `.gitignore` 忽略 `/chat-exports/` | ✅ | d45bbc4 |
+| D-18 | `CLAUDE.md` 加校验器入口 | ✅ | 4d8c85d |
+| D-19 | `.gitattributes` 给 `*.sh` / `*.step` 钉死 LF | ✅ | 6a1a6aa |
 | W-01 | workbench 看板状态自洽化 + 补未落地项 | ⬜ | 三处本地化漏项 + 三条视觉缺口 |
