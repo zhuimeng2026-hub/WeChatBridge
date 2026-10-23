@@ -244,7 +244,7 @@ fi
 #     工具目录本身排除在外：步骤定义里必然含有旧文。
 # ─────────────────────────────────────────────────────────────────────────────
 
-for ghost in 'D:/WeChatBridge-C' 'D:\WeChatBridge-C' 'WeChatBridge-B'; do
+for ghost in 'D:/WeChatBridge-C' 'D:\WeChatBridge-C' 'D:/WeChatBridge-B' 'D:\WeChatBridge-B'; do
   hits=""
   for f in $(git ls-files); do
     case "$f" in
