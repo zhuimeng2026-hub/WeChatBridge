@@ -59,7 +59,7 @@
 | 15 | 启动门禁接入 | ✅ `ActivationGate` + `App.xaml.cs` + 通用页 |
 | 16 | 新文案进 `en.json` | ✅ 40 条，登录 + 购买 + 两个控制器 |
 | 17 | Core 单测（退避 / 时间戳 / 登录 / 激活） | ✅ S1–S4 共 80 项：`PollScheduleTests` `cbcaa5d`、`ActivationContractTests` `77c33b2`、`AccountServiceTests` `a1624e3`、`ActivationServiceTests` `7de97be` |
-| 18 | AppTests：`HttpActivationTransport` handler 注入 | ⬜ 传输层靠 `IActivationTransport` seam 覆盖，真实 HttpClient 未测 |
+| 18 | AppTests：`HttpActivationTransport` handler 注入 | ⬜ 传输层靠 `IActivationTransport` seam 覆盖，真实 HttpClient 未测。**2026-10-23 更新**：曾有一份 678 行 / 26 例的 `ActivationTransportTests.cs` 躺在已删除的 worktree `D:\WeChatBridge-C` 里（全仓库任何 ref 都没有它），随 worktree 一并丢弃——所以这个缺口现在是**空的**，不是「差一次移植」 |
 | 19 | 出口 | ⏳ build/test 双形态绿、`-background` 实跑常驻；mock 全流程未跑 |
 
 ## 门禁不锁任何东西（与任务书措辞不同）

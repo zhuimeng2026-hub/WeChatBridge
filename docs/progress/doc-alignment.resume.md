@@ -12,7 +12,7 @@
 | ID | 事项 | 状态 | 备注 |
 |---|---|---|---|
 | D-01 | `client-license-gate.resume.md` 标注退役 | ✅ | 72c5934 |
-| D-02 | `client-license-gate.md` 第 18 行改写（S5 缺口现状） | 🔴 | 应用失败，已回滚 |
+| D-02 | `client-license-gate.md` 第 18 行改写（S5 缺口现状） | ✅ | 6726632 |
 | D-03 | `server-convergence.md` A-⑤ 证据 commit 改指主干等价提交 | 🔴 | 应用失败，已回滚 |
 | D-04 | `server-convergence.md` A-⑥ 证据 commit 改指主干等价提交 | 🔴 | 应用失败，已回滚 |
 | D-05 | `server-convergence.md` A-⑦ 证据 commit 改指主干等价提交 | 🔴 | 应用失败，已回滚 |
