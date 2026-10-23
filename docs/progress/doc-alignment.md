@@ -108,6 +108,7 @@ clone 出来就是 LF，脚本原生可跑，步骤定义与目标 `.md` 的行�
 | ID | 文件 | 改什么 | 为什么 |
 |---|---|---|---|
 | W-01 | `docs/progress/feat/obsidian-workbench-variants.md` | 状态自洽化 + 补 6 行 ⬜ | 三处本地化漏项（L-1~L-3）+ 三条视觉缺口（V-1~V-3）此前在看板上**一个标记都没有**——而仓库惯例是 ⬜/⏳ 才表示「代码尚未落地」 |
+| W-02 | `docs/progress/feat/obsidian-workbench-variants.md` | L-1~L-3 从 ⬜ 改成 ✅ | 三处本地化漏项已在主干修掉（`aef4cc3`），看板上的 ⬜ 得跟着落地，否则它指着一件已经做完的事 |
 
 ## 4. 需要人拍板的（执行器不许动）
 
@@ -157,6 +158,6 @@ clone 出来就是 LF，脚本原生可跑，步骤定义与目标 `.md` 的行�
 ## 7. 出口标准
 
 - [ ] `bash scripts/apply-doc-alignment.sh --target main` 跑完，`doc-alignment.resume.md` 里 D-01~D-27 全 ✅
-- [ ] `bash scripts/apply-doc-alignment.sh --target main` 跑完，W-01 ✅（看板已随分支合并进主干，目标分支从 `feat/obsidian-workbench-variants` 改成 `main`）
+- [ ] `bash scripts/apply-doc-alignment.sh --target main` 跑完，W-01 与 W-02 ✅（看板已随分支合并进主干，目标分支从 `feat/obsidian-workbench-variants` 改成 `main`）
 - [ ] `bash scripts/verify-doc-alignment.sh` 退出码 0（FAIL 清零；WARN 是已登记的已知缺口，应当逐条有出处）
 - [ ] 两条分支都 push
