@@ -8,7 +8,6 @@ COMMIT: docs(workbench): 三处本地化漏项 L-1~L-3 已修
 | L-1 `en.json` 缺 `筛选失败：{0}` | ⬜ | `WorkbenchPane.xaml.cs:408` |
 | L-2 `SaveFolderBox.Text` 硬编码 `分析` | ⬜ | `WorkbenchPane.xaml.cs:60` |
 | L-3 下拉项 `Content="其他"` 未本地化 | ⬜ | `WorkbenchPane.xaml:163` |
-
 ---SPLIT---
 | L-1 `en.json` 补 `筛选失败：{0}` | ✅ | aef4cc3 |
 | L-2 `SaveFolderBox.Text` 走 `L10n.Text` | ✅ | aef4cc3 |
