@@ -77,7 +77,7 @@ clone 出来就是 LF，脚本原生可跑，步骤定义与目标 `.md` 的行�
 完整的「现状 → 依据 → 改法 → 验收」在 `scripts/doc-alignment/steps/*.step` 每个文件里。
 下面是索引：
 
-### main 分支（D-01 ~ D-18）
+### main 分支（D-01 ~ D-23）
 
 | ID | 文件 | 改什么 | 为什么 |
 |---|---|---|---|
@@ -94,6 +94,10 @@ clone 出来就是 LF，脚本原生可跑，步骤定义与目标 `.md` 的行�
 | D-17 | `.gitignore` | 忽略 `/chat-exports/` | 真实微信聊天导出（zip + 聊天记录报告 + 微信图片），误 `git add -A` 就会把私人对话提交进仓库 |
 | D-18 | `CLAUDE.md` | 加校验器入口 | |
 | D-19 | `.gitattributes`（新建） | 给 `*.sh` / `*.step` 钉死 LF | 夜间作业跑在 Linux 上，CRLF 脚本会直接 `$'\r': command not found` |
+| D-20 | `CLAUDE.md` | 不再写死 main 领先 upstream 的提交数 | 写死的数字在下一笔提交之后就过期了 |
+| D-21 | `CLAUDE.md` | 看板块数对齐到十块 | |
+| D-22 | `CLAUDE.md` | 「上游内容全在 main 里」改成内容比对口径 | **提交数会骗人**：十一条 PR 分支里有五条的 tip 不在 `upstream/main` 历史里（报 12 个提交），但内容全在 main 里 |
+| D-23 | `doc-alignment.md` | 看板里同一条 upstream 断言同步改 | 看板的断言同样不能靠提交数验证——同一处假象，两个文件各写一遍 |
 
 ### workbench 分支（W-01）
 

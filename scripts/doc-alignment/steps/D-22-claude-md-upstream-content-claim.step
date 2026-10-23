@@ -1,0 +1,40 @@
+ID: D-22
+TARGET: main
+FILE: CLAUDE.md
+OP: replace
+VERIFY: grep -qF '这句话不能用提交数验证' CLAUDE.md
+COMMIT: docs: CLAUDE.md 把「上游内容全在 main 里」的说法改成内容比对口径
+---BEGIN---
+  远端分支清单：`git branch -r | grep origin/`（origin 上现在只剩 `main` 与
+  `feat/obsidian-workbench-variants` 两条；`upstream` 的十二条全是上游 PR 合并后的残留，
+  内容全部已在 main 里，**推不动也不该推**——CLAUDE.md 要求 upstream 长期保留作对比锚点）。
+---SPLIT---
+  远端分支清单：`git branch -r | grep origin/`（origin 上现在只剩 `main` 与
+  `feat/obsidian-workbench-variants` 两条；`upstream` 的十二条 = `upstream/main` 本体加十一条
+  上游 PR 分支，全是上游 PR 合并后的残留，**推不动也不该推**——
+  CLAUDE.md 要求 upstream 长期保留作对比锚点）。
+  **⚠️ 但「上游的内容全在 main 里」这句话不能用提交数验证**（2026-10-24 实测）：
+  十一条 PR 分支里有**五条**的 tip 不在 `upstream/main` 的历史里，
+  `git rev-list --count main..<branch>` 因此报非零
+  （`codex/fix-onboarding-content-height` 1、`docs/unified-download-entry` 1、
+  `feat_ai_function_about_license-website` 2、
+  `feat_ai_function_readme_digital-life-snail` 1、
+  `feat_ai_wechatbridge_skill-tab_scene-port` 7，共 12 个提交）；
+  另外六条的 tip 早已是 `upstream/main` 的祖先。
+  **这 12 个提交是 SHA 层面的假象，不是内容缺失**：上游合并之后分支又被推了同内容不同 SHA
+  的提交（`docs/unified-download-entry` 的 tip 是 `8fb87fb`，上游 main 里合并进去的是
+  `2a0581e`——标题、diff、README blob 全同），加上 `macos/` 目录重组把路径从 `Sources/…`
+  搬到 `macos/Sources/…`，分支树与 main 树根本对不上行。
+  **判据是内容比对，不是提交数**：2026-10-24 逐条核过——12 个提交里有 5 个在 main 历史里
+  能找到**逐字节相同的 patch**（`git log -p main | git patch-id --stable`），
+  另外 7 个是技能库/场景移植的**一串连续提交**，main 拿到的是**最终状态**：
+  `macos/Sources/WeChatBridgeCore/Skills.swift` 与分支逐字节相同；
+  `arrival.action != .obsidian` 在（还多一条我们自己的 `&& arrival.action != .folder`）；
+  `KnowledgeDelivery.deliver` 返回 `[URL]`、增量续写都在。
+  唯一没有同名实现的是「投递后自动在 Obsidian 里打开笔记」——main 有**等价行为**，
+  只是被重构成了 `Feedback/DeliveryNotifier.swift` 里拼 `obsidian://open` URL，
+  而不是 `ActionRunner.openInObsidian` 这个私有方法，这就是 patch-id 对不上的原因。
+  其余文件级差异**全是 main 更新**（README 的订阅形态段落、修正后的 `macos/Resources/…`
+  路径、多出来的 `openCollection` 参数）。
+  **结论不变：上游没有待拉的新东西；但这句断言只能靠内容比对站住，不能靠提交数。**
+---END---
