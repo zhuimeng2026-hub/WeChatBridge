@@ -496,8 +496,10 @@ Windows 端新增「知识工作台」面板（阅读优先 / 案件工作区 / 
   所以「推 origin 会因为没有写权限而失败」是**旧**说法：现在推 origin 推到的是 fork，推得上去。
   **`upstream` 必须长期保留**：它是与 freestylefly 对比的唯一持久锚点（`git fetch upstream &&
   git rev-list --left-right --count main...upstream/main`），删掉就只能重新 `ls-remote`。
-  清理 remote 时只处理 `origin`。当前 `main` 领先 `upstream/main` 147 个提交
-  （2026-10-23 实测；`upstream/main` 已完全包含在 `main` 里，反向为 0）。
+  清理 remote 时只处理 `origin`。`upstream/main` 已**完全包含**在 `main` 里
+  （反向为 0）。领先多少个提交随每次推送增长，所以**这里不写死数字**——
+  写死的数字在下一笔提交之后就过期了，而过期的数字比没有数字更糟。
+  要现值自己跑：`git rev-list --left-right --count main...upstream/main`。
 - **macOS 的自动更新是**故意关掉**的，不是「feed 坏了」。** `Resources/Info.plist` 里
   `SUEnableAutomaticChecks` 是 `false`，而且**根本没有 `SUFeedURL` 这个键**。
   `Scripts/check-release-config.sh` 第 8 节会在「自动检查关着却存在 `SUFeedURL`」时
