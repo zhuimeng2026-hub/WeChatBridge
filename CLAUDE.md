@@ -574,3 +574,15 @@ Windows 端新增「知识工作台」面板（阅读优先 / 案件工作区 / 
 - **macOS 端自 2026-10-04 起基本停更**（`git log -- macos/` 的最后一条），而 `server/` 与
   `windows/` 每天都在动。macOS 的命令在本机（Linux）上**完全跑不了**——需要 macOS + Xcode。
   macOS 侧现在主要是 CI 里的那个 job 还在守着。
+
+
+- **仓库现状类文档与代码的一致性由 `scripts/verify-doc-alignment.sh` 守着**
+  （只读、零依赖、可挂定时任务无人值守跑；退出码 0 = 全绿）。
+  它查的不是文风，是**可被代码证伪的具体断言**：看板引用的 commit 是不是 `main` 的祖先、
+  看板提到的文件是不是真的存在、`CLAUDE.md` 写死的计数是不是还等于实测值。
+  **看板最大的失败模式不是写得难看，而是看起来还活着、实际上那行代码早就没了**——
+  2026-10-23 就抓到过：某看板引用的三个 commit **在仓库里根本不存在**（不在 `main`、
+  不在任何 archive tag 里），读的人 `git show` 一下才发现那是另一条已被 force-with-lease
+  掉的分支上的实现。
+  对应的改写工作由 `scripts/apply-doc-alignment.sh` 按 `scripts/doc-alignment/steps/*.step`
+  确定性执行，清单见 `docs/progress/doc-alignment.md`。
