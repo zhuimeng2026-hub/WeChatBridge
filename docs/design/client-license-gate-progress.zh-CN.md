@@ -13,7 +13,7 @@
 | 机器 | 分支 | 目录 |
 | --- | --- | --- |
 | A | `feat/server-convergence` | `D:\WeChatBridge`（主检出） |
-| **C（本分支）** | `feat/client-license-gate` | **`D:\WeChatBridge-C`（worktree）** |
+| **C（本分支）** | `feat/client-license-gate` | *（worktree 目录，**2026-10-23 已删除**）* |
 
 后续所有命令在 `D:\WeChatBridge-C` 下执行。不要 `cd` 回主检出，也不要在主检出里
 切到 `feat/client-license-gate`——分支被两个工作区同时检出时 git 会拒绝，而这类

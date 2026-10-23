@@ -24,7 +24,7 @@
 | D-11 | `login-perf-and-ux.md` 加归档标记 | ✅ | 3f40a59 |
 | D-12 | `progress-sync-protocol.zh-CN.md` 修正 origin/upstream 方向 | ✅ | 6ae50dd |
 | D-13 | `progress-sync-protocol.zh-CN.md` worktree 表标注已删除 | ✅ | bbc96d6 |
-| D-14 | `client-license-gate-progress.zh-CN.md` worktree 表去路径 | 🔴 | 应用失败，已回滚 |
+| D-14 | `client-license-gate-progress.zh-CN.md` worktree 表去路径 | ✅ | b2d8a06 |
 | D-15 | `client-license-gate-progress.zh-CN.md` 正文去路径 | 🔴 | 应用失败，已回滚 |
 | D-16 | `branch-work-assignment.zh-CN.md` 标注为历史执行记录 | ✅ | 79cf94e |
 | D-17 | `.gitignore` 忽略 `/chat-exports/` | ✅ | d45bbc4 |
