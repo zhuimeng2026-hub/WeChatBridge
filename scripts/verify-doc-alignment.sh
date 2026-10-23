@@ -68,7 +68,6 @@ if ! have git; then
 fi
 
 MAIN_REF="${MAIN_REF:-main}"
-WORKBENCH_REF="${WORKBENCH_REF:-feat/obsidian-workbench-variants}"
 
 echo "=== 文档与代码实况一致性校验 ==="
 echo "repo : $REPO"
@@ -264,19 +263,22 @@ for ghost in 'D:/WeChatBridge-C' 'D:\WeChatBridge-C' 'D:/WeChatBridge-B' 'D:\WeC
 done
 
 # ─────────────────────────────────────────────────────────────────────────────
-# C7  workbench 分支的三处本地化漏项（合并前的实际阻塞项）
+# C7  知识工作台的三处本地化漏项
 #
-#     只在 workbench 分支存在；分支合并后本组检查自动不再适用。
+#     这一组查的是 **main**：知识工作台的代码 2026-10-24 已随分支合并进主干，
+#     所以缺陷修在 main 上。查一条已经没人再跑的分支，等于拿一份旧副本当真相——
+#     修复在主干，检查却对着一份没人再跑的代码报 WARN，既看不见真正的回归，
+#     也拦不住任何东西。
 # ─────────────────────────────────────────────────────────────────────────────
 
-if git rev-parse --verify --quiet "$WORKBENCH_REF" >/dev/null; then
-  wb_pane="$WORKBENCH_REF:windows/src/WeChatBridge.Windows/Panes/WorkbenchPane.xaml.cs"
-  wb_xaml="$WORKBENCH_REF:windows/src/WeChatBridge.Windows/Panes/WorkbenchPane.xaml"
-  wb_en="$WORKBENCH_REF:windows/src/WeChatBridge.Windows.Core/Localization/en.json"
+if git rev-parse --verify --quiet "$MAIN_REF" >/dev/null; then
+  wb_pane="$MAIN_REF:windows/src/WeChatBridge.Windows/Panes/WorkbenchPane.xaml.cs"
+  wb_xaml="$MAIN_REF:windows/src/WeChatBridge.Windows/Panes/WorkbenchPane.xaml"
+  wb_en="$MAIN_REF:windows/src/WeChatBridge.Windows.Core/Localization/en.json"
 
-  # 这三条是**代码缺陷**，不是文档缺陷——它们要改的是 WorkbenchPane，不是这份
+  # 这三条曾经是**代码缺陷**，不是文档缺陷——它们要改的是 WorkbenchPane，不是这份
   # 文档。所以记 WARN 而不是 FAIL：文档对齐这项工作本身不负责修它们，
-  # 它们在 workbench 分支自己的看板上以 ⬜ 挂着（见 W-01）。
+  # 它们在知识工作台自己的看板上以 ⬜ 挂着（见 W-01、W-02）。
   if git show "$wb_en" 2>/dev/null | grep -qF '筛选失败：{0}'; then
     say PASS C7.1 "en.json 已含「筛选失败：{0}」"
   else
@@ -295,7 +297,7 @@ if git rev-parse --verify --quiet "$WORKBENCH_REF" >/dev/null; then
     say PASS C7.3 "下拉项「其他」已本地化"
   fi
 else
-  say WARN C7 "$WORKBENCH_REF 不存在或未推送，跳过 workbench 本地化检查"
+  say WARN C7 "$MAIN_REF 不存在，跳过知识工作台本地化检查"
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
