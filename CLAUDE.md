@@ -232,7 +232,7 @@ cd admin-console && WCB_TEST_BASE_URL=http://127.0.0.1:8917 node test/smoke.mjs
 `browser.mjs` 在本机跑不了：`playwright-core` 没装（`npm ls` 是空的），而 Chromium 152 在。
 它是**可选**的——`smoke.mjs` 覆盖的是契约，`browser.mjs` 覆盖的是 DOM 接线 / 渲染 / 弹窗。
 
-mock 的诚实边界写在 `server/mock/README.md`：签名与 QR PNG 都是占位，任意非空 bearer/admin 密码都接受。真实 handler 已在 `feat/server-convergence` 落地，**mock 该删了但还留着**——它是当前唯一能在无 PostgreSQL 的机器上跑通客户端全流程的手段。
+mock 的诚实边界写在 `server/mock/README.md`：签名与 QR PNG 都是占位，任意非空 bearer/admin 密码都接受。真实 handler 已落在 `server/internal/admin/`（连同 `auth` / `activation` / `license`），**mock 该删了但还留着**——它是当前唯一能在无 PostgreSQL 的机器上跑通客户端全流程的手段。
 
 `admin-console/` 的约束比代码更重要：**页面必须与服务端同源**。服务端不带任何 CORS 响应头，`baseURL` 指向别的源时浏览器在预检阶段就拦掉全部请求，页面只得到一句 `Failed to fetch`。改后端地址改 `js/config.js` 的 `baseURL` 一行；**不要为了省事给管理接口开 `*` 通配 CORS**。
 
@@ -457,7 +457,7 @@ ent=PRO        ← 大写、排序、去重后逗号连接
 
 ## 并行开发协议
 
-**早期那轮已经合完了**（`487231c` server、`0762a85` admin，`feat/client-license-gate` 与 `feat/windows-portable-usb` 也都已在 `main` 的祖先里）。协议本身仍是下一次并行开工时的规矩，规则见 `docs/design/progress-sync-protocol.zh-CN.md` 与 `branch-work-assignment.zh-CN.md`：
+**早期那轮已经合完了**（`487231c` server、`0762a85` admin，`feat/client-license-gate` 与 `feat/windows-portable-usb` 也都已在 `main` 的祖先里——这两条分支本身已在 2026-10-23 删除，成果留在 main 的历史与 `archive/*` tag 里）。协议本身仍是下一次并行开工时的规矩，规则见 `docs/design/progress-sync-protocol.zh-CN.md` 与 `branch-work-assignment.zh-CN.md`：
 
 - **一个分支同一时刻只允许一台机器写。** 交接只能先确认对方 24 小时内不会回来。
   **⚠️ 这条在本机被常态违反**——`/opt/WeChatBridge` 长期有多个独立 Claude 会话同时跑，
@@ -468,10 +468,21 @@ ent=PRO        ← 大写、排序、去重后逗号连接
 - **commit 带任务编号**：`feat(server): [A-③] …`，`git log --oneline` 即进度流水。子任务粒度，不攒大 commit。
 - **契约冻结**：license canonical 格式、auth 端点、httpx 错误码体系禁止私改。发现缺字段 → 先改 `docs/design/buyout-flow-convergence.zh-CN.md` §11.3 并推送，各分支跟进。§11.7 是缺陷与变更登记册。
 - **工作区用 git worktree 隔离**（历史上真出过未跟踪文件跨分支的事故）。stash 栈在主检出与所有 worktree 间共享，`git stash` / `git stash pop` 会和其他会话抢——用 WIP commit，或 `git stash push -u -m "<唯一标签>"` 后立刻记下 SHA、用 `apply <sha>` 不用 `pop`。
+  **⚠️ 删 worktree 前先看 `git -C <路径> status --porcelain`**：`git worktree remove` 在工作区
+  不干净时会拒绝，需要 `--force`——而 `--force` 会连**别的会话尚未提交的未跟踪文件**一起抹掉。
+  2026-10-23 清 `D:/WeChatBridge-C` 时就是这么丢掉了三份测试文件（其中一份在
+  全仓库任何 ref 里都没有）。**归档分支的正确顺序是：先确认没有未提交工作，再删 worktree，
+  再删分支**；不是反过来。
 - 沙箱类环境里 git 网络操作会**静默失败或超时**（特征是 `Empty reply from server`，同时 curl 正常——别误判成凭据问题），必须在沙箱外跑。
 
 看板本身就是进度源，别只看文档：`docs/progress/*.md` 里 ⬜ / ⏳ 的行是**代码尚未落地**。
-最新的一块工作是 **`unionid-bridge`**（看板 `docs/progress/unionid-bridge.md`；分支已归档，
+最新的一块工作是 **`feat/obsidian-workbench-variants`**（看板
+`docs/progress/feat/obsidian-workbench-variants.md`，只存在于该分支、合并后才进主干）：
+Windows 端新增「知识工作台」面板（阅读优先 / 案件工作区 / 资料工作台三套布局），
+读本地 Obsidian Markdown 库、选材、把请求复制到外部工具、粘贴结果、保存新笔记。
+**三套布局都只做源码级验证**，完整视觉还原被 `design-qa.md` 自判为 `blocked`
+（富文本气泡、应用内模型回复流、附件内嵌预览三项未做）。
+上一块 `unionid-bridge` 的状态：看板 `docs/progress/unionid-bridge.md`；分支已归档，
 成果在 tag `archive/feat-unionid-bridge`，但 U-⓪ 与 U-③ 已经合进 `main`）：U-⓪ 与 U-③ 已落地，
 **U-④（unionid→openid 那一跳）卡在接口未派发**——`cgi-bin/user/getid` 这个路径**根本不存在**，
 而主路径（换 token 的响应自带昵称头像）一旦在真机成立，桥接就不必做了。
@@ -485,7 +496,8 @@ ent=PRO        ← 大写、排序、去重后逗号连接
   所以「推 origin 会因为没有写权限而失败」是**旧**说法：现在推 origin 推到的是 fork，推得上去。
   **`upstream` 必须长期保留**：它是与 freestylefly 对比的唯一持久锚点（`git fetch upstream &&
   git rev-list --left-right --count main...upstream/main`），删掉就只能重新 `ls-remote`。
-  清理 remote 时只处理 `origin`。当前 `main` 领先 `upstream/main` 137 个提交。
+  清理 remote 时只处理 `origin`。当前 `main` 领先 `upstream/main` 147 个提交
+  （2026-10-23 实测；`upstream/main` 已完全包含在 `main` 里，反向为 0）。
 - **macOS 的自动更新是**故意关掉**的，不是「feed 坏了」。** `Resources/Info.plist` 里
   `SUEnableAutomaticChecks` 是 `false`，而且**根本没有 `SUFeedURL` 这个键**。
   `Scripts/check-release-config.sh` 第 8 节会在「自动检查关着却存在 `SUFeedURL`」时
@@ -500,15 +512,26 @@ ent=PRO        ← 大写、排序、去重后逗号连接
   于是 Dukou 的条目会被**继承进**新的 WeChatBridge feed。发版前必须先把那个文件换掉。
   （另有一处代码注释与现状不符：`AppUpdater.swift` 说「release bundle carries the feed」，
   而 plist 里没有 feed 键——注释过期，代码是对的。）
-- **当前分支是 `main`，不是 `feat/pg-client-integration`。** 看板目录现在有**八块**
-  （`server-convergence` / `admin-console` / `client-license-gate` / `client-license-gate.resume` /
-  `pg-client-integration` / `unionid-bridge` / `delivery-quota` / `login-perf-and-ux`），
-  所以「docs/progress/ 下没有当前分支的看板」这句已过期。
-  **但看板多不等于分支多**：2026-10-22 做过一轮分支清理，`feat/client-license-gate`、
-  `feat/delivery-quota`、`feat/pg-client-integration`、`feat/unionid-bridge` 都已归档，
-  成果由 tag `archive/<分支名>` 钉住。**这些分支对应的看板从此是历史记录，不再是活的进度源**——
-  只有还在远端存在的分支（`main` 与 `feat/pg-client-integration`）的看板是活的。
-  远端分支清单：`git branch -r | grep origin/`。
+- **看板目录在 `main` 上有八块**（`server-convergence` / `admin-console` / `client-license-gate` /
+  `client-license-gate.resume` / `pg-client-integration` / `unionid-bridge` / `delivery-quota` /
+  `login-perf-and-ux`），在飞分支 `feat/obsidian-workbench-variants` 自带第九块
+  （`docs/progress/feat/obsidian-workbench-variants.md`，随该分支合并才进主干——
+  它是 `docs/progress/` 下唯一的子目录，因为分支名本身含斜杠）。
+  **但看板多不等于分支多**：2026-10-22 与 2026-10-23 做过两轮分支清理，
+  `feat/client-license-gate`、`feat/delivery-quota`、`feat/pg-client-integration`、
+  `feat/unionid-bridge` 都已归档，2026-10-23 又清掉 `docs/windows-local-verification`、
+  `feat/admin-console`、`feat/windows-portable-usb`、`feat/server-convergence`，
+  **`feat/client-license-gate` 的 worktree（`D:/WeChatBridge-C`）连同三个未跟踪测试文件一并删除**。
+  **这些分支对应的看板从此是历史记录，不再是活的进度源**——
+  现在还活着的只有 `main` 与 `feat/obsidian-workbench-variants` 两条分支的看板。
+  远端分支清单：`git branch -r | grep origin/`（origin 上现在只剩 `main` 与
+  `feat/obsidian-workbench-variants` 两条；`upstream` 的十二条全是上游 PR 合并后的残留，
+  内容全部已在 main 里，**推不动也不该推**——CLAUDE.md 要求 upstream 长期保留作对比锚点）。
+  **⚠️「归档 tag」不等于「已并入 main」**：只有 `archive/feat-pg-client-integration` 与
+  `archive/feat-unionid-bridge` 的内容真的进了 main；`archive/feat-server-convergence`
+  与 `archive/feat-client-license-gate` 钉住的是**从未并入 main** 的成果
+  （前者是 A-⑥ 的 admin 半边，后者是 S1–S5 的测试复核），看到 tag 就以为「已合并」会漏掉东西。
+  `archive/feat-windows-portable-usb` 是 2026-10-23 补打的（它是唯一缺归档 tag 就被删掉的分支）。
   **`delivery-quota` 那块会推翻一条已登记的产品决策**（「门禁不锁任何功能」），
   但它卡在 Q-① 六条口径未拍板上——**在拍板之前，那条决策仍然有效**。
 - **`windows/src` 下不存在 `Cloud/`、`CloudQr/`、`Billing/` 目录。** 版本隔离机制全部建好并被 CI 守着，但订阅形态的源码还没有落地，所以 `Test-NoNetworkCode.ps1` 在 Subscription 下会打印 SKIPPED。
@@ -543,7 +566,9 @@ ent=PRO        ← 大写、排序、去重后逗号连接
   不能说「不」。
 - **`Tests/FolderDeliveryTests.swift` 的 11 个测试不在任何 target 里**，`swift test` 从不编译它们。
 - **`App.swift` / `ShareEntryProbe.swift` / `AppLink.swift` / `ShareFailure.swift` 引用的 ADR-0005 / ADR-0006 在仓库里不存在。**
-- **`ci.yml` 只在 `[main, feat/windows-port]` 上触发。** 当前分支就是 `main`，所以**推上去会跑**；
+- **`ci.yml` 只在 `[main, feat/windows-port]` 上触发**（push），以及任何 PR 指向 `main` 时触发。
+  推 `main` 会跑；推别的分支（比如 `feat/obsidian-workbench-variants`）**不会**跑 `ci.yml`，
+  那条分支由自己带的 `workbench-review.yml` 守着（双形态矩阵 + 自包含打包 + 原生截图）。
   但 CI **只有 macOS 与 Windows 两个 job，不测 Go 服务端，也不测 `admin-console`**——
   服务端的全绿、后台的冒烟全绿都只在你本地成立。
 - **macOS 端自 2026-10-04 起基本停更**（`git log -- macos/` 的最后一条），而 `server/` 与

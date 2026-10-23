@@ -1,0 +1,21 @@
+ID: D-07
+TARGET: main
+FILE: docs/progress/delivery-quota.md
+OP: append
+VERIFY: grep -qF '门禁不锁任何功能」这条已登记的产品决策仍然有效' docs/progress/delivery-quota.md
+COMMIT: docs(delivery-quota): 写明 Q-① 未拍板前原决策仍然有效
+---BEGIN---
+
+## 决策现状（2026-10-23 补记）
+
+**Q-① 六条口径至今未拍板**，所以本看板描述的那套改动**一行都还没落地**。
+
+**关键点：在 Q-① 拍板之前，「门禁不锁任何功能」这条已登记的产品决策仍然有效**——
+`ActivationGate.Decide` 与 `LicensingBootstrap.IsShareDeliveryAvailable` 恒为 true，
+且有测试守着（全仓库没有一处 UI 因 `IsPro` 为 false 而禁用）。
+
+因此 Q-⑧ 的对账是**拍板之后**才做的事。在那之前，任何按本看板的设想去改「门禁不锁功能」
+那四处表述，都是在改一条**还没有被推翻**的决策——这正是本看板第 6 行那句话的意思，
+但容易被读成「已经推翻了」。补这一行是为了让它没有歧义。
+
+---END---

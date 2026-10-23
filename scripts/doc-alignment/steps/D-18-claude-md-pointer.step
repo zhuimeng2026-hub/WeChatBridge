@@ -1,0 +1,19 @@
+ID: D-18
+TARGET: main
+FILE: CLAUDE.md
+OP: append
+VERIFY: grep -qF 'verify-doc-alignment.sh' CLAUDE.md
+COMMIT: docs: CLAUDE.md 加文档一致性校验器入口
+---BEGIN---
+
+- **仓库现状类文档与代码的一致性由 `scripts/verify-doc-alignment.sh` 守着**
+  （只读、零依赖、可挂定时任务无人值守跑；退出码 0 = 全绿）。
+  它查的不是文风，是**可被代码证伪的具体断言**：看板引用的 commit 是不是 `main` 的祖先、
+  看板提到的文件是不是真的存在、`CLAUDE.md` 写死的计数是不是还等于实测值。
+  **看板最大的失败模式不是写得难看，而是看起来还活着、实际上那行代码早就没了**——
+  2026-10-23 就抓到过：某看板引用的三个 commit **在仓库里根本不存在**（不在 `main`、
+  不在任何 archive tag 里），读的人 `git show` 一下才发现那是另一条已被 force-with-lease
+  掉的分支上的实现。
+  对应的改写工作由 `scripts/apply-doc-alignment.sh` 按 `scripts/doc-alignment/steps/*.step`
+  确定性执行，清单见 `docs/progress/doc-alignment.md`。
+---END---

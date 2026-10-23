@@ -1,0 +1,14 @@
+ID: D-17
+TARGET: main
+FILE: .gitignore
+OP: append
+VERIFY: grep -qF '/chat-exports/' .gitignore
+COMMIT: chore(gitignore): 忽略 chat-exports 目录
+---BEGIN---
+
+# Exported WeChat chat records produced by local probes. These are personal
+# correspondence — chat text, images, and the exported report — and must never
+# reach the repository: a single `git add -A` would publish someone's private
+# messages.
+/chat-exports/
+---END---

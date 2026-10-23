@@ -1,0 +1,11 @@
+ID: D-14
+TARGET: main
+FILE: docs/design/client-license-gate-progress.zh-CN.md
+OP: replace
+VERIFY: grep -qF '2026-10-23 已删除' docs/design/client-license-gate-progress.zh-CN.md
+COMMIT: docs(design): client-license-gate 进度文档标注 worktree 已删除
+---BEGIN---
+| **C（本分支）** | `feat/client-license-gate` | *（worktree 目录，**2026-10-23 已删除**）* |
+---SPLIT---
+| **C（本分支）** | `feat/client-license-gate` | **`D:\WeChatBridge-C`（worktree）** |
+---END---
