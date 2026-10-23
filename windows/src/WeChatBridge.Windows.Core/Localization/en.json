@@ -927,6 +927,7 @@
   "选择 Obsidian 知识库文件夹": "Choose an Obsidian vault folder",
   "原文只读 · 勾选材料后可复制到剪贴板": "Source is read-only · select materials to copy to the clipboard",
   "新建分析草稿": "New analysis draft",
+  "分析草稿": " Analysis draft",
   "已复制 {0} 份材料；请自行粘贴到所选工具": "Copied {0} materials. Paste them into your chosen tool.",
   "请先勾选至少一份材料": "Select at least one material first",
   "复制失败：{0}": "Copy failed: {0}",

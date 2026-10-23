@@ -102,6 +102,10 @@ public sealed class UiSmokeTests
                     materials.SelectedIndex = 0;
                     Assert.Contains("设备已经送达", ((TextBox)workbench.FindName("DocumentBody")).Text);
                     Assert.True(((TextBox)workbench.FindName("DocumentBody")).IsReadOnly);
+                    // The default draft title is the material's file name plus the
+                    // 「分析草稿」suffix; the suffix is localized, so it must not
+                    // stay Chinese in the English UI.
+                    Assert.Equal("沟通记录" + L10n.Text("分析草稿"), ((TextBox)workbench.FindName("DraftTitleBox")).Text);
                     Descendants<CheckBox>(materials).Single().IsChecked = true;
                     Assert.Contains("1", ((TextBlock)workbench.FindName("SelectionCount")).Text);
                     // L-2 / L-3: the save-folder default and the tool dropdown's「其他」

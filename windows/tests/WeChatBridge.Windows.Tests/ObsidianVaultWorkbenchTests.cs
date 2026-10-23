@@ -41,6 +41,22 @@ public sealed class ObsidianVaultWorkbenchTests
     }
 
     [Fact]
+    public void ABlankTitleStillProducesAFileName()
+    {
+        var root = NewVault();
+        try
+        {
+            var vault = new ObsidianVaultWorkbench(root);
+            var saved = vault.SaveNewAnalysis("", "# 草稿\n\n手动整理");
+
+            // The fallback title is localized, and the English translation of
+            // 「分析草稿」 starts with a space — a file name may not.
+            Assert.Equal("分析/分析草稿.md", saved);
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    [Fact]
     public void RejectsTraversalAndNonMarkdownReads()
     {
         var root = NewVault();

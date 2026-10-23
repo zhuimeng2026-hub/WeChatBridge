@@ -47,4 +47,19 @@ public sealed class LocalizationTests
         // L-3: the tool dropdown's "其他" entry.
         Assert.Equal("Other", translations["其他"]);
     }
+
+    /// <summary>
+    /// 「分析草稿」 is a suffix appended to the material's file name. The Chinese
+    /// needs no separator, English needs a space so it does not run into the
+    /// name — the same convention the repository already uses for
+    /// 「（含当前选中段落）」.
+    /// </summary>
+    [Fact]
+    public void TheDraftSuffixCarriesTheSeparatorEnglishNeeds()
+    {
+        using var stream = typeof(L10n).Assembly.GetManifestResourceStream("WeChatBridge.Windows.Core.Localization.en.json")!;
+        var translations = JsonSerializer.Deserialize<Dictionary<string, string>>(stream)!;
+
+        Assert.Equal(" Analysis draft", translations["分析草稿"]);
+    }
 }

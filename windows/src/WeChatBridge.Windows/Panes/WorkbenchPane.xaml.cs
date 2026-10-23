@@ -379,8 +379,8 @@ public partial class WorkbenchPane : UserControl
                 CaseSelector.SelectedIndex = 0;
             if (string.IsNullOrWhiteSpace(DraftTitleBox.Text) || DraftTitleBox.Text == L10n.Text("新建分析草稿"))
                 DraftTitleBox.Text = row.Name.EndsWith(".md", StringComparison.OrdinalIgnoreCase)
-                    ? row.Name[..^3] + "分析草稿"
-                    : row.Name + "分析草稿";
+                    ? row.Name[..^3] + L10n.Text("分析草稿")
+                    : row.Name + L10n.Text("分析草稿");
             StatusText.Text = L10n.Text("原文只读 · 勾选材料后可复制到剪贴板");
             RefreshSourceLinks();
         }

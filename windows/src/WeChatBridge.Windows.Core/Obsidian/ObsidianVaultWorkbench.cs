@@ -185,12 +185,20 @@ public sealed class ObsidianVaultWorkbench
 
     private static string SafeFileName(string title)
     {
-        var value = string.IsNullOrWhiteSpace(title) ? "分析草稿" : title.Trim().Replace('\\', '/').Split('/').Last();
+        var value = string.IsNullOrWhiteSpace(title) ? DefaultDraftTitle() : title.Trim().Replace('\\', '/').Split('/').Last();
         foreach (var invalid in Path.GetInvalidFileNameChars().Concat("<>:\"/\\|?*")) value = value.Replace(invalid, '-');
         value = value.Trim().Trim('.');
-        if (value.Length == 0) value = "分析草稿";
+        if (value.Length == 0) value = DefaultDraftTitle();
         return value.Length > 100 ? value[..100] : value;
     }
+
+    /// <summary>
+    /// The file name a note falls back to when it is saved without a title.
+    /// Trimmed: the English translation of「分析草稿」carries a leading space —
+    /// the Chinese suffix needs none, English needs one so it does not run into
+    /// the material's file name — and a file name may not begin with a space.
+    /// </summary>
+    private static string DefaultDraftTitle() => L10n.Text("分析草稿").Trim();
 }
 
 public sealed record ObsidianAttachment(string RelativePath, string Name, long ByteCount);
