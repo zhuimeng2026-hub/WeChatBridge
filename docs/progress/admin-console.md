@@ -1,5 +1,12 @@
 # 进度看板：feat/admin-console（机器 B）
 
+> **归档（2026-10-23）。** 分支 `feat/admin-console` 已删除，内容**全部并入 `main`**，
+> 所以没有对应的 `archive/*` tag——它是 `main` 的祖先，不需要 tag 钉住。
+> 本看板从此是历史记录，不是活的进度源；活着的看板只有 `main` 与
+> `feat/obsidian-workbench-variants` 两块。
+
+
+
 > 规则见 `docs/design/progress-sync-protocol.zh-CN.md` §2：只有机器 B 更新本文件，与 commit 同一时刻。
 
 ## 任务表
