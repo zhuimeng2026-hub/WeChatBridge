@@ -160,7 +160,7 @@
                         <ComboBox x:Name="ExternalToolSelector" MinWidth="88" MinHeight="32" VerticalAlignment="Center">
                             <ComboBoxItem Content="Codex" Tag="Codex" />
                             <ComboBoxItem Content="Claude" Tag="Claude" />
-                            <ComboBoxItem Content="其他" Tag="Other" />
+                            <ComboBoxItem Content="{loc:Loc Key='其他'}" Tag="Other" />
                         </ComboBox>
                         <Button x:Name="CollapseButton" Margin="8,0,0,0" Style="{StaticResource ToolButton}"
                                 Padding="7,3" MinHeight="32" Click="Collapse_Click" />

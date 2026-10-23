@@ -57,7 +57,7 @@ public partial class WorkbenchPane : UserControl
         PromptHint.Text = L10n.Text("写下整理要求。复制材料后，由你粘贴到已选择的工具；再把结果粘贴回右侧。工作台不会自动发送材料。");
         ResultHint.Text = L10n.Text("在此粘贴或编辑结果。微信流不会把模板或示例标成 AI 结论。");
         DraftTitleBox.Text = L10n.Text("新建分析草稿");
-        SaveFolderBox.Text = "分析";
+        SaveFolderBox.Text = L10n.Text("分析");
         SaveFolderBox.ToolTip = L10n.Text("在知识库内的保存文件夹");
         SaveFolderLabel.Text = L10n.Text("保存到");
         CollapseButton.Content = L10n.Text("收起");

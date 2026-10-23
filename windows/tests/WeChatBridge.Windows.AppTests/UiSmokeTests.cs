@@ -104,6 +104,13 @@ public sealed class UiSmokeTests
                     Assert.True(((TextBox)workbench.FindName("DocumentBody")).IsReadOnly);
                     Descendants<CheckBox>(materials).Single().IsChecked = true;
                     Assert.Contains("1", ((TextBlock)workbench.FindName("SelectionCount")).Text);
+                    // L-2 / L-3: the save-folder default and the tool dropdown's「其他」
+                    // both used to be hardcoded Chinese, so the English UI leaked them.
+                    // The save folder doubles as a directory name, so it is asserted
+                    // through the same lookup the production code uses.
+                    Assert.Equal(L10n.Text("分析"), ((TextBox)workbench.FindName("SaveFolderBox")).Text);
+                    var toolItems = ((ComboBox)workbench.FindName("ExternalToolSelector")).Items.OfType<ComboBoxItem>().ToArray();
+                    Assert.Equal(L10n.Text("其他"), toolItems[2].Content?.ToString() ?? "");
                     var promptBox = (TextBox)workbench.FindName("PromptBox");
                     promptBox.Text = "请按时间顺序整理现有沟通，并区分已确认事实与待补材料。";
                     ((Button)workbench.FindName("CopyRequestButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
@@ -146,7 +153,7 @@ public sealed class UiSmokeTests
                     promptBox.Text = "different live prompt after export";
                     Descendants<CheckBox>(materials).Single().IsChecked = false;
                     ((Button)workbench.FindName("SaveNoteButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                    var savedNote = Path.Combine(vaultRoot, "分析", "沟通记录分析草稿-" + language + ".md");
+                    var savedNote = Path.Combine(vaultRoot, L10n.Text("分析"), "沟通记录分析草稿-" + language + ".md");
                     Assert.True(File.Exists(savedNote));
                     Assert.Contains("微信流未调用模型", File.ReadAllText(savedNote));
                     Assert.Contains("[[当事人/陈某/CASE-2026-018/沟通记录.md]]", File.ReadAllText(savedNote));
