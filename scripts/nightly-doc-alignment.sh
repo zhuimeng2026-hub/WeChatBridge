@@ -229,7 +229,7 @@ if [ "${PUSH:-0}" = "1" ]; then
   for target in "$REPO:main" "$WB_WORKTREE:$WB_BRANCH"; do
     path="${target%%:*}"
     branch="${target##*:}"
-    ahead="$(git -C "$path" rev-list --count "$branch..origin/$branch" 2>/dev/null || echo 0)"
+    ahead="$(git -C "$path" rev-list --count "origin/$branch..$branch" 2>/dev/null || echo 0)"
     case "$ahead" in
       ''|*[!0-9]*) ahead=0 ;;
     esac
@@ -245,7 +245,7 @@ else
   for target in "$REPO:main" "$WB_WORKTREE:$WB_BRANCH"; do
     path="${target%%:*}"
     branch="${target##*:}"
-    ahead="$(git -C "$path" rev-list --count "$branch..origin/$branch" 2>/dev/null || echo 0)"
+    ahead="$(git -C "$path" rev-list --count "origin/$branch..$branch" 2>/dev/null || echo 0)"
     case "$ahead" in
       ''|*[!0-9]*) ahead=0 ;;
     esac
