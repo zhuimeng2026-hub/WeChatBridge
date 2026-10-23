@@ -112,6 +112,85 @@ public sealed class LayoutWiringTests
             "FirstRun.ps1 must be UTF-8 with a BOM.");
     }
 
+    [Fact]
+    public void EveryPowerShellScriptWithChineseStringsShipsWithAByteOrderMark()
+    {
+        // The rule this guards: a .ps1 that carries Chinese *in code* — not in a
+        // comment — must be UTF-8 with a BOM, because Windows PowerShell 5.1
+        // reads a BOM-less .ps1 as the system ANSI code page (GBK on a Chinese
+        // Windows) and corrupts the string instead of failing.
+        //
+        // register-dev.ps1 was the one that got it wrong: it writes 失败 / 成功
+        // into its registration log, and the log came out as mojibake. The
+        // BOM-less test only guarded FirstRun.ps1, so nothing caught it.
+        //
+        // Comments are excluded on purpose. A Chinese comment in a BOM-less
+        // file is only a cosmetic problem, and the three files that have one
+        // (build-installer.ps1, msi/build-bundle.ps1, msi/Register-ShareTarget.ps1)
+        // are left as they are rather than carrying a fix nobody asked for.
+        var offenders = new List<string>();
+        foreach (var script in PowerShellScripts())
+        {
+            var text = File.ReadAllText(script);
+            if (!HasNonAsciiOutsideComments(text))
+                continue;
+            if (HasByteOrderMark(File.ReadAllBytes(script)))
+                continue;
+            offenders.Add(RelativeToRepo(script));
+        }
+
+        Assert.True(offenders.Count == 0,
+            "These .ps1 files carry Chinese outside comments and have no BOM, so Windows " +
+            "PowerShell 5.1 reads them as ANSI and corrupts the strings: " +
+            string.Join(", ", offenders));
+    }
+
+    /// <summary>
+    /// Whether the file carries any character outside ASCII.
+    /// </summary>
+    private static bool HasNonAsciiOutsideComments(string text)
+    {
+        foreach (var line in text.Split('\n'))
+        {
+            var trimmed = line.TrimStart();
+            // A '#' line is a comment. A block comment (<# #>) is not handled
+            // here: no script in the tree puts Chinese inside one, and a
+            // half-parsing block comment would be a worse failure than
+            // tolerating a false negative.
+            if (trimmed.StartsWith('#'))
+                continue;
+            if (trimmed.Length > 0 && trimmed.Any(c => c > 127))
+                return true;
+        }
+        return false;
+    }
+
+    private static bool HasByteOrderMark(byte[] bytes) =>
+        bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF;
+
+    private static IEnumerable<string> PowerShellScripts() =>
+        Directory.EnumerateFiles(WindowsRoot(), "*.ps1", SearchOption.AllDirectories)
+            .Where(f => !f.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase))
+            .Where(f => !f.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase));
+
+    private static string RelativeToRepo(string path) =>
+        Path.GetRelativePath(RepoRoot(), path).Replace('\\', '/');
+
+    private static string WindowsRoot() =>
+        Path.Combine(RepoRoot(), "windows");
+
+    private static string RepoRoot()
+    {
+        for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory is not null; directory = directory.Parent)
+        {
+            var candidate = Path.Combine(directory.FullName, "windows");
+            if (Directory.Exists(candidate))
+                return directory.FullName;
+        }
+        throw new DirectoryNotFoundException(
+            $"windows was not found above the test output directory {AppContext.BaseDirectory}.");
+    }
+
     /// <summary>
     /// The portable build is the free tier of the buy-out edition, so it is
     /// built from the buy-out source set only.

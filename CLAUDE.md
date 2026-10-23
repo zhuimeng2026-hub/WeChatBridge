@@ -428,11 +428,19 @@ ent=PRO        ← 大写、排序、去重后逗号连接
 
 **Core 不得命名任何网络类型。** `EditionIsolationTests` 用 `System.Reflection.Metadata` 读编译产物，按**精确集合相等**断言 Core 的 `System.Net.*` TypeRef **恰好等于**这三个：`System.Net.NetworkInformation.NetworkInformationException` / `.NetworkInterface` / `.PhysicalAddress`（离线恢复用的 MAC 锚点，全在 `NetworkInformation` 命名空间下）。测试里另有一条断言**白名单本身只能以 `System.Net.NetworkInformation.` 开头**——有人往里加 `System.Net.Http` 让构建变绿，就在这里被挡住。`Test-NoNetworkCode.ps1` 的白名单（扫描的是**两个**程序集，不只是 Core）已含 `System.Net.Http` / `Http.Headers` / `Primitives`，所以 HTTP 动词放 WPF 工程即可，两个白名单都不用动。脚本里写着「若要加第四条，先停下来」——那是产品决策，不是测试修复。
 
-**本地的中文字符串 .ps1 必须是 UTF-8 with BOM。** PowerShell 5.1 会把无 BOM 的文件按系统 ANSI 代码页（中文 Windows 上是 GBK）读，静默毁掉字符串而不报错。反过来 `.bat` 必须纯 ASCII——cmd 同样按 ANSI 读。`Directory.Build.props` 也带中文，同理。`LayoutWiringTests` 会守住 `FirstRun.ps1` 的头三个字节。
+**本地的中文字符串 .ps1 必须是 UTF-8 with BOM。** PowerShell 5.1 会把无 BOM 的文件按系统 ANSI 代码页（中文 Windows 上是 GBK）读，静默毁掉字符串而不报错。反过来 `.bat` 必须纯 ASCII——cmd 同样按 ANSI 读。`Directory.Build.props` 也带中文，同理。
+`LayoutWiringTests` 守着这条：`TheFirstRunScriptShipsWithAByteOrderMark` 管 `FirstRun.ps1`，
+`EveryPowerShellScriptWithChineseStringsShipsWithAByteOrderMark`（2026-10-22 加）扫全仓库的 `.ps1`，
+**只在注释以外出现非 ASCII 字符**的脚本必须有 BOM。
 
-**这条规则目前有一个漏网的违反者：`windows/scripts/register-dev.ps1` 没有 BOM，却有中文**（第 22 / 46 / 106 行往注册日志里写「失败」「已同步图标资源到外部内容目录：」「成功」）。中文 Windows 上跑 `register-dev.ps1`，日志里这三句是乱码。**不是功能故障**（写的是给人看的日志，不是逻辑），但它正是这条规则要防的东西。`LayoutWiringTests` 只守 `FirstRun.ps1` 一个文件，所以没人拦它。
-另有三个 `.ps1` 也没有 BOM，但**中文只出现在注释里**（`build-installer.ps1` 只有一个破折号，`msi/build-bundle.ps1` 与 `msi/Register-ShareTarget.ps1` 的「微信流」在注释中）——只读不执行，乱码不影响功能，优先级低。
-`build-app.ps1` **没有中文也没有 BOM**，所以它不受这条规则约束（它是无 BOM 的纯 ASCII）。
+**它是被一次实际的乱码逼出来的**：`windows/scripts/register-dev.ps1` 一直没加 BOM，
+却往注册日志里写「失败」「已同步图标资源到外部内容目录：」「成功」——
+中文 Windows 上那三句全是乱码。**不是功能故障**（写的是给人看的日志，不是逻辑），
+但正是这条规则要防的东西，而当时只有 `FirstRun.ps1` 被守着，没人拦它。
+另有两个脚本中文**只在注释里**，测试故意放行：`build-installer.ps1`（一个破折号）、
+`msi/build-bundle.ps1` 与 `msi/Register-ShareTarget.ps1`（「微信流」）——
+只读不执行，乱码不影响功能，所以没顺手改。
+`build-app.ps1` **既没有中文也没有 BOM**，不受这条规则约束。
 
 **本地化是单向的。** `L10n.Text("中文")` 的 key 就是中文字符串本身（miss 时原样返回，所以每个用户可见中文字符串都是自己的翻译 key），英文只存在于 `Core/Localization/en.json`（72KB，EmbeddedResource）。XAML 侧用 `{loc:Loc Key='中文'}`。加新文案 = 改代码里的中文 + 在 en.json 补一条，`LocalizationTests` 会断言两边的复合格式占位符索引集合完全一致。
 
