@@ -14,6 +14,7 @@ Owner: Codex; implementation delegated to gpt-6-luna at the user’s request.
 | L-1 `en.json` 补 `筛选失败：{0}` | ✅ | aef4cc3 |
 | L-2 `SaveFolderBox.Text` 走 `L10n.Text` | ✅ | aef4cc3 |
 | L-3 下拉项 `Content="其他"` 本地化 | ✅ | aef4cc3 |
+| L-4 笔记标题后缀「分析草稿」未本地化 | ✅ | 7059a17 |
 | V-1 富文本 / 聊天气泡渲染 | ⬜ | `design-qa.md` |
 | V-2 应用内模型回复流 | ⬜ | `design-qa.md` |
 | V-3 附件内嵌预览 | ⬜ | `design-qa.md` |
