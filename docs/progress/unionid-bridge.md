@@ -1,5 +1,15 @@
 # 进度看板：feat/unionid-bridge（worktree `C:\WeChatBridge\.worktrees\login-perf-and-ux`）
 
+> **归档（2026-10-23）。** 分支 `feat/unionid-bridge` 已删除，成果由 tag
+> `archive/feat-unionid-bridge` 钉住。其中 U-⓪ 与 U-③ **已并入 `main`**
+> （merge commit `1c05257`）。
+>
+> 但**表里那三行 ⬜ 至今未落地，而且都还卡着**——U-④ 被 `cgi-bin/user/getid` 这个
+> **根本不存在的路径**卡住，U-⑥ / U-⑦ 待办。本看板从此是历史记录，不是活的进度源；
+> **但那三行 ⬜ 仍然是待办，别因为「归档」两个字当成已完成。**
+
+
+
 > 规则见 `docs/design/progress-sync-protocol.zh-CN.md` §2。
 > 本分支 2026-10-19 20:30 自 `feat/login-perf-and-ux` HEAD=`739846e` 拉出（含方案 A+B 客户端 + scope 回滚）。
 
