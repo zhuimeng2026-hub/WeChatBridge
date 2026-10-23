@@ -22,7 +22,7 @@
 | D-09 | `pg-client-integration.md` 加归档标记 | ✅ | 682f20d |
 | D-10 | `unionid-bridge.md` 加归档标记 | ✅ | 15441a1 |
 | D-11 | `login-perf-and-ux.md` 加归档标记 | ✅ | 3f40a59 |
-| D-12 | `progress-sync-protocol.zh-CN.md` 修正 origin/upstream 方向 | 🔴 | 应用失败，已回滚 |
+| D-12 | `progress-sync-protocol.zh-CN.md` 修正 origin/upstream 方向 | ✅ | 6ae50dd |
 | D-13 | `progress-sync-protocol.zh-CN.md` worktree 表标注已删除 | 🔴 | 应用失败，已回滚 |
 | D-14 | `client-license-gate-progress.zh-CN.md` worktree 表去路径 | 🔴 | 应用失败，已回滚 |
 | D-15 | `client-license-gate-progress.zh-CN.md` 正文去路径 | 🔴 | 应用失败，已回滚 |

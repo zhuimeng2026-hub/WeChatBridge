@@ -82,13 +82,13 @@
 
 在三台机器中任意一台（已 clone 本仓库的）执行。
 
-**分支名带 `feat/` 前缀，远端是 `fork` 不是 `origin`**——三条并行分支都只存在于
-用户 fork 上，`origin` 指上游 freestyleFly，`origin/feat/client-license-gate` 这类
+**分支名带 `feat/` 前缀，远端是 `origin`（我们的 fork），不是 `upstream`**——三条并行分支都只存在于
+用户 fork 上，`upstream` 指上游 freestyleFly，`upstream/feat/client-license-gate` 这类
 引用不存在，会直接报 `unknown revision`：
 
 ```bash
-git fetch fork --quiet && for b in feat/server-convergence feat/admin-console feat/client-license-gate; do \
-  echo "=== $b ==="; git log --oneline -3 "fork/$b"; done
+git fetch origin --quiet && for b in feat/server-convergence feat/admin-console feat/client-license-gate; do \
+  echo "=== $b ==="; git log --oneline -3 "origin/$b"; done
 ```
 
 看板总览（看阻塞与出口状态，比 log 更直观）：
