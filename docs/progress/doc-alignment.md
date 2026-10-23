@@ -116,7 +116,7 @@ clone 出来就是 LF，脚本原生可跑，步骤定义与目标 `.md` 的行�
 | 事项 | 现状 | 待决 |
 |---|---|---|
 | **买断版发几枚 entitlement** | 主干只发 PRO 一枚；已归档分支里是 PRO/PDF/EXPORT/SCENE/HISTORY 五枚 | 改成五枚并登记进 §11.7，还是明确记录维持 PRO-only 的理由 |
-| **workbench 分支合不合并** | 三处本地化漏项未修，CI 声称的通过情况需人工核实一次（`gh run view 39777985455`） | 先修漏项再合，还是先合后修 |
+| **workbench 分支合不合并** | **已合进 `main`**（2026-10-24）：CI run 39777985455 对带代码的提交 `5ab4785` 是 success——用 `curl https://api.github.com/repos/<repo>/actions/runs/39777985455` 核实的（`gh` 未登录，`gh run view` 会先去要认证） | 剩下的三处本地化漏项（L-1~L-3）修不修——它们已作为 ⬜ 行登记在主干上的看板上 |
 | **`workbench-review.yml` 的 push 触发器** | 写死 `[feat/obsidian-workbench-variants]`，合并后成死代码 | 删掉 push 触发 / 整个删掉 / 并进 `ci.yml` |
 | **README / USAGE / PRODUCT_CAPABILITIES 要不要写「知识工作台」** | 现在零命中，但分支自己的交付文档把它当客户入口 | 分支合了再写，还是现在就补 |
 | **旧计划任务 `WeChatBridge-Resume-LicenseGate`** | 指向已删的 worktree，每次触发只在「找不到清单」退出 1 | 停用（推荐）/ 删除 |
