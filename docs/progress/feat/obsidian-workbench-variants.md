@@ -4,13 +4,19 @@ Owner: Codex; implementation delegated to gpt-6-luna at the user’s request.
 
 | Task | Status | Evidence |
 | --- | --- | --- |
-| WB-0 preserve three references and implementation plans | complete | c3c8a3f |
-| WB-3 reading-first + shared vault service | source implemented; runtime validation pending | 7ac08aa |
-| WB-2 case workspace | source implemented; runtime validation pending | 905860c |
-| WB-1 document workbench | source implemented; runtime validation pending | 4477af9 |
-| WB-QA CI and screenshot workflow | passed | run 39777985455; source 5ab4785 |
-| WB-QA native visual comparison | native layout reviewed; full mock fidelity blocked | design-qa.md |
-| Remote push / CI start | complete | user approved; published via connector; run 39776531598 |
+| WB-0 preserve three references and implementation plans | ✅ complete | c3c8a3f |
+| WB-3 reading-first + shared vault service | ✅ source implemented | 7ac08aa |
+| WB-2 case workspace | ✅ source implemented | 905860c |
+| WB-1 document workbench | ✅ source implemented | 4477af9 |
+| WB-QA CI and screenshot workflow | ✅ passed | run 39777985455; source 5ab4785 |
+| WB-QA native visual comparison | ⏳ native layout reviewed; full mock fidelity blocked | design-qa.md |
+| Remote push / CI start | ✅ complete | user approved; published via connector; run 39776531598 |
+| L-1 `en.json` 缺 `筛选失败：{0}` | ⬜ | `WorkbenchPane.xaml.cs:408` |
+| L-2 `SaveFolderBox.Text` 硬编码 `分析` | ⬜ | `WorkbenchPane.xaml.cs:60` |
+| L-3 下拉项 `Content="其他"` 未本地化 | ⬜ | `WorkbenchPane.xaml:163` |
+| V-1 富文本 / 聊天气泡渲染 | ⬜ | `design-qa.md` |
+| V-2 应用内模型回复流 | ⬜ | `design-qa.md` |
+| V-3 附件内嵌预览 | ⬜ | `design-qa.md` |
 
 All dependency installs, builds and tests are reserved for GitHub Actions per user preference. Source review only in this environment. Public branch now exists; both self-contained review builds and evidence artifacts are available from run 39777985455.
 
