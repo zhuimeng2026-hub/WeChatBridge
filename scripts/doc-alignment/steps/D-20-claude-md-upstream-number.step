@@ -1,0 +1,15 @@
+ID: D-20
+TARGET: main
+FILE: CLAUDE.md
+OP: replace
+VERIFY: grep -qF '要现值自己跑' CLAUDE.md
+COMMIT: docs: CLAUDE.md 不再写死 main 领先 upstream 的提交数
+---BEGIN---
+  清理 remote 时只处理 `origin`。当前 `main` 领先 `upstream/main` 147 个提交
+  （2026-10-23 实测；`upstream/main` 已完全包含在 `main` 里，反向为 0）。
+---SPLIT---
+  清理 remote 时只处理 `origin`。`upstream/main` 已**完全包含**在 `main` 里
+  （反向为 0）。领先多少个提交随每次推送增长，所以**这里不写死数字**——
+  写死的数字在下一笔提交之后就过期了，而过期的数字比没有数字更糟。
+  要现值自己跑：`git rev-list --left-right --count main...upstream/main`。
+---END---

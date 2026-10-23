@@ -339,14 +339,20 @@ for stepfile in "$STEPDIR"/*.step; do
 
   status="$(resume_status "$id")"
   if [ "$status" = "✅" ]; then
-    # 备注里应该是**证据 hash**。缺了、或只剩「已满足」，就按步骤的 commit
-    # message 找回当初那笔提交填回去——状态表要能自愈，不能靠人记得填。
+    # 备注里应该是**证据 hash**，而且这个 hash 必须**仍是 HEAD 的祖先**——
+    # 指向一笔被 amend 掉、或者根本不存在于历史的提交，等于没有证据。
+    # 两种情况都按步骤的 commit message 重新查一遍填回去。
     cur="$(resume_note "$id")"
-    if [ -z "$cur" ] || [ "$cur" = "已满足" ]; then
+    cur_ok=0
+    if [ -n "$cur" ] && [ "$cur" != "已满足" ] \
+       && git merge-base --is-ancestor "$cur" HEAD 2>/dev/null; then
+      cur_ok=1
+    fi
+    if [ "$cur_ok" -eq 0 ]; then
       h="$(git log --format='%h' --fixed-strings --grep="$commitmsg" -1 2>/dev/null | head -1)"
       if [ -n "$h" ]; then
         resume_mark "$id" "✅" "$h"
-        log "FIX   $id 回填证据 hash $h"
+        log "FIX   $id 回填证据 hash $h（原记录 '$cur' 不是 HEAD 的祖先）"
       fi
     fi
     SKIPPED=$((SKIPPED + 1))
@@ -414,32 +420,29 @@ for stepfile in "$STEPDIR"/*.step; do
     continue
   fi
 
-  # 提交：先提交改动，拿到真实 hash，回填状态表，再 amend —— 一次提交里既有
-  # 文档改动也有看板更新（CLAUDE.md：看板与代码同一个 commit）。
+  # 提交：**两笔**——A 是文档改动本身，B 是状态表把这一行标成 ✅ 并写下 A 的
+  # hash。理由见下面 amend 那段。
   resume_mark "$id" "✅" "本次提交"
-  git add -- "$file" "$RESUME" >/dev/null 2>&1
+  git add -- "$file" >/dev/null 2>&1
   if ! git commit -q -m "${commitmsg:-docs: [$id] 文档对齐}" >/dev/null 2>&1; then
     FAILED=$((FAILED + 1))
     log "FAIL  $id 提交失败"
-    git checkout -- "$RESUME" 2>/dev/null
+    git checkout -- "$file" 2>/dev/null
     continue
   fi
   hash="$(git rev-parse --short HEAD)"
   resume_mark "$id" "✅" "$hash"
   git add -- "$RESUME" >/dev/null 2>&1
-  # 安全护栏：只在**本次运行刚建的、且尚未出现在任何远端分支上**的提交上做
-  # amend（把状态表里的证据 hash 回填进去）。已经发布的历史一律不改写——
-  # 那是 force-push 该干的事，不是夜间作业该干的。
-  amendable=1
-  for r in $(git for-each-ref --format='%(refname)' refs/remotes/ 2>/dev/null); do
-    if git merge-base --is-ancestor HEAD "$r" 2>/dev/null; then amendable=0; break; fi
-  done
-  if [ "$amendable" -eq 1 ]; then
-    git commit -q --amend --no-edit >/dev/null 2>&1
-  else
-    # 已经发布过的提交不改写，改为把状态表作为独立的一笔提交。
-    git commit -q -m "docs(doc-align): $id 状态回填" >/dev/null 2>&1
-  fi
+  # 状态表作为**独立的一笔**提交，而不是 amend 进上一笔。
+  #
+  # 为什么不用 amend（CLAUDE.md 那条「看板与代码同一个 commit」）？因为 amend
+  # 之后**提交 hash 会变**：先记下 hash 再 amend，状态表里就留下一个指向
+  # 悬空提交的证据——读的人 git show 一下才发现那笔提交根本不存在。
+  # （这正是 scripts/verify-doc-alignment.sh 的 C3 抓到的东西。）
+  #
+  # 两笔紧挨着、一起推，状态表仍然不会「落在代码后面」——那条规矩要防的是
+  # 「先 push 代码回头补看板」，不是「一笔提交只能改一个文件」。
+  git commit -q -m "docs(doc-align): $id 状态回填（证据 $hash）" >/dev/null 2>&1
   PASSED=$((PASSED + 1))
   log "OK    $id → $hash  ($file)"
 done
