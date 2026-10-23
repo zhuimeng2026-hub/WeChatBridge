@@ -12,9 +12,19 @@
 # 换个用户都能直接用，只需重新挂一次 cron。
 #
 # 挂 cron（crontab -e）：
-#   0 1 * * * /path/to/repo/scripts/nightly-doc-alignment.sh >> /path/to/log 2>&1
+#   0 1 * * * /bin/bash /path/to/repo/scripts/nightly-doc-alignment.sh >> /path/to/log 2>&1
+#
+# **用 /bin/bash 显式调用**：本仓库的 .sh 在 git 里是 100644（没有可执行位），
+# 直接当命令执行会 Permission denied——2026-10-24 实测踩过。
+# 路径一律写绝对路径，别依赖 cwd，也别指望 cron 的 PATH 里有你的工具。
 #
 # 幂等：所有步骤做完后再跑一次，什么都不做直接退出。所以每天跑一次是安全的。
+#
+# **脏工作区 = 跳过，不是失败。** 执行器要求干净起点；有人正在这个仓库里改东西时，
+# 那一半目标会被跳过（返回码 10），本脚本照样 exit 0。明天夜里再来。
+#
+# **退出码如实反映失败**：有目标真挂了（执行器报错、VERIFY 不过）就 exit 1，
+# cron 才看得出「昨夜没干成」。
 #
 # **默认不推 origin。** 提交留在本地等人看过；要推就 `PUSH=1 scripts/nightly-doc-alignment.sh`。
 # 无人值守的作业不该自己决定把东西发出去——某一步改错了，那笔内容就带着
@@ -51,6 +61,11 @@ banner() { log ""; log "===== $* ====="; }
 # ── 执行器只接受「目标分支已检出 + 工作区干净」的起点 ──────────────────────────
 # 这两件事都不满足时它会拒绝运行——那是刻意的：脏工作区下「改坏了就回滚」
 # 会误伤别人的改动。2026-10-23 清一个 worktree 时就是这么丢掉了三份测试文件。
+#
+# 返回码分两类，别混：
+#   10 = 跳过（起点不满足，等明天再来；不是失败）
+#   其他非零 = 真失败（执行器报错、VERIFY 不过……）
+# 之前这两种都返回 1，脚本结尾又固定 exit 0 —— 两个目标全挂，cron 也看不见失败。
 run_target() {
   local path="$1" branch="$2"
 
@@ -58,14 +73,14 @@ run_target() {
 
   if [ ! -d "$path" ]; then
     log "工作区不存在：$path"
-    return 1
+    return 10
   fi
 
   local current
   current="$(git -C "$path" rev-parse --abbrev-ref HEAD 2>/dev/null || echo '<none>')"
   if [ "$current" != "$branch" ]; then
     log "工作区 $path 当前在 $current，不是 $branch；执行器要求目标分支已检出。"
-    return 1
+    return 10
   fi
 
   local dirty
@@ -73,13 +88,41 @@ run_target() {
   if [ -n "$dirty" ]; then
     log "工作区 $path 不干净，执行器拒绝运行（脏工作区下回滚会误伤别人的改动）："
     while IFS= read -r line; do log "  $line"; done <<< "$dirty"
-    return 1
+    log "→ 跳过（不是失败）：另有人在改这个工作区，明天夜里再来。"
+    return 10
   fi
 
   bash "$path/scripts/apply-doc-alignment.sh" --target "$branch" 2>&1 | while IFS= read -r line; do
     log "  $line"
   done
   return "${PIPESTATUS[0]}"
+}
+
+# ── 把工具链送到目标工作区 ──────────────────────────────────────────────────
+# 执行器从**它自己所在的位置**推导仓库根（REPO=脚本的上一级），步骤目录也在那儿；
+# 所以要改哪个工作区的文件，就得用哪个工作区里的那份执行器。
+# 而步骤登记表（scripts/doc-alignment/steps/*.step）只存在于 main——
+# workbench 分支是从 main 拉出去的老分支，压根没有 scripts/ 目录（实测 2026-10-24），
+# 于是那边直接 127「No such file」。
+#
+# 这里把 main 的 scripts/ 复制进目标工作区当**运行时依赖**，不提交进那条分支：
+#   · 步骤登记表永远是 main 上那一份（新的 .step 落地后，下一夜自动生效）；
+#   · 分支上不会多出一份会过期的工具链副本。
+# 复制出来的是未跟踪文件——执行器的脏检查用 `--untracked-files=no`，看不见它们，
+# 所以不会因为这个多出来的 scripts/ 而拒绝运行。
+sync_tooling() {
+  local path="$1"
+  [ "$path" = "$REPO" ] && return 0
+
+  # 分支自己已经跟踪了 scripts/ 的话不动它——那份可能比 main 的新。
+  if git -C "$path" ls-files --error-unmatch scripts/ >/dev/null 2>&1; then
+    log "  $path 自己跟踪了 scripts/，不覆盖。"
+    return 0
+  fi
+
+  rm -rf "$path/scripts"
+  cp -a "$REPO/scripts" "$path/scripts"
+  log "  已把 main 的 scripts/ 复制进 $path（未跟踪，运行时依赖，不提交进分支）。"
 }
 
 log "=== 文档对齐夜间任务开始 ==="
@@ -97,6 +140,10 @@ if [ ! -d "$WB_WORKTREE" ]; then
   log "创建 workbench worktree：$WB_WORKTREE"
   git -C "$REPO" worktree add "$WB_WORKTREE" "$WB_BRANCH" 2>&1 | while IFS= read -r line; do log "  $line"; done
 fi
+
+# ── 给 workbench 工作区补上工具链 ────────────────────────────────────────────
+banner "同步工具链到 workbench 工作区"
+sync_tooling "$WB_WORKTREE"
 
 # ── 跑两条分支 ────────────────────────────────────────────────────────────────
 rc_main=0
@@ -141,20 +188,45 @@ else
 fi
 
 # ── 收尾：清单空了只提示，不动 cron ───────────────────────────────────────────
+#
+# 「还剩几项没应用」只认 **main 上那一份状态表**（docs/progress/doc-alignment.resume.md）——
+# 它是步骤登记表本身：D-xx 与 W-xx 全列在一张表上，TARGET 指向谁就应用在谁的工作区。
+# workbench 分支里那份同名文件是分支自己的副本，停在拉出去那一刻的状态
+# （实测 2026-10-24：分支上 D-01…D-23 仍标着 ⬜，而它们早就在 main 上应用完了），
+# 把它算进来会得出「还剩 24 项」这种假数。分支那份只作参考打印。
 open=0
-for target in "$REPO" "$WB_WORKTREE"; do
-  board="$target/docs/progress/doc-alignment.resume.md"
-  if [ -f "$board" ]; then
-    n="$(grep -cE '^\| [DW]-[0-9]+ \|.*[⬜⏳]' "$board" || true)"
-    case "$n" in ''|*[!0-9]*) n=0 ;; esac
-    open=$((open + n))
-    log "$(basename "$target")：尚有 $n 项未完成。"
-  fi
+board="$REPO/docs/progress/doc-alignment.resume.md"
+if [ -f "$board" ]; then
+  n="$(grep -cE '^\| [DW]-[0-9]+ \|.*[⬜⏳]' "$board" || true)"
+  case "$n" in ''|*[!0-9]*) n=0 ;; esac
+  open="$n"
+  log "状态表（main）：尚有 $open 项未应用。"
+fi
+wb_board="$WB_WORKTREE/docs/progress/doc-alignment.resume.md"
+if [ -f "$wb_board" ]; then
+  n="$(grep -cE '^\| [DW]-[0-9]+ \|.*[⬜⏳]' "$wb_board" || true)"
+  case "$n" in ''|*[!0-9]*) n=0 ;; esac
+  log "分支上的状态表副本：$n 项未勾（分支快照，可能陈旧，不计入上面的数）。"
+fi
+
+# ── 退出码：真失败才非零 ─────────────────────────────────────────────────────
+# 10 = 跳过（起点不满足，等明天），不算失败。
+# 之前不管两个目标成没成都 exit 0 —— 挂了 cron 也看不见，只能翻日志才发现。
+failed=0
+for rc in "$rc_main" "$rc_wb"; do
+  case "$rc" in
+    0|10) ;;
+    *) failed=1 ;;
+  esac
 done
 
 log "=== 结束：main 返回 $rc_main，workbench 返回 $rc_wb，尚有 $open 项未完成 ==="
 if [ "$open" -eq 0 ]; then
   log "清单已跑空。本脚本幂等，留着不会做错事，只是每天醒来一次——"
   log "想撤掉 cron 就把 crontab 里那一行删掉。"
+fi
+if [ "$failed" -ne 0 ]; then
+  log "有目标真失败了（返回码非 0 且非 10）；本脚本以非零退出，cron 能看见。"
+  exit 1
 fi
 exit 0
