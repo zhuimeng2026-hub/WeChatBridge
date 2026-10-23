@@ -7,8 +7,10 @@ on:
       - 'windows/**'
       - 'docs/design/obsidian-workbench/**'
       - '.github/workflows/workbench-review.yml'
-  push:
-    branches: [feat/obsidian-workbench-variants]
+  # 2026-10-24：原先还有一个 push 触发器写死 [feat/obsidian-workbench-variants]。
+  # 那条分支合并进 main 后已经删除，那个触发器**永远不会触发**——留着只是
+  # 一段看着像活的、实际是死的配置。pull_request（指向 main）+ workflow_dispatch
+  # 覆盖了原本的能力：改 Windows 端代码提 PR 会跑，手动也能跑。
   workflow_dispatch:
 
 permissions:

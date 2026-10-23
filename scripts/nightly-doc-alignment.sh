@@ -3,8 +3,10 @@
 # 文档对齐夜间执行器（Linux）
 #
 # 真正执行的是一台 Linux 主机：克隆本仓库，装好 git，挂在 cron 上跑。
-# 它做三件事：建 workbench worktree（没有就建）→ 两条分支各跑一遍执行器 →
+# 它做三件事：在 main 上跑一遍执行器 →（可选）给 WB_BRANCH 指定的分支也跑一遍 →
 # 只在**确实有提交**时推 origin。
+#
+# 2026-10-24 起第二个目标默认关闭：workbench 分支合并后已删除，步骤全挂 main。
 #
 # ── 异地部署 ─────────────────────────────────────────────────────────────────
 # 本脚本**不写死任何路径**：仓库根从脚本自身位置推导（scripts/ 的上一级），
@@ -48,7 +50,11 @@ REPO_NAME="$(basename "$REPO")"
 PARENT_DIR="$(cd "$REPO/.." && pwd)"
 # worktree 放在仓库同级：<父目录>/<仓库名>-wb
 WB_WORKTREE="${WB_WORKTREE:-$PARENT_DIR/$REPO_NAME-wb}"
-WB_BRANCH="${WB_BRANCH:-feat/obsidian-workbench-variants}"
+# 2026-10-24：workbench 分支合并后已删除，它那条线上的步骤（D-xx 与 W-01）
+# 现在全挂在 main 上。所以**第二个目标默认不启用**——没有分支可跑的时候，
+# 建一个 worktree 然后每天撞一次「branch not found」只是噪音。
+# 要给别的分支跑步骤时用环境变量指定：WB_BRANCH=xxx。
+WB_BRANCH="${WB_BRANCH:-}"
 LOG_DIR="${LOG_DIR:-$REPO/.artifacts/doc-alignment}"
 LOG_FILE="$LOG_DIR/nightly-$(date '+%Y-%m-%d').log"
 
@@ -237,6 +243,9 @@ done
 #     PUSH=1 scripts/nightly-doc-alignment.sh
 #
 # cron 里默认不开。开了之后也仍然只在**确实有提交**时才推。
+TARGETS="$REPO:main"
+[ -n "$WB_BRANCH" ] && TARGETS="$TARGETS $WB_WORKTREE:$WB_BRANCH"
+
 if [ "${PUSH:-0}" = "1" ]; then
   for target in "${TARGETS[@]}"; do
     path="${target%%:*}"
@@ -279,7 +288,7 @@ if [ -f "$board" ]; then
   log "状态表（main）：尚有 $open 项未应用。"
 fi
 wb_board="$WB_WORKTREE/docs/progress/doc-alignment.resume.md"
-if [ -f "$wb_board" ]; then
+if [ -n "$WB_BRANCH" ] && [ -f "$wb_board" ]; then
   n="$(count_open "$wb_board")"
   log "分支上的状态表副本：$n 项未勾（分支快照，可能陈旧，不计入上面的数）。"
 fi
