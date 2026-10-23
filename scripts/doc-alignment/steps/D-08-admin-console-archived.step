@@ -1,0 +1,13 @@
+ID: D-08
+TARGET: main
+FILE: docs/progress/admin-console.md
+OP: prepend
+VERIFY: grep -qF '本看板从此是历史记录' docs/progress/admin-console.md
+COMMIT: docs(admin-console): 标注看板归档
+---BEGIN---
+> **归档（2026-10-23）。** 分支 `feat/admin-console` 已删除，内容**全部并入 `main`**，
+> 所以没有对应的 `archive/*` tag——它是 `main` 的祖先，不需要 tag 钉住。
+> 本看板从此是历史记录，不是活的进度源；活着的看板只有 `main` 与
+> `feat/obsidian-workbench-variants` 两块。
+
+---END---

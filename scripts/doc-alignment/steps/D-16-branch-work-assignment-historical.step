@@ -1,0 +1,18 @@
+ID: D-16
+TARGET: main
+FILE: docs/design/branch-work-assignment.zh-CN.md
+OP: prepend
+VERIFY: grep -qF '本文是历史执行记录' docs/design/branch-work-assignment.zh-CN.md
+COMMIT: docs(design): branch-work-assignment 标注为历史执行记录
+---BEGIN---
+> **⚠️ 本文是历史执行记录，不是当前分工表。**
+>
+> 它记录的是 2026-10-18 那一轮三分支并行（机器 A / B / C）的分工，**那一轮早已结束**：
+> 2026-10-23 三条分支（`feat/server-convergence` / `feat/admin-console` /
+> `feat/client-license-gate`）**全部删除**，成果分别由 tag `archive/feat-server-convergence`、
+> 并入 main、以及 `archive/feat-client-license-gate` 钉住。
+>
+> **协议本身仍然有效**——下一次并行开工时照它办，但把「三分支 / 3 台机器」换成当轮的实际情况。
+> 当前分支与看板状态见 `CLAUDE.md` 与 `docs/progress/`。
+
+---END---

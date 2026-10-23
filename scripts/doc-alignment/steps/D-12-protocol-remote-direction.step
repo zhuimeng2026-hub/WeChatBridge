@@ -1,0 +1,25 @@
+ID: D-12
+TARGET: main
+FILE: docs/design/progress-sync-protocol.zh-CN.md
+OP: replace
+VERIFY: grep -qF '远端是 `origin`（我们的 fork），不是 `upstream`' docs/design/progress-sync-protocol.zh-CN.md
+COMMIT: docs(protocol): 修正远端方向——origin 是我们的 fork，upstream 才是上游
+---BEGIN---
+**分支名带 `feat/` 前缀，远端是 `fork` 不是 `origin`**——三条并行分支都只存在于
+用户 fork 上，`origin` 指上游 freestyleFly，`origin/feat/client-license-gate` 这类
+引用不存在，会直接报 `unknown revision`：
+
+```bash
+git fetch fork --quiet && for b in feat/server-convergence feat/admin-console feat/client-license-gate; do \
+  echo "=== $b ==="; git log --oneline -3 "fork/$b"; done
+```
+---SPLIT---
+**分支名带 `feat/` 前缀，远端是 `origin`（我们的 fork），不是 `upstream`**——三条并行分支都只存在于
+用户 fork 上，`upstream` 指上游 freestyleFly，`upstream/feat/client-license-gate` 这类
+引用不存在，会直接报 `unknown revision`：
+
+```bash
+git fetch origin --quiet && for b in feat/server-convergence feat/admin-console feat/client-license-gate; do \
+  echo "=== $b ==="; git log --oneline -3 "origin/$b"; done
+```
+---END---

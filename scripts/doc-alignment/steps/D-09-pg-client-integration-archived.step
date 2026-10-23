@@ -1,0 +1,14 @@
+ID: D-09
+TARGET: main
+FILE: docs/progress/pg-client-integration.md
+OP: prepend
+VERIFY: grep -qF '本看板从此是历史记录' docs/progress/pg-client-integration.md
+COMMIT: docs(pg-client-integration): 标注看板归档
+---BEGIN---
+> **归档（2026-10-23）。** 分支 `feat/pg-client-integration` 已删除，成果由 tag
+> `archive/feat-pg-client-integration` 钉住，且**已全部并入 `main`**
+> （21 个独有提交 → merge commit `004cf6f`，含凭据泄漏修复、M-5 修复与其真库语义测试、
+> admin 头像昵称、浏览器授权登录）。
+> 本看板从此是历史记录，不是活的进度源。
+
+---END---

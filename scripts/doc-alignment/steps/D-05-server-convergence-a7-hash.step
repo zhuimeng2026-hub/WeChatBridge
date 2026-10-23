@@ -1,0 +1,11 @@
+ID: D-05
+TARGET: main
+FILE: docs/progress/server-convergence.md
+OP: replace
+VERIFY: grep -qF '19d4d5a' docs/progress/server-convergence.md
+COMMIT: docs(server-convergence): A-⑦ 证据 commit 改指主干上的等价提交
+---BEGIN---
+`ca2289c`
+---SPLIT---
+`19d4d5a`
+---END---

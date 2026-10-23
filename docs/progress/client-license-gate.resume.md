@@ -1,5 +1,22 @@
 # 机器 C 续跑清单（feat/client-license-gate）
 
+> **⚠️ 本清单已于 2026-10-23 退役。**
+>
+> 原因有两条，任一条都足以让它失效：
+> 1. `feat/client-license-gate` 分支已删除，成果由 tag `archive/feat-client-license-gate` 钉住；
+> 2. 它依赖的 worktree `D:\WeChatBridge-C` **也已删除**——本清单里写的每一个路径都不存在了。
+>
+> 原计划任务 `WeChatBridge-Resume-LicenseGate` 指向那个已删目录，每次触发都只会停在
+> 「找不到续跑清单」上退出 1。已停用。
+>
+> 实际状态：S1–S4 早已在 `main` 上完成（`cbcaa5d` / `77c33b2` / `a1624e3` / `7de97be`），
+> 只有 S5（`HttpActivationTransport` handler 注入）还没落地，且**现在缺口是空的**——
+> 曾经能补它的那份测试文件已随 worktree 一并丢弃（见 `client-license-gate.md` 第 18 行）。
+>
+> **续跑入口见 `docs/progress/doc-alignment.md`。**
+
+
+
 > 本文件是**机器独占**的续跑状态：谁执行一步，谁就把状态和 commit 一起提交。
 > 与看板 `client-license-gate.md` 的区别是——看板回答「做到哪了」，本文件回答
 > 「下一个动作是什么」，并且只被 `resume-client-license-gate.ps1` 读。

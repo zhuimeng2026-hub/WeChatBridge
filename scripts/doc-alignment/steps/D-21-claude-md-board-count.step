@@ -1,0 +1,16 @@
+ID: D-21
+TARGET: main
+FILE: CLAUDE.md
+OP: replace
+VERIFY: grep -qF '看板目录在 `main` 上有十块' CLAUDE.md
+COMMIT: docs: CLAUDE.md 的看板块数对齐到十块
+---BEGIN---
+- **看板目录在 `main` 上有八块**（`server-convergence` / `admin-console` / `client-license-gate` /
+  `client-license-gate.resume` / `pg-client-integration` / `unionid-bridge` / `delivery-quota` /
+  `login-perf-and-ux`），在飞分支 `feat/obsidian-workbench-variants` 自带第九块
+---SPLIT---
+- **看板目录在 `main` 上有十块**：八块历史/在用的（`server-convergence` / `admin-console` /
+  `client-license-gate` / `client-license-gate.resume` / `pg-client-integration` /
+  `unionid-bridge` / `delivery-quota` / `login-perf-and-ux`），加上文档对齐工具自带的两块
+  （`doc-alignment` 及其机器可读状态表）。在飞分支 `feat/obsidian-workbench-variants` 再自带一块
+---END---

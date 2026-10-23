@@ -1,5 +1,13 @@
 # 进度看板：feat/pg-client-integration（本机 · C:\WeChatBridge 主工作区）
 
+> **归档（2026-10-23）。** 分支 `feat/pg-client-integration` 已删除，成果由 tag
+> `archive/feat-pg-client-integration` 钉住，且**已全部并入 `main`**
+> （21 个独有提交 → merge commit `004cf6f`，含凭据泄漏修复、M-5 修复与其真库语义测试、
+> admin 头像昵称、浏览器授权登录）。
+> 本看板从此是历史记录，不是活的进度源。
+
+
+
 > 规则见 `docs/design/progress-sync-protocol.zh-CN.md` §2：只有本分支的属主更新本文件，与 commit 同一时刻。
 >
 > 2026-10-19 建立。此前本分支**没有看板**——协议要求「看板与代码同一个 commit」，

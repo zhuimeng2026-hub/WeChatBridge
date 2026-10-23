@@ -98,3 +98,10 @@ __pycache__/
 # WCB_PAYMENT_CODE_PATH / WCB_CONTACT_QR_PATH configuration, never in the
 # repository — a commit here would publish a live collection code.
 /paypic/
+
+
+# Exported WeChat chat records produced by local probes. These are personal
+# correspondence — chat text, images, and the exported report — and must never
+# reach the repository: a single `git add -A` would publish someone's private
+# messages.
+/chat-exports/
