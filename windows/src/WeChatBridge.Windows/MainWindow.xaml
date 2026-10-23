@@ -111,6 +111,12 @@
                         <TextBlock Style="{StaticResource NavLabel}" Text="{loc:Loc Key='记录'}" />
                     </StackPanel>
                 </ListBoxItem>
+                <ListBoxItem Tag="Workbench">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Style="{StaticResource NavIcon}" Text="&#xE8A5;" />
+                        <TextBlock Style="{StaticResource NavLabel}" Text="{loc:Loc Key='知识工作台'}" />
+                    </StackPanel>
+                </ListBoxItem>
                 <ListBoxItem Tag="About">
                     <StackPanel Orientation="Horizontal">
                         <TextBlock Style="{StaticResource NavIcon}" Text="&#xE946;" />

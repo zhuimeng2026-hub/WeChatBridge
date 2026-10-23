@@ -15,6 +15,7 @@ namespace WeChatBridge.Windows;
 public enum AppTab
 {
     History,
+    Workbench,
     General,
     Entries,
     Scenes,

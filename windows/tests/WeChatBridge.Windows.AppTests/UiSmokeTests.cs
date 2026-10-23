@@ -29,6 +29,12 @@ public sealed class UiSmokeTests
                 var config = Path.Combine(fixture.Root, "config");
                 using var scenes = new SceneService(config);
                 var model = new MainViewModel(fixture.Paths, config, false, scenes: scenes, copyPayload: _ => { });
+                var vaultRoot = Path.Combine(fixture.Root, "vault");
+                var sampleCase = Path.Combine(vaultRoot, "当事人", "陈某", "CASE-2026-018");
+                Directory.CreateDirectory(sampleCase);
+                File.WriteAllText(Path.Combine(sampleCase, "沟通记录.md"),
+                    "# 沟通记录\n\n## 2026 年 10 月 21 日\n\n09:18，项目协调员在群聊中确认首批设备已经送达东区仓库。\n\n09:42，仓库联系人回复正在逐箱清点，暂未发现外包装破损。\n\n## 2026 年 10 月 22 日\n\n14:05，项目协调员询问签收回执是否已经盖章。仓库联系人回复仍待补充签收回执，预计次日发出扫描件。\n\n## 后续事项\n\n- 核对回执上的设备数量是否与采购清单一致。\n- 收到扫描件后，将原件归档至项目材料。\n");
+                model.ObsidianVaultPath = vaultRoot;
                 var source = fixture.WriteSource("sample.zip", "");
                 using (var zip = new System.IO.Compression.ZipArchive(File.OpenWrite(source), System.IO.Compression.ZipArchiveMode.Create))
                 using (var writer = new StreamWriter(zip.CreateEntry("聊天记录.txt").Open()))
@@ -84,6 +90,76 @@ public sealed class UiSmokeTests
                             Assert.Equal("示例收集", model.CollectionRows.Single(r => r.Id == collectionId).Title);
                         }
                     }
+                    string? exportedRequest = null;
+                    var workbench = new WorkbenchPane(model, request => exportedRequest = request);
+                    workbench.Activate();
+                    WaitFor(() => ((ListBox)workbench.FindName("MaterialsList")).Items.Count == 1);
+                    workbench.Measure(new Size(1440, 1000));
+                    workbench.Arrange(new Rect(0, 0, 1440, 1000));
+                    workbench.UpdateLayout();
+                    var materials = (ListBox)workbench.FindName("MaterialsList");
+                    Assert.Single(materials.Items);
+                    materials.SelectedIndex = 0;
+                    Assert.Contains("设备已经送达", ((TextBox)workbench.FindName("DocumentBody")).Text);
+                    Assert.True(((TextBox)workbench.FindName("DocumentBody")).IsReadOnly);
+                    Descendants<CheckBox>(materials).Single().IsChecked = true;
+                    Assert.Contains("1", ((TextBlock)workbench.FindName("SelectionCount")).Text);
+                    var promptBox = (TextBox)workbench.FindName("PromptBox");
+                    promptBox.Text = "请按时间顺序整理现有沟通，并区分已确认事实与待补材料。";
+                    ((Button)workbench.FindName("CopyRequestButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    var capturedRequest = exportedRequest ?? throw new InvalidOperationException("Copy Request did not export the selected material.");
+                    Assert.Contains("请按时间顺序整理现有沟通", capturedRequest);
+                    Assert.Contains("设备已经送达", capturedRequest);
+                    Assert.Contains("当事人/陈某/CASE-2026-018/沟通记录.md", capturedRequest);
+                    ((TextBox)workbench.FindName("ResultBox")).Text = "人工整理摘要（由测试夹具提供，非模型输出）\n\n## 已确认\n- 10 月 21 日，首批设备送达东区仓库。\n- 仓库联系人称外包装暂未发现破损。\n\n## 时间线\n- 10 月 21 日 09:18：确认设备送达。\n- 10 月 21 日 09:42：仓库开始逐箱清点。\n- 10 月 22 日 14:05：签收回执预计次日补发。\n\n## 待跟进\n- 收到扫描件后核对设备数量，并归档原件。\n\n来源：[[当事人/陈某/CASE-2026-018/沟通记录.md]]";
+                    ((TextBox)workbench.FindName("DraftTitleBox")).Text = "沟通记录分析草稿-" + language;
+                    if (previewDirectory is not null)
+                        RenderWorkbench(workbench, $"workbench-reading-first-{language}", previewDirectory);
+                    if (previewDirectory is not null)
+                        RenderWorkbench(workbench, $"workbench-reading-first-compact-{language}", previewDirectory, 1000, 700);
+                    var layoutSelector = (ComboBox)workbench.FindName("LayoutSelector");
+                    var materialStrip = (Border)workbench.FindName("MaterialStrip");
+                    var navigator = (Border)workbench.FindName("NavigatorRegion");
+                    layoutSelector.SelectedIndex = 1;
+                    workbench.UpdateLayout();
+                    Assert.Equal(Visibility.Visible, materialStrip.Visibility);
+                    Assert.Equal(Visibility.Collapsed, navigator.Visibility);
+                    Assert.Equal(Visibility.Visible, ((Border)workbench.FindName("AssistantRegion")).Visibility);
+                    if (previewDirectory is not null)
+                        RenderWorkbench(workbench, $"workbench-case-workspace-{language}", previewDirectory);
+                    if (previewDirectory is not null)
+                        RenderWorkbench(workbench, $"workbench-case-workspace-compact-{language}", previewDirectory, 1000, 700);
+                    layoutSelector.SelectedIndex = 2;
+                    workbench.UpdateLayout();
+                    Assert.Equal(Visibility.Visible, ((TreeView)workbench.FindName("FolderTree")).Visibility);
+                    Assert.Equal(Visibility.Collapsed, materials.Visibility);
+                    Assert.Equal(Visibility.Visible, navigator.Visibility);
+                    if (previewDirectory is not null)
+                        RenderWorkbench(workbench, $"workbench-document-workbench-{language}", previewDirectory);
+                    if (previewDirectory is not null)
+                        RenderWorkbench(workbench, $"workbench-document-workbench-compact-{language}", previewDirectory, 1000, 700);
+                    layoutSelector.SelectedIndex = 0;
+                    workbench.UpdateLayout();
+                    Assert.Contains("签收回执预计次日补发", ((TextBox)workbench.FindName("ResultBox")).Text);
+                    Assert.Equal("沟通记录分析草稿-" + language, ((TextBox)workbench.FindName("DraftTitleBox")).Text);
+                    Assert.Contains("1", ((TextBlock)workbench.FindName("SelectionCount")).Text);
+                    promptBox.Text = "different live prompt after export";
+                    Descendants<CheckBox>(materials).Single().IsChecked = false;
+                    ((Button)workbench.FindName("SaveNoteButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    var savedNote = Path.Combine(vaultRoot, "分析", "沟通记录分析草稿-" + language + ".md");
+                    Assert.True(File.Exists(savedNote));
+                    Assert.Contains("微信流未调用模型", File.ReadAllText(savedNote));
+                    Assert.Contains("[[当事人/陈某/CASE-2026-018/沟通记录.md]]", File.ReadAllText(savedNote));
+                    Assert.Contains("请按时间顺序整理现有沟通", File.ReadAllText(savedNote));
+                    Assert.DoesNotContain("different live prompt after export", File.ReadAllText(savedNote));
+                    // Keep the source fixture identical for the next language pass.
+                    File.Delete(savedNote);
+                    ((Button)workbench.FindName("DemoButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    Assert.Equal(2, materials.Items.Count);
+                    Assert.Contains("示例资料", ((TextBox)workbench.FindName("DocumentBody")).Text);
+                    Assert.True(((ItemsControl)workbench.FindName("AttachmentsList")).Items.Count > 0);
+                    ((Button)workbench.FindName("SaveNoteButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    Assert.Equal(L10n.Text("示例资料仅在内存中；请选择真实知识库后再保存"), ((TextBlock)workbench.FindName("StatusText")).Text);
                     var textImport = new TextImportWindow("测试聊天文字");
                     textImport.Show();
                     Assert.True(((Button)textImport.FindName("ImportButton")).IsEnabled);
@@ -329,5 +405,21 @@ public sealed class UiSmokeTests
         encoder.Save(stream);
         canvas.Child = null;
         return height;
+    }
+
+    private static void RenderWorkbench(FrameworkElement content, string name, string directory, int width = 1488, int height = 1056)
+    {
+        Directory.CreateDirectory(directory);
+        var canvas = new Border { Background = (Brush)Application.Current.Resources["BackgroundColor"], Child = content };
+        canvas.Measure(new Size(width, height));
+        canvas.Arrange(new Rect(0, 0, width, height));
+        canvas.UpdateLayout();
+        var bitmap = new RenderTargetBitmap(width, height, 96, 96, PixelFormats.Pbgra32);
+        bitmap.Render(canvas);
+        var encoder = new PngBitmapEncoder();
+        encoder.Frames.Add(BitmapFrame.Create(bitmap));
+        using var stream = File.Create(Path.Combine(directory, name + ".png"));
+        encoder.Save(stream);
+        canvas.Child = null;
     }
 }
