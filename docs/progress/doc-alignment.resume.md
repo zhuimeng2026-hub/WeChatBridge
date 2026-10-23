@@ -11,7 +11,7 @@
 
 | ID | 事项 | 状态 | 备注 |
 |---|---|---|---|
-| D-01 | `client-license-gate.resume.md` 标注退役 | ⬜ | 指向已删除的 worktree 的旧清单 |
+|   D-01   |   `client-license-gate.resume.md` 标注退役   | ✅ | a8a059f |
 | D-02 | `client-license-gate.md` 第 18 行改写（S5 缺口现状） | ⬜ | 测试文件已随 worktree 丢弃 |
 | D-03 | `server-convergence.md` A-⑤ 证据 commit 改指主干等价提交 | ⬜ | `42ccdc8` 在仓库里查不到 |
 | D-04 | `server-convergence.md` A-⑥ 证据 commit 改指主干等价提交 | ⬜ | `ad457b6` 在仓库里查不到 |
