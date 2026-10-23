@@ -8,7 +8,8 @@ COMMIT: docs(doc-align): 出口标准对齐到 D-27，并把 W-01 的目标分�
 - [ ] `bash scripts/apply-doc-alignment.sh --target main` 跑完，`doc-alignment.resume.md` 里 D-01~D-18 全 ✅
 - [ ] `bash scripts/apply-doc-alignment.sh --target feat/obsidian-workbench-variants` 跑完，W-01 ✅
 - [ ] `bash scripts/verify-doc-alignment.sh` 退出码 0（FAIL 清零；WARN 是已登记的已知缺口，应当逐条有出处）
-- [ ] 两条分支都 push---SPLIT---
+- [ ] 两条分支都 push
+---SPLIT---
 - [ ] `bash scripts/apply-doc-alignment.sh --target main` 跑完，`doc-alignment.resume.md` 里 D-01~D-27 全 ✅
 - [ ] `bash scripts/apply-doc-alignment.sh --target main` 跑完，W-01 ✅（看板已随分支合并进主干，目标分支从 `feat/obsidian-workbench-variants` 改成 `main`）
 - [ ] `bash scripts/verify-doc-alignment.sh` 退出码 0（FAIL 清零；WARN 是已登记的已知缺口，应当逐条有出处）
