@@ -1,0 +1,19 @@
+ID: D-28
+TARGET: main
+FILE: CLAUDE.md
+OP: replace
+VERIFY: grep -qF 'origin 上现在只剩 `main` 一条' CLAUDE.md
+COMMIT: docs: CLAUDE.md 的 origin 分支数对齐到一条（workbench 分支已归档）
+---BEGIN---
+  远端分支清单：`git branch -r | grep origin/`（origin 上现在只剩 `main` 与
+  `feat/obsidian-workbench-variants` 两条；`upstream` 的十二条 = `upstream/main` 本体加十一条
+  上游 PR 分支，全是上游 PR 合并后的残留，**推不动也不该推**——
+  CLAUDE.md 要求 upstream 长期保留作对比锚点）。
+  **⚠️ 但「上游的内容全在 main 里」这句话不能用提交数验证**（2026-10-24 实测）：
+---SPLIT---
+  远端分支清单：`git branch -r | grep origin/`（origin 上现在只剩 `main` 一条——
+  知识工作台那条分支 2026-10-24 合进 main 之后打了 `archive/feat-obsidian-workbench-variants`
+  tag 就删掉了；`upstream` 的十二条 = `upstream/main` 本体加十一条
+  上游 PR 分支，全是上游 PR 合并后的残留，**推不动也不该推**——
+  CLAUDE.md 要求 upstream 长期保留作对比锚点）。
+---END---

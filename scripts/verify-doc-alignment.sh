@@ -79,13 +79,29 @@ echo
 # ─────────────────────────────────────────────────────────────────────────────
 
 # C1.1 origin 上的远端分支条数（symbolic 的 origin/HEAD 不算一条分支）
+#
+#     期望值从 CLAUDE.md 里读，**不写死**：写死的数字必然会在某次删分支之后过期，
+#     而过期的恰恰是「文档与实况一致」这件事本身。2026-10-24 删掉
+#     feat/obsidian-workbench-variants 时，这条检查就是这么红的。
 if git rev-parse --verify --quiet origin/main >/dev/null; then
   origin_branches="$(git for-each-ref --format='%(symref)' refs/remotes/origin/ \
                     | grep -c '^$')"
-  if [ "$origin_branches" -eq 2 ]; then
-    say PASS C1.1 "origin 远端分支数 = 2（与 CLAUDE.md 的陈述一致）"
+  # 中文一律用固定字符串逐个字面量比（见本文件顶部关于 C locale 的那条）。
+  claimed_origin=""
+  for w in 一 二 三 四 五 六 七 八 九 十; do
+    needle="origin 上现在只剩 \`main\` ${w}条"
+    if grep -qF "$needle" CLAUDE.md; then claimed_origin="$w"; break; fi
+  done
+  case "$claimed_origin" in
+    一) n=1 ;; 二) n=2 ;; 三) n=3 ;; 四) n=4 ;; 五) n=5 ;;
+    六) n=6 ;; 七) n=7 ;; 八) n=8 ;; 九) n=9 ;; 十) n=10 ;; *) n=-1 ;;
+  esac
+  if [ "$n" -lt 0 ]; then
+    say FAIL C1.1 "CLAUDE.md 里找不到「origin 上现在只剩 \`main\` N条」的表述"
+  elif [ "$origin_branches" -eq "$n" ]; then
+    say PASS C1.1 "origin 远端分支数 = $origin_branches（与 CLAUDE.md 一致）"
   else
-    say FAIL C1.1 "origin 远端分支数 = $origin_branches，CLAUDE.md 写的是 2 —— 数字漂了"
+    say FAIL C1.1 "origin 远端分支数 = $origin_branches，CLAUDE.md 写的是 $n —— 数字漂了"
   fi
 
   # C1.2 origin 上是否还挂着已归档的旧分支

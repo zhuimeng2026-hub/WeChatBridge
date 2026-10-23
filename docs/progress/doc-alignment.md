@@ -39,7 +39,8 @@ bash scripts/verify-doc-alignment.sh
 
 **真正执行的是一台 Linux 主机**：克隆本仓库，装好 git，挂在 cron 上跑。
 `scripts/nightly-doc-alignment.sh` 是启动器，它做三件事：建 workbench worktree
-（没有就建）→ 两条分支各跑一遍执行器 → 报告各分支领先 origin 多少提交。
+（分支还在才建——2026-10-24 那条分支归档之后就没了）→ 各目标分支各跑一遍执行器 →
+报告各分支领先 origin 多少提交。
 
 挂 cron：
 
@@ -77,7 +78,7 @@ clone 出来就是 LF，脚本原生可跑，步骤定义与目标 `.md` 的行�
 完整的「现状 → 依据 → 改法 → 验收」在 `scripts/doc-alignment/steps/*.step` 每个文件里。
 下面是索引：
 
-### main 分支（D-01 ~ D-27）
+### main 分支（D-01 ~ D-28）
 
 | ID | 文件 | 改什么 | 为什么 |
 |---|---|---|---|
@@ -102,6 +103,7 @@ clone 出来就是 LF，脚本原生可跑，步骤定义与目标 `.md` 的行�
 | D-25 | `CLAUDE.md` | 讲清子目录里那块看板为什么不被 C1.4 数到 | 校验器只数 `docs/progress/` 的直接子文件，所以「十块」与实际十一块并不矛盾 |
 | D-26 | `doc-alignment.md` | workbench 分支的合并决策改成已合并 | CI run 39777985455 已核实为 success，决策不再是待决项 |
 | D-27 | `doc-alignment.md` | 出口标准对齐到 D-27，W-01 目标分支改成 main | 看板已随分支进主干，W-01 还在跑旧分支上就没有意义了 |
+| D-28 | `CLAUDE.md` | origin 分支数改成一条 | workbench 分支归档删除后远端只剩 main，校验器 C1.1 立刻红了——它当场抓到了这次漂移 |
 
 ### workbench 看板（W-01 · 目标分支已改为 `main`）
 
@@ -161,4 +163,4 @@ clone 出来就是 LF，脚本原生可跑，步骤定义与目标 `.md` 的行�
 - [ ] `bash scripts/apply-doc-alignment.sh --target main` 跑完，`doc-alignment.resume.md` 里 D-01~D-27 全 ✅
 - [ ] `bash scripts/apply-doc-alignment.sh --target main` 跑完，W-01 与 W-02 ✅（看板已随分支合并进主干，目标分支从 `feat/obsidian-workbench-variants` 改成 `main`）
 - [ ] `bash scripts/verify-doc-alignment.sh` 退出码 0（FAIL 清零；WARN 是已登记的已知缺口，应当逐条有出处）
-- [ ] 两条分支都 push
+- [ ] `main` push（workbench 分支归档后只剩这一个目标）

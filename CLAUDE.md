@@ -485,7 +485,8 @@ ent=PRO        ← 大写、排序、去重后逗号连接
 
 看板本身就是进度源，别只看文档：`docs/progress/*.md` 里 ⬜ / ⏳ 的行是**代码尚未落地**。
 最新的一块工作是 **Windows 端的「知识工作台」**（分支 `feat/obsidian-workbench-variants`，
-**2026-10-24 已合进 `main`**；看板 `docs/progress/feat/obsidian-workbench-variants.md`
+**2026-10-24 已合进 `main`**，随后归档为 tag `archive/feat-obsidian-workbench-variants`
+并从 origin 删掉；看板 `docs/progress/feat/obsidian-workbench-variants.md`
 也在主干上，是 `docs/progress/` 下唯一的子目录）：
 Windows 端新增「知识工作台」面板（阅读优先 / 案件工作区 / 资料工作台三套布局），
 读本地 Obsidian Markdown 库、选材、把请求复制到外部工具、粘贴结果、保存新笔记。
@@ -608,8 +609,8 @@ Windows 端新增「知识工作台」面板（阅读优先 / 案件工作区 / 
 - **`Tests/FolderDeliveryTests.swift` 的 11 个测试不在任何 target 里**，`swift test` 从不编译它们。
 - **`App.swift` / `ShareEntryProbe.swift` / `AppLink.swift` / `ShareFailure.swift` 引用的 ADR-0005 / ADR-0006 在仓库里不存在。**
 - **`ci.yml` 只在 `[main, feat/windows-port]` 上触发**（push），以及任何 PR 指向 `main` 时触发。
-  推 `main` 会跑；推别的分支（比如 `feat/obsidian-workbench-variants`）**不会**跑 `ci.yml`，
-  那条分支由自己带的 `workbench-review.yml` 守着（双形态矩阵 + 自包含打包 + 原生截图）。
+  推 `main` 会跑；推别的分支（比如已归档的 `feat/obsidian-workbench-variants`）**不会**跑
+  `ci.yml`，那条分支当时由自己带的 `workbench-review.yml` 守着（双形态矩阵 + 自包含打包 + 原生截图）。
   但 CI **只有 macOS 与 Windows 两个 job，不测 Go 服务端，也不测 `admin-console`**——
   服务端的全绿、后台的冒烟全绿都只在你本地成立。
 - **macOS 端自 2026-10-04 起基本停更**（`git log -- macos/` 的最后一条），而 `server/` 与

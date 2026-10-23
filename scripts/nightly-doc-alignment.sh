@@ -202,20 +202,32 @@ fi
 
 # ── workbench 分支用独立 worktree ────────────────────────────────────────────
 # 主检出留给 main（执行器要求目标分支已检出，一个分支不能同时被两个工作树占用）。
-if [ ! -d "$WB_WORKTREE" ]; then
-  log "创建 workbench worktree：$WB_WORKTREE"
-  git -C "$REPO" worktree add "$WB_WORKTREE" "$WB_BRANCH" 2>&1 | while IFS= read -r line; do log "  $line"; done
+#
+# 分支可能已经不在了：2026-10-24 知识工作台那条分支合进 main 之后打了
+# archive tag 就删掉了，它自己的步骤（W-01~W-03）也把 TARGET 改到了 main。
+# 所以这一段是**有分支才做**，不是无条件做——否则夜间作业每天去 worktree add
+# 一条不存在的分支，失败之后还接着往下跑。
+TARGETS=("$REPO:main")
+if git -C "$REPO" rev-parse --verify --quiet "refs/heads/$WB_BRANCH" >/dev/null; then
+  if [ ! -d "$WB_WORKTREE" ]; then
+    log "创建 workbench worktree：$WB_WORKTREE"
+    git -C "$REPO" worktree add "$WB_WORKTREE" "$WB_BRANCH" 2>&1 | while IFS= read -r line; do log "  $line"; done
+  fi
+  # ── 给 workbench 工作区补上工具链 ────────────────────────────────────────
+  banner "同步工具链到 workbench 工作区"
+  sync_tooling "$WB_WORKTREE"
+  TARGETS+=("$WB_WORKTREE:$WB_BRANCH")
+else
+  log "workbench 分支 $WB_BRANCH 不存在（已归档），只跑 main。"
 fi
 
-# ── 给 workbench 工作区补上工具链 ────────────────────────────────────────────
-banner "同步工具链到 workbench 工作区"
-sync_tooling "$WB_WORKTREE"
-
-# ── 跑两条分支 ────────────────────────────────────────────────────────────────
+# ── 跑各目标 ────────────────────────────────────────────────────────────────
 rc_main=0
 rc_wb=0
 run_target "$REPO" main      || rc_main=$?
-run_target "$WB_WORKTREE" "$WB_BRANCH" || rc_wb=$?
+for t in "${TARGETS[@]:1}"; do
+  run_target "${t%%:*}" "${t##*:}" || rc_wb=$?
+done
 
 # ── 推送 ──────────────────────────────────────────────────────────────────────
 # **默认不推。** 推送是对外操作，一个无人值守的夜间作业不该自己决定把东西
@@ -226,7 +238,7 @@ run_target "$WB_WORKTREE" "$WB_BRANCH" || rc_wb=$?
 #
 # cron 里默认不开。开了之后也仍然只在**确实有提交**时才推。
 if [ "${PUSH:-0}" = "1" ]; then
-  for target in "$REPO:main" "$WB_WORKTREE:$WB_BRANCH"; do
+  for target in "${TARGETS[@]}"; do
     path="${target%%:*}"
     branch="${target##*:}"
     ahead="$(git -C "$path" rev-list --count "origin/$branch..$branch" 2>/dev/null || echo 0)"
@@ -242,7 +254,7 @@ if [ "${PUSH:-0}" = "1" ]; then
   done
 else
   banner "推送已跳过（PUSH 未开启）"
-  for target in "$REPO:main" "$WB_WORKTREE:$WB_BRANCH"; do
+  for target in "${TARGETS[@]}"; do
     path="${target%%:*}"
     branch="${target##*:}"
     ahead="$(git -C "$path" rev-list --count "origin/$branch..$branch" 2>/dev/null || echo 0)"
@@ -283,7 +295,7 @@ for rc in "$rc_main" "$rc_wb"; do
   esac
 done
 
-log "=== 结束：main 返回 $rc_main，workbench 返回 $rc_wb，尚有 $open 项未完成 ==="
+log "=== 结束：main 返回 $rc_main，workbench 返回 $rc_wb（没有该分支时为 0），尚有 $open 项未完成 ==="
 if [ "$open" -eq 0 ]; then
   log "清单已跑空。本脚本幂等，留着不会做错事，只是每天醒来一次——"
   log "想撤掉 cron 就把 crontab 里那一行删掉。"
