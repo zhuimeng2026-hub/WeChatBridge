@@ -123,13 +123,24 @@ normalize_body() { # normalize_body <target-file> <body-file>
 
 # ── 状态表读写 ─────────────────────────────────────────────────────────────
 # 状态表行格式： | D-01 | 说明 | ⬜ | 备注 |
+#
+# ⚠️ 取状态列**不要用 [⬜⏳✅🔴] 这种多字节字符类**：Git Bash 的默认 locale
+#    不是 UTF-8 感知的，字符类会退化成按字节匹配，认不出 ✅，于是把已完成的行
+#    当成未完成重跑一遍。改成用 awk 按 | 切出第 4 个字段，整串比较。
 resume_status() { # resume_status <ID>
-  grep -E "^\| *$(printf '%s' "$1" | sed 's/[][\\.*^$/]/\\&/g') *\|" "$RESUME" 2>/dev/null \
-    | grep -oE '[⬜⏳✅🔴]' | head -1
+  grep -E "^\| *$1 *\|" "$RESUME" 2>/dev/null | head -1 \
+    | awk -F'|' '{ s=$4; gsub(/^[ \t]+/, "", s); gsub(/[ \t\r]+$/, "", s); print s }'
+}
+
+resume_note() { # resume_note <ID> —— 取备注列
+  grep -E "^\| *$1 *\|" "$RESUME" 2>/dev/null | head -1 \
+    | awk -F'|' '{ s=$5; gsub(/^[ \t]+/, "", s); gsub(/[ \t\r]+$/, "", s); print s }'
 }
 
 resume_mark() { # resume_mark <ID> <mark> <note>
+  # note 传空串 = 保留原有备注。
   local id="$1" mark="$2" note="$3" tmp eol
+  if [ "$DRYRUN" -eq 1 ]; then return; fi   # dry-run 不许写盘
   tmp="$(mktemp)"
   # 状态表也是 CRLF 的，重写时要把行尾补回去，否则改过的行会变成 LF，
   # 文件变成混合行尾（git diff 会整片飘红）
@@ -151,7 +162,11 @@ resume_mark() { # resume_mark <ID> <mark> <note>
           desc = trim(f[3])
           st = trim(f[4])
           nt  = trim(f[5])
-          if (k == id) { st = mark; nt = note; done = 1 }
+          if (k == id) {
+            st = mark
+            if (note != "") nt = note
+            done = 1
+          }
           printf "| %s | %s | %s | %s |%s\n", k, desc, st, nt, eol
           next
         }
@@ -264,6 +279,16 @@ for stepfile in "$STEPDIR"/*.step; do
 
   status="$(resume_status "$id")"
   if [ "$status" = "✅" ]; then
+    # 备注里应该是**证据 hash**。缺了、或只剩「已满足」，就按步骤的 commit
+    # message 找回当初那笔提交填回去——状态表要能自愈，不能靠人记得填。
+    cur="$(resume_note "$id")"
+    if [ -z "$cur" ] || [ "$cur" = "已满足" ]; then
+      h="$(git log --format='%h' --fixed-strings --grep="$commitmsg" -1 2>/dev/null | head -1)"
+      if [ -n "$h" ]; then
+        resume_mark "$id" "✅" "$h"
+        log "FIX   $id 回填证据 hash $h"
+      fi
+    fi
     SKIPPED=$((SKIPPED + 1))
     log "SKIP  $id 已是 ✅"
     continue
@@ -283,10 +308,14 @@ for stepfile in "$STEPDIR"/*.step; do
     continue
   fi
 
-  # 已经改过了？（VERIFY 已通过）→ 直接标 ✅，不重复改
+  # 已经改过了？（VERIFY 已通过）→ 不重复改，只补状态与证据。
+  # 状态表里必须有**证据 hash**——「看起来做过了」不是证据。重跑时按步骤的
+  # commit message 找回当初那笔提交填回去，所以状态表能自愈。
   if [ -n "$verify" ] && eval "$verify" >/dev/null 2>&1; then
-    log "OK    $id 已经满足验收条件，直接标记"
-    resume_mark "$id" "✅" "已满足"
+    h="$(git log --format='%h' --fixed-strings --grep="$commitmsg" -1 2>/dev/null | head -1)"
+    [ -n "$h" ] || h="已满足"
+    log "OK    $id 已经满足验收条件（提交 $h）"
+    resume_mark "$id" "✅" "$h"
     SKIPPED=$((SKIPPED + 1))
     continue
   fi
@@ -343,6 +372,17 @@ for stepfile in "$STEPDIR"/*.step; do
   PASSED=$((PASSED + 1))
   log "OK    $id → $hash  ($file)"
 done
+
+# 收尾：状态表可能因为「回填证据 hash」被改过但没提交。它必须提交——
+# 否则下次运行时工作区不干净，执行器会拒绝运行（那是刻意的硬前提）。
+if [ "$DRYRUN" -ne 1 ] && ! git diff --quiet -- "$RESUME" 2>/dev/null; then
+  git add -- "$RESUME" >/dev/null 2>&1
+  if git commit -q -m "docs(doc-align): 状态表回填证据 hash" >/dev/null 2>&1; then
+    log "FIX   状态表的证据 hash 已单独提交"
+  else
+    log "WARN  状态表有未提交的改动，下次运行会因工作区不干净而拒绝" 'WARN'
+  fi
+fi
 
 log "=== 完成：成功 $PASSED / 失败 $FAILED / 跳过 $SKIPPED ==="
 log "=== 剩余未完成项 ==="
