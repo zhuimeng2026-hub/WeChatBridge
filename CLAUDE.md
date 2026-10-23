@@ -514,9 +514,10 @@ Windows 端新增「知识工作台」面板（阅读优先 / 案件工作区 / 
   于是 Dukou 的条目会被**继承进**新的 WeChatBridge feed。发版前必须先把那个文件换掉。
   （另有一处代码注释与现状不符：`AppUpdater.swift` 说「release bundle carries the feed」，
   而 plist 里没有 feed 键——注释过期，代码是对的。）
-- **看板目录在 `main` 上有八块**（`server-convergence` / `admin-console` / `client-license-gate` /
-  `client-license-gate.resume` / `pg-client-integration` / `unionid-bridge` / `delivery-quota` /
-  `login-perf-and-ux`），在飞分支 `feat/obsidian-workbench-variants` 自带第九块
+- **看板目录在 `main` 上有十块**：八块历史/在用的（`server-convergence` / `admin-console` /
+  `client-license-gate` / `client-license-gate.resume` / `pg-client-integration` /
+  `unionid-bridge` / `delivery-quota` / `login-perf-and-ux`），加上文档对齐工具自带的两块
+  （`doc-alignment` 及其机器可读状态表）。在飞分支 `feat/obsidian-workbench-variants` 再自带一块
   （`docs/progress/feat/obsidian-workbench-variants.md`，随该分支合并才进主干——
   它是 `docs/progress/` 下唯一的子目录，因为分支名本身含斜杠）。
   **但看板多不等于分支多**：2026-10-22 与 2026-10-23 做过两轮分支清理，
