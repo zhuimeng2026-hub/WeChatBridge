@@ -105,21 +105,18 @@ step_field() { # step_field <file> <KEY>
 }
 
 step_body() { # step_body <file>  —— 取 ---BEGIN--- 与 ---END--- 之间的正文
-  awk '/^---BEGIN---$/{on=1;next} /^---END---$/{on=0} on' "$1"
+  # ⚠️ 先剥掉行尾的 CR 再匹配。`^---BEGIN---$` 这种行尾锚点在 CRLF 上匹配
+  #    不上——步骤定义文件在 Windows 上 checkout 出来就是 CRLF（仓库当时
+  #    没有 .gitattributes），正文于是整段取空，后面每一步都找不到旧文。
+  awk '{ sub(/\r$/, ""); print }' "$1" \
+    | awk '/^---BEGIN---$/{on=1;next} /^---END---$/{on=0} on'
 }
 
 # ── 行尾归一 ───────────────────────────────────────────────────────────────
 #
-# 步骤定义与目标文件必须用同一种行尾约定，否则精确匹配必然 NOTFOUND。
-# 以**目标文件**为准，把正文转成它的约定。
-normalize_body() { # normalize_body <target-file> <body-file>
-  local target="$1" body="$2"
-  if grep -q $'\r$' "$target" 2>/dev/null; then
-    awk '{ sub(/\r$/, ""); print $0 "\r" }' "$body" > "$body.n" && mv "$body.n" "$body"
-  else
-    awk '{ sub(/\r$/, ""); print }' "$body" > "$body.n" && mv "$body.n" "$body"
-  fi
-}
+# 见下面「行尾」那一节的说明：匹配与拼接全程在 LF 空间里做，最后按目标文件
+# 的原约定一次性写回。这里不再有「把正文归一成目标约定」这一步——那正是第一版
+# 的错误所在。
 
 # ── 状态表读写 ─────────────────────────────────────────────────────────────
 # 状态表行格式： | D-01 | 说明 | ⬜ | 备注 |
@@ -176,25 +173,68 @@ resume_mark() { # resume_mark <ID> <mark> <note>
   ' "$RESUME" > "$tmp" && mv "$tmp" "$RESUME"
 }
 
+# ── 行尾 ─────────────────────────────────────────────────────────────────────
+#
+# 这个仓库没有 .gitattributes（直到 D-19 补上），开发机 core.autocrlf 开着，
+# 于是同一份文档里可能同时有 CRLF 和 LF 的行。第一版执行器是「把正文归一成
+# 目标文件的约定」——结果正文里的 `^---SPLIT---$` 这种行尾锚点在 CRLF 下
+# 匹配不上，拆分失败，旧文里混进了分隔符和后半段，替换一律 NOTFOUND，
+# 而报错完全看不出是这个原因。
+#
+# 正确的做法：**全程在 LF 空间里做匹配与拼接，最后一次性按目标文件的原约定
+# 写回**。这样不管文件当前是纯 CRLF、纯 LF 还是混着的，匹配都稳；写回之后
+# 文件还会顺手变得行尾一致。
+#
+# 文件的约定看**第一行**有没有 CR：文档是 CRLF 出身的，追加的内容在文件尾部，
+# 首行最能代表它原本的约定。
+
+file_is_crlf() { # file_is_crlf <file>
+  local n
+  n="$(head -1 "$1" 2>/dev/null | tr -cd '\r' | wc -c | tr -d '[:space:]')"
+  case "$n" in ''|*[!0-9]*) return 1 ;; esac
+  [ "$n" -gt 0 ]
+}
+
+to_lf() { # to_lf <in> <out> —— 去掉每行行尾的 CR
+  awk '{ sub(/\r$/, ""); print }' "$1" > "$2"
+}
+
+write_back() { # write_back <target> <tmp-lf-content> —— 按目标文件原约定写回
+  local target="$1" tmp="$2"
+  if file_is_crlf "$target"; then
+    awk '{ print $0 "\r" }' "$tmp" > "$target.wcb" && mv "$target.wcb" "$target"
+  else
+    mv "$tmp" "$target"
+  fi
+}
+
 # ── 三种操作 ───────────────────────────────────────────────────────────────
 apply_prepend() { # apply_prepend <file> <body-file>
-  local target="$1" body="$2" tmp
-  tmp="$(mktemp)"
+  local target="$1" body="$2" tmp blf
+  tmp="$(mktemp)"; blf="$(mktemp)"
+  to_lf "$body" "$blf"
   {
-    head -1 "$target"
+    awk '{ sub(/\r$/, ""); print }' "$target" | head -1
     echo ""
-    cat "$body"
+    cat "$blf"
     echo ""
-    tail -n +2 "$target"
-  } > "$tmp" && mv "$tmp" "$target"
+    awk '{ sub(/\r$/, ""); print }' "$target" | tail -n +2
+  } > "$tmp"
+  rm -f "$blf"
+  write_back "$target" "$tmp"
 }
 
 apply_append() { # apply_append <file> <body-file>
-  local target="$1" body="$2"
+  local target="$1" body="$2" tmp blf
+  tmp="$(mktemp)"; blf="$(mktemp)"
+  to_lf "$body" "$blf"
   {
+    awk '{ sub(/\r$/, ""); print }' "$target"
     echo ""
-    cat "$body"
-  } >> "$target"
+    cat "$blf"
+  } > "$tmp"
+  rm -f "$blf"
+  write_back "$target" "$tmp"
 }
 
 apply_create() { # apply_create <file> <body-file>
@@ -205,7 +245,8 @@ apply_create() { # apply_create <file> <body-file>
     echo "文件已存在，拒绝覆盖：$target"
     return 1
   fi
-  cat "$body" > "$target"
+  # 新文件一律用 LF：仓库里存的是 LF，.gitattributes 也会钉住。
+  to_lf "$body" "$target"
 }
 
 apply_replace() { # apply_replace <file> <body-file>
@@ -214,21 +255,30 @@ apply_replace() { # apply_replace <file> <body-file>
   # 实现上把整个文件 slurp 成一个字符串再做 index/substr 替换——比逐行比对
   # 少得多出错面：多行旧文天然支持，唯一性一次判完，不需要「读几行再吐回去」
   # 那种容易写错的回退逻辑。
-  local target="$1" body="$2" oldfile newfile out rc
+  local target="$1" body="$2" oldfile newfile out rc bodylf tgtlf
   oldfile="$(mktemp)"; newfile="$(mktemp)"; out="$(mktemp)"
-  awk '/^---SPLIT---$/{exit} {print}' "$body" > "$oldfile"
-  awk 'seen{print} /^---SPLIT---$/{seen=1}' "$body" > "$newfile"
+  bodylf="$(mktemp)"; tgtlf="$(mktemp)"
+
+  # ⚠️ 拆分必须在**归一之后的 LF 空间**里做。`^---SPLIT---$` 这种行尾锚点
+  #    在 CRLF 上匹配不上——第一版就是在这栽的：旧文里混进了分隔符和后半段，
+  #    替换一律 NOTFOUND，而报错信息完全看不出是这个原因。
+  to_lf "$body" "$bodylf"
+  awk '/^---SPLIT---$/{exit} {print}' "$bodylf" > "$oldfile"
+  awk 'seen{print} /^---SPLIT---$/{seen=1}' "$bodylf" > "$newfile"
 
   if [ ! -s "$oldfile" ]; then
-    rm -f "$oldfile" "$newfile" "$out"
+    rm -f "$oldfile" "$newfile" "$out" "$out.err" "$bodylf" "$tgtlf"
     echo "replace 的旧文为空"
     return 1
   fi
 
+  # 目标也归一到 LF，匹配与拼接都在 LF 空间里做。
+  to_lf "$target" "$tgtlf"
+
   # ⚠️ awk 的 -v 赋值必须写在程序文本**之前**。放后面的话 awk 会把 -v 当成
   #    普通参数，变量全成空串，报 "expression for `<' redirection has null
   #    string value"——这个报错完全不指向真正的原因，值得记一笔。
-  awk -v oldf="$oldfile" -v newf="$newfile" -v targetf="$target" -v outf="$out" '
+  awk -v oldf="$oldfile" -v newf="$newfile" -v targetf="$tgtlf" -v outf="$out" '
     function slurp(f,   line, s) {
       s = ""
       while ((getline line < f) > 0) { s = s line "\n" }
@@ -245,17 +295,17 @@ apply_replace() { # apply_replace <file> <body-file>
       if (index(rest, o) > 0) { print "NOTUNIQUE" > "/dev/stderr"; exit 1 }
       printf("%s", (substr(t, 1, idx - 1) n rest)) > outf
     }
-  ' 2>/tmp/wcb_replace_err.$$
+  ' 2>"$out.err"
   rc=$?
 
   if [ $rc -ne 0 ]; then
-    msg="$(cat /tmp/wcb_replace_err.$$ 2>/dev/null || echo '未知错误')"
-    rm -f /tmp/wcb_replace_err.$$ "$oldfile" "$newfile" "$out"
+    msg="$(cat "$out.err" 2>/dev/null || echo '未知错误')"
+    rm -f "$oldfile" "$newfile" "$out" "$out.err" "$bodylf" "$tgtlf"
     echo "替换失败：$msg"
     return 1
   fi
-  rm -f /tmp/wcb_replace_err.$$ "$oldfile" "$newfile"
-  mv "$out" "$target"
+  rm -f "$oldfile" "$newfile" "$out.err" "$bodylf" "$tgtlf"
+  write_back "$target" "$out"
   return 0
 }
 
@@ -327,7 +377,6 @@ for stepfile in "$STEPDIR"/*.step; do
 
   bodyfile="$(mktemp)"
   step_body "$stepfile" > "$bodyfile"
-  normalize_body "$file" "$bodyfile"
 
   case "$op" in
     prepend) apply_prepend "$file" "$bodyfile" ;;
