@@ -46,9 +46,9 @@
 
 | 工作树 | 分支 | 归属 |
 |---|---|---|
-| `D:/WeChatBridge`（主工作区） | `feat/server-convergence` | 机器 A |
-| `D:/WeChatBridge-C` | `feat/client-license-gate` | 机器 C |
-| （未建） | `feat/admin-console` | 机器 B，派活时 `git worktree add D:/WeChatBridge-B feat/admin-console` |
+| `D:/WeChatBridge`（主工作区） | `feat/server-convergence` | 机器 A。**2026-10-23：该分支已删除**，成果由 tag `archive/feat-server-convergence` 钉住（**未并入 main**） |
+| `D:/WeChatBridge-C` | `feat/client-license-gate` | 机器 C。**2026-10-23：该 worktree 与分支均已删除**，成果由 tag `archive/feat-client-license-gate` 钉住（**未并入 main**） |
+| （未建） | `feat/admin-console` | 机器 B。**2026-10-23：该分支已删除**，内容全部并入 main |
 
 **worktree 下的规则（与 §4 基础规则叠加）：**
 
