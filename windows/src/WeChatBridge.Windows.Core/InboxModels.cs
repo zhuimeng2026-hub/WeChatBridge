@@ -243,7 +243,7 @@ public static class InboxWriter
         ShareAction action = ShareAction.Clipboard)
     {
         if (sources.Count == 0)
-            throw new InboxValidationException("分享中没有可处理的文件。");
+            throw new InboxValidationException(L10n.Text("分享中没有可处理的文件。"));
 
         var effectiveLimits = limits ?? InboxLimits.Default;
         paths.EnsureCreated();
@@ -270,7 +270,7 @@ public static class InboxWriter
 
                 totalBytes = checked(totalBytes + sourceInfo.Length);
                 if (totalBytes > effectiveLimits.MaxBatchBytes)
-                    throw new InboxValidationException("分享批次过大。");
+                    throw new InboxValidationException(L10n.Text("分享批次过大。"));
 
                 var safeName = MakeUniqueFileName(SanitizeFileName(source.DisplayName), usedFileNames);
                 var relativePath = Path.Combine("files", safeName).Replace('\\', '/');
@@ -378,14 +378,14 @@ public static class InboxWriter
     {
         var leaf = Path.GetFileName(name);
         if (string.IsNullOrWhiteSpace(leaf))
-            throw new InboxValidationException("分享文件名为空。");
+            throw new InboxValidationException(L10n.Text("分享文件名为空。"));
         if (leaf.Any(char.IsControl) || leaf is "." or "..")
-            throw new InboxValidationException("分享文件名不安全。");
+            throw new InboxValidationException(L10n.Text("分享文件名不安全。"));
 
         var invalid = Path.GetInvalidFileNameChars();
         var sanitized = new string(leaf.Select(character => invalid.Contains(character) ? '_' : character).ToArray()).Trim();
         if (string.IsNullOrWhiteSpace(sanitized))
-            throw new InboxValidationException("分享文件名不安全。");
+            throw new InboxValidationException(L10n.Text("分享文件名不安全。"));
         return sanitized;
     }
 

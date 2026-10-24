@@ -74,7 +74,7 @@
                                 <Border Style="{StaticResource SkillBadge}">
                                     <TextBlock FontSize="11" FontWeight="Medium"
                                                Foreground="{StaticResource InkSecondaryColor}"
-                                               Text="{Binding SceneCount, StringFormat={}用于 {0} 个场景}" />
+                                               Text="{Binding SceneCount, StringFormat={loc:Loc Key='用于 {0} 个场景'}}" />
                                 </Border>
                             </Button>
                             <Border Style="{StaticResource SkillBadge}"
@@ -166,7 +166,7 @@
                                    Foreground="{StaticResource BrandColor}" Text="◇" />
                         <TextBlock FontSize="13.5" FontWeight="Medium" VerticalAlignment="Center"
                                    Foreground="{StaticResource InkColor}"
-                                   Text="{Binding SkillCount, StringFormat={}{0} 个技能}" />
+                                   Text="{Binding SkillCount, StringFormat={loc:Loc Key={}{0} 个技能}}" />
                     </StackPanel>
                 </Border>
                 <Border Grid.Column="1" Style="{StaticResource Card}" MinHeight="58"
@@ -177,7 +177,7 @@
                                    Foreground="{StaticResource BlueColor}" Text="⇩" />
                         <TextBlock FontSize="13.5" FontWeight="Medium" VerticalAlignment="Center"
                                    Foreground="{StaticResource InkColor}"
-                                   Text="{Binding ImportedCount, StringFormat={}{0} 个导入}" />
+                                   Text="{Binding ImportedCount, StringFormat={loc:Loc Key={}{0} 个导入}}" />
                     </StackPanel>
                 </Border>
                 <Border Grid.Column="2" Style="{StaticResource Card}" MinHeight="58" Padding="12">
@@ -187,7 +187,7 @@
                                    Foreground="{StaticResource WarningColor}" Text="▸" />
                         <TextBlock FontSize="13.5" FontWeight="Medium" VerticalAlignment="Center"
                                    Foreground="{StaticResource InkColor}"
-                                   Text="{Binding ReferencedCount, StringFormat={}被 {0} 个场景引用}" />
+                                   Text="{Binding ReferencedCount, StringFormat={loc:Loc Key='被 {0} 个场景引用'}}" />
                     </StackPanel>
                 </Border>
             </Grid>

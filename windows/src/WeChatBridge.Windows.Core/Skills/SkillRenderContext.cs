@@ -43,11 +43,11 @@ public sealed class SkillRenderContext(AgentId? agent, Func<string, SkillResolut
         var skill = Resolve(id);
         return skill.Mode switch
         {
-            SkillRenderMode.Native => $"「{skill.DisplayName}」技能（{skill.Id}）",
+            SkillRenderMode.Native => L10n.Format($"「{skill.DisplayName}」技能（{skill.Id}）"),
             SkillRenderMode.Path =>
-                $"「{skill.DisplayName}」技能（技能说明：`{skill.SkillFile}`，请先阅读并严格按其执行）",
-            SkillRenderMode.Missing => $"「{skill.DisplayName}」技能（技能文件不可用，请直接完成）",
-            _ => $"「{skill.Id}」技能（未找到该技能）",
+                L10n.Format($"「{skill.DisplayName}」技能（技能说明：`{skill.SkillFile}`，请先阅读并严格按其执行）"),
+            SkillRenderMode.Missing => L10n.Format($"「{skill.DisplayName}」技能（技能文件不可用，请直接完成）"),
+            _ => L10n.Format($"「{skill.Id}」技能（未找到该技能）"),
         };
     }
 }

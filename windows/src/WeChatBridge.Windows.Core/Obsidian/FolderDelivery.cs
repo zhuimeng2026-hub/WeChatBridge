@@ -27,10 +27,10 @@ public static class FolderDelivery
 
         private static string Describe(FailureKind kind, Exception? inner) => kind switch
         {
-            FailureKind.InvalidFolder => "请选择一个可写入的文件夹。",
-            FailureKind.InvalidSource => "待保存的文件无法读取，请重新导出。",
-            FailureKind.CleanupFailed => $"保存未完成，部分文件可能已留在目标文件夹：{inner?.Message}",
-            _ => "请选择一个可写入的文件夹。",
+            FailureKind.InvalidFolder => L10n.Text("请选择一个可写入的文件夹。"),
+            FailureKind.InvalidSource => L10n.Text("待保存的文件无法读取，请重新导出。"),
+            FailureKind.CleanupFailed => L10n.Format($"保存未完成，部分文件可能已留在目标文件夹：{inner?.Message}"),
+            _ => L10n.Text("请选择一个可写入的文件夹。"),
         };
     }
 

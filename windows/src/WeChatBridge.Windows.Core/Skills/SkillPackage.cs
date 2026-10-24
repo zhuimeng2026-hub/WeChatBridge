@@ -30,9 +30,9 @@ internal static class SkillPackage
     internal static string ValidatePackage(string root)
     {
         if (!Directory.Exists(root))
-            throw new SkillException("技能包目录不存在。");
+            throw new SkillException(L10n.Text("技能包目录不存在。"));
         if (!File.Exists(Path.Combine(root, "SKILL.md")))
-            throw new SkillException("技能包缺少 SKILL.md。");
+            throw new SkillException(L10n.Text("技能包缺少 SKILL.md。"));
         return PackageDigest(root);
     }
 
@@ -86,12 +86,12 @@ internal static class SkillPackage
         }
         catch (Exception error) when (IsFileSystemError(error))
         {
-            throw new SkillException("技能包目录不存在。");
+            throw new SkillException(L10n.Text("技能包目录不存在。"));
         }
         if (rootAttributes.HasFlag(FileAttributes.ReparsePoint))
-            throw new SkillException("技能包不能包含符号链接。");
+            throw new SkillException(L10n.Text("技能包不能包含符号链接。"));
         if (!rootAttributes.HasFlag(FileAttributes.Directory))
-            throw new SkillException("技能包目录无效。");
+            throw new SkillException(L10n.Text("技能包目录无效。"));
 
         var files = new List<PackageFile>();
         var pending = new Stack<string>();
@@ -103,18 +103,18 @@ internal static class SkillPackage
             {
                 var attributes = File.GetAttributes(entry);
                 if (attributes.HasFlag(FileAttributes.ReparsePoint))
-                    throw new SkillException("技能包不能包含符号链接。");
+                    throw new SkillException(L10n.Text("技能包不能包含符号链接。"));
                 if (attributes.HasFlag(FileAttributes.Directory))
                 {
                     pending.Push(entry);
                     continue;
                 }
                 if (!File.Exists(entry))
-                    throw new SkillException("技能包只能包含普通文件和目录。");
+                    throw new SkillException(L10n.Text("技能包只能包含普通文件和目录。"));
 
                 var relative = Path.GetRelativePath(rootFull, entry).Replace('\\', '/');
                 if (relative.StartsWith("..", StringComparison.Ordinal))
-                    throw new SkillException("技能包包含越界路径。");
+                    throw new SkillException(L10n.Text("技能包包含越界路径。"));
                 files.Add(new PackageFile(entry, relative));
             }
         }

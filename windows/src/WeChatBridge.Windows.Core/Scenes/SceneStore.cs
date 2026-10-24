@@ -127,8 +127,8 @@ public sealed class SceneStore
             {
                 // uuidString is upper-case on macOS; the id is what binds groups.
                 Id = id.ToString().ToUpperInvariant(),
-                Name = $"原 Prompt {index}",
-                Summary = "由旧版附加 Prompt 迁移。",
+                Name = L10n.Format($"原 Prompt {index}"),
+                Summary = L10n.Text("由旧版附加 Prompt 迁移。"),
                 Instruction = textElement.GetString() ?? "",
                 OutputSpec = SceneSettings.StandardOutputSpec,
                 Enabled = true,

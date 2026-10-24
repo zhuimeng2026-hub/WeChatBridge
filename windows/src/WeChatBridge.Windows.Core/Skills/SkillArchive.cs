@@ -59,7 +59,7 @@ public static class SkillArchive
         }
         catch (Exception error) when (IsFileSystemError(error))
         {
-            throw new SkillException("SKILL.md 无法读取。");
+            throw new SkillException(L10n.Text("SKILL.md 无法读取。"));
         }
 
         var fields = Frontmatter(text, out var body);
@@ -69,8 +69,8 @@ public static class SkillArchive
         if (!SkillId.IsValid(id))
             throw new SkillException(
                 id is { Length: > 0 }
-                    ? $"技能 ID「{id}」不符合规范（仅限小写字母、数字和连字符）。"
-                    : "SKILL.md 的 frontmatter 中没有 name 字段。");
+                    ? L10n.Format($"技能 ID「{id}」不符合规范（仅限小写字母、数字和连字符）。")
+                    : L10n.Text("SKILL.md 的 frontmatter 中没有 name 字段。"));
 
         var version = fields.TryGetValue("version", out var v) ? v
             : fields.TryGetValue("metadata.version", out var nested) ? nested : null;
@@ -99,7 +99,7 @@ public static class SkillArchive
         catch (Exception error) when (error is InvalidDataException or IOException
             or UnauthorizedAccessException or NotSupportedException)
         {
-            throw new SkillException("压缩包无法读取或已损坏。");
+            throw new SkillException(L10n.Text("压缩包无法读取或已损坏。"));
         }
 
         using (archive)
@@ -116,12 +116,12 @@ public static class SkillArchive
                 if (segments[^1] == "SKILL.md" && segments.Length <= 2)
                 {
                     if (skillMd is not null)
-                        throw new SkillException("压缩包中有多个 SKILL.md，无法确定技能目录。");
+                        throw new SkillException(L10n.Text("压缩包中有多个 SKILL.md，无法确定技能目录。"));
                     skillMd = name;
                 }
             }
             if (skillMd is null)
-                throw new SkillException("压缩包中没有找到 SKILL.md。");
+                throw new SkillException(L10n.Text("压缩包中没有找到 SKILL.md。"));
 
             // "" for a root-level package, "dir/" for a wrapped one.
             var prefix = skillMd[..^"SKILL.md".Length];
@@ -132,7 +132,7 @@ public static class SkillArchive
                     continue;
                 totalBytes += entry.Length;
                 if (totalBytes > MaxArchiveBytes)
-                    throw new SkillException("压缩包内容过大，超过 128 MB 上限。");
+                    throw new SkillException(L10n.Text("压缩包内容过大，超过 128 MB 上限。"));
                 var relative = name[prefix.Length..].Replace('/', Path.DirectorySeparatorChar);
                 var target = Path.Combine(staging, relative);
                 Directory.CreateDirectory(Path.GetDirectoryName(target)!);
@@ -145,7 +145,7 @@ public static class SkillArchive
                 }
                 catch (Exception error) when (IsFileSystemError(error))
                 {
-                    throw new SkillException($"文件「{relative}」无法写入临时目录。");
+                    throw new SkillException(L10n.Format($"文件「{relative}」无法写入临时目录。"));
                 }
             }
             ValidatePackage(staging);
@@ -164,7 +164,7 @@ public static class SkillArchive
             || name.StartsWith("/", StringComparison.Ordinal)
             || (name.Length >= 2 && name[1] == ':')
             || name.Split('/').Any(segment => segment is ".." or ".");
-        return unsafePath ? throw new SkillException("压缩包包含不安全的路径。") : name;
+        return unsafePath ? throw new SkillException(L10n.Text("压缩包包含不安全的路径。")) : name;
     }
 
     /// <summary>

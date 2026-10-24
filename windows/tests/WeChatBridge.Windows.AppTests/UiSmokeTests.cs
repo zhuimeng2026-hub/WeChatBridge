@@ -164,6 +164,14 @@ public sealed class UiSmokeTests
                     Assert.Contains(L10n.Text("本笔记由工作台新建。结果由用户粘贴或编辑；微信流未调用模型。"), File.ReadAllText(savedNote));
                     Assert.Contains("## " + L10n.Text("分析结果"), File.ReadAllText(savedNote));
                     Assert.Contains("## " + L10n.Text("参考材料"), File.ReadAllText(savedNote));
+                    // The request log's timestamp line used to render the
+                    // timestamp into the lookup key, so the lookup missed and
+                    // the English note kept the Chinese template. The label
+                    // must come from the translation table, and the timestamp
+                    // must still be there.
+                    var copiedAtLabel = L10n.Text("复制到剪贴板时间：{0}").Split('{')[0];
+                    Assert.Contains(copiedAtLabel, File.ReadAllText(savedNote));
+                    Assert.Matches(@"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}", File.ReadAllText(savedNote));
                     Assert.Contains("[[当事人/陈某/CASE-2026-018/沟通记录.md]]", File.ReadAllText(savedNote));
                     Assert.Contains("请按时间顺序整理现有沟通", File.ReadAllText(savedNote));
                     Assert.DoesNotContain("different live prompt after export", File.ReadAllText(savedNote));

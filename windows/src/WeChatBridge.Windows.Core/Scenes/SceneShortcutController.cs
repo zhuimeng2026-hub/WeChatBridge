@@ -69,7 +69,7 @@ public sealed class SceneShortcutController : IDisposable
             return;
         var scene = scenes[index];
         _pending.SelectForNextForward(scene.Id);
-        _notify?.Invoke($"下次转发使用场景「{scene.Name}」");
+        _notify?.Invoke(L10n.Format($"下次转发使用场景「{scene.Name}」"));
     }
 
     public void Dispose() => _hotkeys?.Dispose();

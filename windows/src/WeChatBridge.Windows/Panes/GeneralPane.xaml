@@ -116,7 +116,7 @@
                     <StackPanel VerticalAlignment="Center">
                         <TextBlock FontSize="12" Foreground="{StaticResource InkSecondaryColor}"
                                    TextWrapping="Wrap"
-                                   Text="{Binding InboxRoot, StringFormat='Inbox：{0}'}" />
+                                   Text="{Binding InboxRoot, StringFormat={loc:Loc Key='Inbox：{0}'}}" />
                         <TextBlock Margin="0,4,0,0" FontSize="12"
                                    Foreground="{StaticResource InkSecondaryColor}"
                                    Text="{Binding SummaryText}" />

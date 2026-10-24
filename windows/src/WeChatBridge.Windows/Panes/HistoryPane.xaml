@@ -179,7 +179,7 @@
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
                         <TextBlock Margin="0,6,0,0" FontSize="11" Foreground="{StaticResource InkTertiaryColor}"
-                                   Text="{Binding Destination, StringFormat='入口：{0}'}" />
+                                   Text="{Binding Destination, StringFormat={loc:Loc Key='入口：{0}'}}" />
                     </StackPanel>
                 </StackPanel>
             </Border>

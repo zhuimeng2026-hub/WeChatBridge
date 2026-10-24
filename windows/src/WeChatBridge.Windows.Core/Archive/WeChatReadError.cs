@@ -31,8 +31,8 @@ public sealed class WeChatReadException : Exception
 
     private static string Describe(WeChatReadError error) => error switch
     {
-        WeChatReadError.InvalidTranscript => "微信导出的文件为空或无法完整读取，文件已保留。",
-        WeChatReadError.TranscriptMismatch => "未能继续定位微信消息，已收到的文件会保留在记录中。",
-        _ => "微信导出的文件为空或无法完整读取，文件已保留。",
+        WeChatReadError.InvalidTranscript => L10n.Text("微信导出的文件为空或无法完整读取，文件已保留。"),
+        WeChatReadError.TranscriptMismatch => L10n.Text("未能继续定位微信消息，已收到的文件会保留在记录中。"),
+        _ => L10n.Text("微信导出的文件为空或无法完整读取，文件已保留。"),
     };
 }

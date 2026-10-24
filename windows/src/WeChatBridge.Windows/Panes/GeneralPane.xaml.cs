@@ -248,7 +248,7 @@ public partial class GeneralPane : UserControl
         // boundary. Anything past two weeks is "很久之前" — exact day counts on a
         // last-login time are noise the customer did not ask for.
         var delta = DateTimeOffset.UtcNow - past;
-        if (delta.TotalMinutes < 1) return "刚刚";
+        if (delta.TotalMinutes < 1) return L10n.Text("刚刚");
         if (delta.TotalMinutes < 60) return L10n.Format($"{(int)delta.TotalMinutes} 分钟前");
         if (delta.TotalHours < 24) return L10n.Format($"{(int)delta.TotalHours} 小时前");
         if (delta.TotalDays < 14) return L10n.Format($"{(int)delta.TotalDays} 天前");

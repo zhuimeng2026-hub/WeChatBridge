@@ -48,10 +48,10 @@ public sealed class WeChatWindowTitleReader
         var titles = _windowTitles();
         if (titles.Count == 0)
             throw new WeChatTitleReaderException(
-                WeChatTitleReaderErrorKind.NoWindow, "没有找到可见的微信聊天窗口。");
+                WeChatTitleReaderErrorKind.NoWindow, L10n.Text("没有找到可见的微信聊天窗口。"));
         return GroupTitleParser.Parse(titles)
             ?? throw new WeChatTitleReaderException(
-                WeChatTitleReaderErrorKind.EmptyTitle, "没有识别出微信群名。");
+                WeChatTitleReaderErrorKind.EmptyTitle, L10n.Text("没有识别出微信群名。"));
     }
 
     /// <summary>Best-effort read; a missing WeChat means "no group name", not a failure.</summary>
