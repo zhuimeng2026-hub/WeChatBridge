@@ -87,9 +87,15 @@ if git rev-parse --verify --quiet origin/main >/dev/null; then
   origin_branches="$(git for-each-ref --format='%(symref)' refs/remotes/origin/ \
                     | grep -c '^$')"
   # 中文一律用固定字符串逐个字面量比（见本文件顶部关于 C locale 的那条）。
+  #
+  # 这条比的是**远端分支的总数**，不是「剩下几条长期分支」：推一条在途分支
+  # 上去之后，origin 上就是两条，CLAUDE.md 也该这么写。早先的写法是
+  # 「origin 上现在只剩 `main` N条」——那句只在「只剩 main 一条」时成立，
+  # 一旦有在途分支就既不成立也读不出来，所以改成
+  # 「origin 上的远端分支：N条」这样与分支名单无关的写法。
   claimed_origin=""
   for w in 一 二 三 四 五 六 七 八 九 十; do
-    needle="origin 上现在只剩 \`main\` ${w}条"
+    needle="origin 上的远端分支：${w}条"
     if grep -qF "$needle" CLAUDE.md; then claimed_origin="$w"; break; fi
   done
   case "$claimed_origin" in
@@ -97,7 +103,7 @@ if git rev-parse --verify --quiet origin/main >/dev/null; then
     六) n=6 ;; 七) n=7 ;; 八) n=8 ;; 九) n=9 ;; 十) n=10 ;; *) n=-1 ;;
   esac
   if [ "$n" -lt 0 ]; then
-    say FAIL C1.1 "CLAUDE.md 里找不到「origin 上现在只剩 \`main\` N条」的表述"
+    say FAIL C1.1 "CLAUDE.md 里找不到「origin 上的远端分支：N条」的表述"
   elif [ "$origin_branches" -eq "$n" ]; then
     say PASS C1.1 "origin 远端分支数 = $origin_branches（与 CLAUDE.md 一致）"
   else
