@@ -24,7 +24,7 @@ Owner: 本会话；基线 `origin/main` = `505e6d4`。
 | M1-14 ShareTarget 不再杀掉另一套安装的 keeper | ✅ | `AppLayout.IsSameInstallation` + `InstallationScopeTests.cs` |
 | M1-15 英文界面漏中文（60+ 处） | ✅ | `en.json` 补 60 余条 + 代码接线 + `LocalizationCoverageTests.cs` 静态守卫 |
 | M1-16 文档对齐校验器 | ✅ | `verify-doc-alignment.sh` C1.1 改成读「origin 上的远端分支：N条」 |
-| M1-17 知识库内的目录/文件仍用中文名 | ⬜ | 属产品决定：改名字会让既有库里的链接与文件对不上 |
+| M1-17 知识库内的目录/文件仍用中文名 | ✅ 维持中文 | 产品没有英文用户，且这些是用户数据里的路径——改名会让既有库里的双链与文件对不上 |
 | M1-18 视觉还原（富文本气泡 / 应用内模型回复流 / 附件内嵌预览） | ⬜ | 沿用 `docs/progress/feat/obsidian-workbench-variants.md` 的 V-1~V-3 |
 
 ## 测试报告
@@ -141,11 +141,20 @@ macOS 端本机跑不了（需要 macOS + Xcode），由 CI 的 macOS job 守着
 
 ### 本轮没有动的
 
-- 知识库里的目录名（「微信流」「附件」「31.微信会话」）与文件名兜底仍是中文：
-  改名会让既有库里的链接与文件对不上，属产品决定。
-- macOS 端本机无法编译与测试。
+- macOS 端本机无法编译与测试；**本轮不计入验收范围**（当前没有 macOS 场景）。
 - `ActivationService.SendAsync` 的超时没有转成 `ApiTimeoutException`
   （`AccountService` 有转），激活轮询超时会被当成取消静默结束——已登记，未在本轮修。
+
+### 关于「知识库里的目录名要不要改成英文」
+
+结论：**维持中文**（2026-10-24 定）。产品实际没有英文用户，而这几个名字
+（`微信流/`、`附件/`、`31.微信会话/`、文件名兜底 `共享文件`）是**用户数据里的路径**，
+不是界面文案：改了之后同一个库里会出现两套名字的目录，既有笔记里的
+`[[附件/xxx.zip]]` 双链也会指向不存在的目录。库里的内容本来就是微信导出的中文，
+目录名中文不突兀。
+
+这一项原本登记成待决，是因为它看上去像「漏了本地化」——现在确认不是：
+**这不是漏译，是产品决定。**
 
 ### 一条观察：`ShareTargetKeeperTests.LoserOfKeeperElectionExitsInsteadOfLingering`
 
