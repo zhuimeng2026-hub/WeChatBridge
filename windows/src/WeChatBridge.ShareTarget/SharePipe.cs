@@ -198,18 +198,42 @@ internal static class StubForwarder
     private static void Trace(InboxPaths paths, string stage) =>
         InboxLogger.Write(paths, $"[trace] {stage}");
 
-    /// <summary>Keeper replacement after a mid-share wedge: sweep every other helper so the pipe name frees for the process that takes over.</summary>
+    /// <summary>
+    /// Keeper replacement after a mid-share wedge: sweep the other helpers of
+    /// THIS installation so the pipe name frees for the process that takes
+    /// over.
+    /// <para>
+    /// The sweep used to kill every process with the same executable name. A
+    /// portable copy and an installed copy share that name but not their pipes,
+    /// mutexes and event names (see <see cref="AppLayout.CoordinationSuffix"/>),
+    /// so a portable share that took the wedge path took the installed build's
+    /// resident keeper with it — and the installed build's share relay died
+    /// with it. The sweep is now restricted to the helpers this installation
+    /// actually shares a pipe with.
+    /// </para>
+    /// </summary>
     private static void KillOtherHelpers()
     {
         try
         {
+            var ours = Environment.ProcessPath;
+            if (string.IsNullOrWhiteSpace(ours))
+                return;
             foreach (var other in Process.GetProcessesByName(
-                         Path.GetFileNameWithoutExtension(Environment.ProcessPath)))
+                         Path.GetFileNameWithoutExtension(ours)))
             {
-                if (other.Id != Environment.ProcessId)
+                if (other.Id == Environment.ProcessId)
+                    continue;
+                try
                 {
-                    try { other.Kill(); } catch { }
+                    // The path of the other process is what says which
+                    // installation it belongs to. A path that cannot be read
+                    // proves nothing, and nothing is killed on a guess.
+                    if (!AppLayout.IsSameInstallation(other.MainModule?.FileName, ours))
+                        continue;
+                    other.Kill();
                 }
+                catch { }
             }
         }
         catch { }

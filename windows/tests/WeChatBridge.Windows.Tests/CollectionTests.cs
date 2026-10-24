@@ -266,13 +266,17 @@ public sealed class CollectionTests
     }
 
     [Fact]
-    public void CorruptLedgerIsRejectedWithoutReplacingOriginal()
+    public void CorruptLedgerIsNotLoadedAndTheOriginalIsNotReplaced()
     {
         using var fixture = new TempInbox();
         var path = Path.Combine(fixture.Root, "collections.json");
         var invalid = "{\"schemaVersion\":8,\"collections\":[],\"seenBatchIDs\":[]}";
         File.WriteAllText(path, invalid);
-        Assert.Throws<InvalidDataException>(() => new CollectionService(fixture.Paths, new InboxReader(fixture.Paths)));
+        // The ledger is not loaded, but the app does not die of it either —
+        // see CollectionLedgerRecoveryTests for the whole story.
+        var service = new CollectionService(fixture.Paths, new InboxReader(fixture.Paths));
+        Assert.NotNull(service.LoadFailure);
+        Assert.Empty(service.Ledger.Collections);
         Assert.Equal(invalid, File.ReadAllText(path));
     }
 

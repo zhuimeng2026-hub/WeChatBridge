@@ -214,6 +214,8 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
     private Guid? _hintedBatchId;
     private string _query = string.Empty;
     private string? _inboxFailure;
+    /// <summary>The last collection-ledger failure already reported, so it is said once.</summary>
+    private string? _reportedCollectionFailure;
 
     public MainViewModel(InboxPaths paths, string? configDirectory = null, bool manageLogin = true,
         DeliveryEngine? delivery = null, SceneService? scenes = null, Action<PastePayload>? copyPayload = null,
@@ -505,10 +507,13 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
         {
             _paths.EnsureCreated();
             InboxFailure = null;
-            _ = Collections;
+            // The collection ledger is one input among several. A corrupt one
+            // must not keep the history from being shown, and it must not
+            // throw out of the tray menu that reads it.
+            var ledger = ReadCollectionLedger();
             Publish(_reader.LoadBatches());
             var uncollected = _batches.Where(b => b.Action == ShareAction.Collect
-                         && !Collections.Ledger.SeenBatchIDs.Contains(b.Id)).OrderBy(b => b.CreatedAt).ToList();
+                         && !(ledger?.SeenBatchIDs.Contains(b.Id) ?? false)).OrderBy(b => b.CreatedAt).ToList();
             foreach (var collected in uncollected)
                 Collections.Append(collected, null);
             if (uncollected.Count > 0) Publish(_batches.Select(b => b with
@@ -535,6 +540,44 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
         {
             InboxFailure = error.Message;
             InboxLogger.Write(_paths, L10n.Text("主程序读取 Inbox 失败"), error);
+        }
+    }
+
+    /// <summary>
+    /// The collection ledger, or null when it cannot be read at all.
+    /// <para>
+    /// The ledger is app-owned state, and a corrupt one used to take the whole
+    /// app with it: the constructor threw, the history was never published and
+    /// the tray menu threw again on every right-click. The unreadable file is
+    /// left exactly as it is; the app carries on without collections and says
+    /// so once.
+    /// </para>
+    /// </summary>
+    private BatchCollectionLedger? ReadCollectionLedger()
+    {
+        var collections = TryCollections();
+        if (collections is null)
+            return null;
+        var failure = collections.LoadFailure;
+        if (failure is not null && failure != _reportedCollectionFailure)
+        {
+            _reportedCollectionFailure = failure;
+            ToastRequested?.Invoke(failure, null, null, true);
+        }
+        return collections.Ledger;
+    }
+
+    /// <summary>The collection service, or null when it cannot even be constructed.</summary>
+    private CollectionService? TryCollections()
+    {
+        try
+        {
+            return Collections;
+        }
+        catch (Exception error)
+        {
+            InboxLogger.Write(_paths, L10n.Text("收集记录无法读取，原始文件已保留。"), error);
+            return null;
         }
     }
 
@@ -649,7 +692,13 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
         if (_settings.HistoryRetentionDays <= 0)
             return;
         var window = TimeSpan.FromDays(_settings.HistoryRetentionDays);
-        if (_reader.PruneHistory(window, protectedBatchIDs: Collections.Ledger.ProtectedBatchIDs) > 0)
+        var collections = TryCollections();
+        // A ledger that could not be read says nothing about which batches
+        // belong to a collection, so nothing is aged out while it is broken:
+        // deleting a batch that is still collected is not recoverable.
+        if (collections?.LoadFailure is not null)
+            return;
+        if (_reader.PruneHistory(window, protectedBatchIDs: collections?.Ledger.ProtectedBatchIDs) > 0)
             Publish(_reader.LoadBatches());
     }
 

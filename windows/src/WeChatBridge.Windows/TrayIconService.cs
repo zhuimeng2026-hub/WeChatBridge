@@ -225,46 +225,56 @@ public sealed class TrayIconService : IDisposable
         {
             var notifyCode = (uint)lParam.ToInt64() & 0xFFFF;
             InboxLogger.Write(new InboxPaths(), $"tray event 0x{notifyCode:x4}");
-            switch (notifyCode)
+            try
             {
-                // Left click opens the window, exactly like the macOS status item.
-                case Native.WmLButtonUp:
-                case Native.WmLButtonDblClk:
-                case Native.NinSelect:
-                case Native.NinKeySelect:
-                    ToggleWindow(showOnly: true);
-                    handled = true;
-                    break;
-                // The pre-v4 contract — and in practice the only one this
-                // shell honours: raw WM_RBUTTONUP arrives instead of
-                // NIN_POPUPMENU (seen live in windows.log), so both paths
-                // lead to the same menu.
-                case Native.WmRButtonUp:
-                case Native.NinPopupMenu:
-                    // 0x0402 is also NIN_BALLOONSHOW: a balloon we just raised
-                    // reports its arrival here. Only a right-click after the
-                    // notice window is a real menu request.
-                    if (Environment.TickCount64 - _balloonRequestedAt >= 1500)
+                switch (notifyCode)
+                {
+                    // Left click opens the window, exactly like the macOS status item.
+                    case Native.WmLButtonUp:
+                    case Native.WmLButtonDblClk:
+                    case Native.NinSelect:
+                    case Native.NinKeySelect:
+                        ToggleWindow(showOnly: true);
+                        handled = true;
+                        break;
+                    // The pre-v4 contract — and in practice the only one this
+                    // shell honours: raw WM_RBUTTONUP arrives instead of
+                    // NIN_POPUPMENU (seen live in windows.log), so both paths
+                    // lead to the same menu.
+                    case Native.WmRButtonUp:
+                    case Native.NinPopupMenu:
+                        // 0x0402 is also NIN_BALLOONSHOW: a balloon we just raised
+                        // reports its arrival here. Only a right-click after the
+                        // notice window is a real menu request.
+                        if (Environment.TickCount64 - _balloonRequestedAt >= 1500)
+                            ShowContextMenu();
+                        handled = true;
+                        break;
+                    case Native.NinBalloonUserClick:
+                        // The toast's action, run as if the capsule's button was
+                        // pressed — and show the window first, since the action is
+                        // usually a pane navigation that a hidden window hides.
+                        ToggleWindow(showOnly: true);
+                        _balloonAction?.Invoke();
+                        _balloonAction = null;
+                        handled = true;
+                        break;
+                    case Native.NinBalloonHide:
+                    case Native.NinBalloonTimeout:
+                        _balloonAction = null;
+                        break;
+                    case Native.WmContextMenu:
                         ShowContextMenu();
-                    handled = true;
-                    break;
-                case Native.NinBalloonUserClick:
-                    // The toast's action, run as if the capsule's button was
-                    // pressed — and show the window first, since the action is
-                    // usually a pane navigation that a hidden window hides.
-                    ToggleWindow(showOnly: true);
-                    _balloonAction?.Invoke();
-                    _balloonAction = null;
-                    handled = true;
-                    break;
-                case Native.NinBalloonHide:
-                case Native.NinBalloonTimeout:
-                    _balloonAction = null;
-                    break;
-                case Native.WmContextMenu:
-                    ShowContextMenu();
-                    handled = true;
-                    break;
+                        handled = true;
+                        break;
+                }
+            }
+            catch (Exception error)
+            {
+                // This hook runs inside the WPF message loop: an exception that
+                // escapes here is an unhandled exception in the dispatcher, and
+                // the app goes down with it.
+                InboxLogger.Write(new InboxPaths(), "tray handler failed", error);
             }
         }
         return IntPtr.Zero;
@@ -352,7 +362,19 @@ public sealed class TrayIconService : IDisposable
         _commands.Clear();
         _nextCommandId = 1;
         var windowVisible = _window()?.IsVisible == true;
-        Populate(menu, TrayMenu.Build(_model.Batches, windowVisible, DateTimeOffset.Now, _model.Collections.Ledger.Current));
+        // The menu is built inside the window procedure, where an exception
+        // escapes into the WPF message loop and takes the app down with it.
+        // Nothing the model can fail at may stop the menu from opening.
+        BatchCollection? current = null;
+        try
+        {
+            current = _model.Collections.Ledger.Current;
+        }
+        catch (Exception error)
+        {
+            InboxLogger.Write(new InboxPaths(), "tray menu: collection ledger unavailable", error);
+        }
+        Populate(menu, TrayMenu.Build(_model.Batches, windowVisible, DateTimeOffset.Now, current));
 
         Native.GetCursorPos(out var point);
         // The foreground trick every tray menu needs: without it the popup does

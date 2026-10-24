@@ -206,7 +206,9 @@ public sealed class InboxReader
         }
         TrashOrRemove(item.FullPath);
         var updated = manifest with { Items = remaining };
-        File.WriteAllText(
+        // Atomic: a manifest truncated by a crash would make the whole batch
+        // unreadable, and an unreadable batch is pruned.
+        AtomicFile.WriteAllText(
             Path.Combine(directory, "manifest.json"),
             JsonSerializer.Serialize(updated, BatchManifest.JsonOptions));
     }
@@ -371,7 +373,9 @@ public sealed class InboxReader
     {
         try
         {
-            File.WriteAllText(
+            // Atomic: a truncated state file would make the batch look
+            // never-processed, so the share is announced a second time.
+            AtomicFile.WriteAllText(
                 Path.Combine(directory, BatchState.FileName),
                 JsonSerializer.Serialize(state, BatchManifest.JsonOptions));
         }
@@ -389,7 +393,9 @@ public sealed class InboxReader
             ?? throw new InboxValidationException("manifest 无法读取。");
         var current = StateAt(directory) ?? BatchState.Initial(manifest);
         var updated = transform(current);
-        File.WriteAllText(
+        // Atomic: the live state file keeps its previous contents if this write
+        // does not make it all the way through.
+        AtomicFile.WriteAllText(
             Path.Combine(directory, BatchState.FileName),
             JsonSerializer.Serialize(updated, BatchManifest.JsonOptions));
     }

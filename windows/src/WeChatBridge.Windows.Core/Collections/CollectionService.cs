@@ -3,24 +3,83 @@ namespace WeChatBridge.Windows.Core;
 /// <summary>Persistent collections, frozen delivery snapshots, and recoverable batch removal.</summary>
 public sealed class CollectionService
 {
+    /// <summary>The ledger file the app normally keeps its collections in.</summary>
+    public const string LedgerFileName = "collections.json";
+
+    /// <summary>
+    /// Where the live ledger moves to when <see cref="LedgerFileName"/> cannot
+    /// be read. The unreadable file itself is left exactly where it is.
+    /// </summary>
+    public const string RecoveredLedgerFileName = "collections.recovered.json";
+
     private readonly InboxPaths _paths;
     private readonly InboxReader _reader;
-    private string LedgerPath => Path.Combine(_paths.Root, "collections.json");
+    private readonly string _ledgerPath;
     private string UndoPath => Path.Combine(_paths.Root, "collection-undo.json");
     private string UndoDirectory => Path.Combine(_paths.Root, "CollectionUndo");
     public BatchCollectionLedger Ledger { get; private set; }
+
+    /// <summary>
+    /// Set when the ledger on disk could not be read. The app carries on with
+    /// an empty ledger; the original bytes are untouched.
+    /// </summary>
+    public string? LoadFailure { get; private set; }
+
     public CollectionService(InboxPaths paths, InboxReader reader)
     {
         _paths = paths;
         _reader = reader;
-        Ledger = BatchCollectionLedger.Load(LedgerPath);
-        RecoverInterruptedRemoval();
-        RecoverUndoJournal();
-        Ledger.RecoverInterruptedDeliveries();
-        Save();
+        (_ledgerPath, Ledger, LoadFailure) = ResolveLedger();
+        try
+        {
+            RecoverInterruptedRemoval();
+            RecoverUndoJournal();
+            Ledger.RecoverInterruptedDeliveries();
+            Save();
+        }
+        catch (Exception error)
+        {
+            // Nothing in here may stop the app from starting: an unreadable
+            // journal or a ledger that cannot be written is a problem the user
+            // has to see, not a reason for the window not to open.
+            InboxLogger.Write(paths, L10n.Text("收集记录无法读取，原始文件已保留。"), error);
+        }
     }
 
-    public void Save() => Ledger.Save(LedgerPath);
+    /// <summary>
+    /// Decides which file the live ledger lives in.
+    /// <para>
+    /// The usual answer is <see cref="LedgerFileName"/>. When that file cannot
+    /// be read it is left exactly as it is — the user's bytes, theirs — and
+    /// the live ledger moves next to it, so one truncated file cannot empty
+    /// the history and break the tray menu on every launch from then on.
+    /// </para>
+    /// </summary>
+    private (string Path, BatchCollectionLedger Ledger, string? Failure) ResolveLedger()
+    {
+        var primary = Path.Combine(_paths.Root, LedgerFileName);
+        var recovered = Path.Combine(_paths.Root, RecoveredLedgerFileName);
+        if (!File.Exists(primary))
+        {
+            // No primary file: either nothing has been collected yet, or the
+            // unreadable one was removed by hand and the recovered ledger is
+            // the only copy left.
+            if (File.Exists(recovered)
+                && BatchCollectionLedger.TryLoad(recovered, out var kept, out _) && kept is not null)
+                return (recovered, kept, null);
+            return (primary, new BatchCollectionLedger(), null);
+        }
+        if (BatchCollectionLedger.TryLoad(primary, out var ledger, out var failure) && ledger is not null)
+            return (primary, ledger, null);
+        // The unreadable file stays where it is. The app runs on a fresh ledger
+        // beside it, and picks that ledger up again on the next launch.
+        var salvaged = BatchCollectionLedger.TryLoad(recovered, out var beside, out _) && beside is not null
+            ? beside
+            : new BatchCollectionLedger();
+        return (recovered, salvaged, failure);
+    }
+
+    public void Save() => Ledger.Save(_ledgerPath);
     public Guid Append(ReadyBatch batch, string? recognizedName)
     {
         var id = Ledger.Append(batch.Id, batch.CreatedAt);

@@ -122,11 +122,51 @@ public sealed class BatchCollectionLedger
         }
     }
 
+    /// <summary>
+    /// Loads the ledger, or throws when the file on disk is not a ledger this
+    /// build understands. Callers that must not fail on a corrupt file use
+    /// <see cref="TryLoad"/>.
+    /// </summary>
     public static BatchCollectionLedger Load(string path)
     {
         if (!File.Exists(path)) return new();
         var ledger = JsonSerializer.Deserialize<BatchCollectionLedger>(File.ReadAllText(path), BatchManifest.JsonOptions)
             ?? throw new InvalidDataException(L10n.Text("收集记录无法读取，原始文件已保留。"));
+        Validate(ledger);
+        return ledger;
+    }
+
+    /// <summary>
+    /// Reads the ledger without ever throwing.
+    /// <para>
+    /// A ledger that cannot be parsed is the user's file to look at, not a
+    /// reason for the app not to start: the caller gets an empty ledger and a
+    /// message, and the bytes on disk are left exactly where they were.
+    /// </para>
+    /// </summary>
+    public static bool TryLoad(string path, out BatchCollectionLedger? ledger, out string? error)
+    {
+        try
+        {
+            ledger = Load(path);
+            error = null;
+            return true;
+        }
+        catch (Exception)
+        {
+            // A malformed ledger must never be the thing that stops the app.
+            ledger = null;
+            error = L10n.Text("收集记录无法读取，原始文件已保留。");
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// The ledger's own invariants. A file that breaks them is not a ledger
+    /// this build can work with, however well-formed its JSON is.
+    /// </summary>
+    private static void Validate(BatchCollectionLedger ledger)
+    {
         if (ledger.Collections is null || ledger.SeenBatchIDs is null
             || ledger.Collections.Any(c => c is null || c.BatchIDs is null || c.Name is null))
             throw new InvalidDataException(L10n.Text("收集记录无法读取，原始文件已保留。"));
@@ -136,15 +176,12 @@ public sealed class BatchCollectionLedger
             || ledger.Collections.Count(c => c.Status == CollectionStatus.Collecting) > 1
             || ledger.Collections.Any(c => !Enum.IsDefined(c.Status)))
             throw new InvalidDataException(L10n.Text("收集记录无法读取，原始文件已保留。"));
-        return ledger;
     }
 
     public void Save(string path)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        var staging = path + ".tmp";
-        File.WriteAllText(staging, JsonSerializer.Serialize(this, BatchManifest.JsonOptions));
-        File.Move(staging, path, overwrite: true);
+        AtomicFile.WriteAllText(path, JsonSerializer.Serialize(this, BatchManifest.JsonOptions));
     }
 }
 

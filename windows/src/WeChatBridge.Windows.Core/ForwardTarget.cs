@@ -53,9 +53,7 @@ public static class ConfigStore
     {
         Directory.CreateDirectory(directory);
         var path = Path.Combine(directory, fileName);
-        var staging = path + ".tmp";
-        File.WriteAllText(staging, JsonSerializer.Serialize(value, BatchManifest.JsonOptions));
-        File.Move(staging, path, overwrite: true);
+        AtomicFile.WriteAllText(path, JsonSerializer.Serialize(value, BatchManifest.JsonOptions));
     }
 }
 

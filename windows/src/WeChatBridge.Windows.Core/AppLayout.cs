@@ -96,6 +96,66 @@ public sealed class AppLayout
     }
 
     /// <summary>
+    /// True when two executables belong to the same installation — the same
+    /// coordination scope, which is the same pipe, mutex and event names.
+    /// <para>
+    /// A portable copy and an installed copy run the very same helper under
+    /// the very same file name, and they deliberately keep separate pipes,
+    /// mutexes and event names (see <see cref="CoordinationSuffix"/>). So
+    /// anything that sweeps "the other copies of me" — the keeper's wedge
+    /// recovery — has to compare the installation and not the process name: a
+    /// portable share that killed every <c>WeChatBridge.ShareTarget</c> on
+    /// the machine took the installed build's resident keeper with it, and
+    /// the installed build's next share died with it.
+    /// </para>
+    /// </summary>
+    public static bool IsSameInstallation(string? firstExecutablePath, string? secondExecutablePath)
+    {
+        var first = SuffixForExecutable(firstExecutablePath);
+        var second = SuffixForExecutable(secondExecutablePath);
+        if (first is null || second is null)
+            return false;
+        return string.Equals(first, second, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The coordination suffix an executable at this path would use, or null
+    /// when the path cannot be resolved — a path that proves nothing is never
+    /// treated as a match.
+    /// </summary>
+    public static string? SuffixForExecutable(string? executablePath)
+    {
+        var directory = DirectoryOf(executablePath);
+        if (directory is null)
+            return null;
+        try
+        {
+            var root = ResolvePortableRoot(directory);
+            return root is null ? "" : CoordinationSuffixFor(root);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>The directory holding an executable, normalized for comparison.</summary>
+    private static string? DirectoryOf(string? executablePath)
+    {
+        if (string.IsNullOrWhiteSpace(executablePath))
+            return null;
+        try
+        {
+            var directory = Path.GetDirectoryName(Path.GetFullPath(executablePath));
+            return directory?.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
     /// Finds the portable root, or <c>null</c> for an installed build.
     /// </summary>
     /// <remarks>
