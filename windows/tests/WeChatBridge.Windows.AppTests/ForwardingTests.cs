@@ -117,7 +117,6 @@ public sealed class ForwardingTests
         ActivateAsync = (target, _) => Task.FromResult(target),
         ForegroundWindow = () => 456,
         WindowProcessId = _ => 123,
-        ThisProcessId = () => 999,
         WriteFileDropList = paths => { copied(new PastePayload.Files(paths)); return true; },
         WriteClipboardText = text => { copied(new PastePayload.Text(text)); return true; },
         SendCtrlV = () => true,

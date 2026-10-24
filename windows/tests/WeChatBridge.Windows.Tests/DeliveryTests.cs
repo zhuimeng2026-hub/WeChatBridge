@@ -57,7 +57,6 @@ internal sealed class FakeOs
             SendCtrlV = () => { Ops.Add("ctrlv"); return KeystrokeOk; },
             SendCtrlKey = key => { Ops.Add($"ctrlkey:0x{key:X2}"); return KeystrokeOk; },
             DelayAsync = (span, _) => { Delays.Add(span); return Task.CompletedTask; },
-            ThisProcessId = () => OwnPid,
             Now = () => Stamp,
         };
     }
@@ -132,6 +131,30 @@ public sealed class DeliveryEngineTests
         Assert.Equal("Codex", result.TargetName);
         // Fallback written at the start and rewritten on failure — no paste attempted.
         Assert.Equal(["files:1", "resolve:Codex", "activate", "files:1"], os.Ops);
+    }
+
+    [Fact]
+    public async Task ATargetWeCannotIdentifyNeverClaimsTheWindowThatHappensToBeInFront()
+    {
+        // A packaged app that never came up: no window handle and no process
+        // id, so there is nothing to compare the foreground window against.
+        // Claiming it anyway would paste the archive into whatever the user
+        // had in front — a code editor, a chat app, a password field.
+        var os = new FakeOs
+        {
+            Resolved = new ResolvedTarget(WindowsForwardTargets.For(ShareAction.Claude)!, null, 0, null),
+            Foreground = 5555,
+        };
+        var engine = new DeliveryEngine(
+            os.Env with { ForegroundTimeout = TimeSpan.FromMilliseconds(100) });
+        var result = await engine.DeliverAsync(DeliveryFixtures.Batch(ShareAction.Claude, A));
+
+        Assert.False(result.Delivered);
+        Assert.Equal(DeliveryFailureKind.DidNotBecomeActive, result.Failure);
+        // No keystroke was sent to the foreign window, and the files are
+        // still on the clipboard for a manual paste.
+        Assert.DoesNotContain("ctrlv", os.Ops);
+        Assert.Contains("files:1", os.Ops);
     }
 
     [Fact]

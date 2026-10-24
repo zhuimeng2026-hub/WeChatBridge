@@ -147,7 +147,7 @@ public sealed class DeliveryEngine
         if (spec is null)
         {
             return Fail(batch, DeliveryFailureKind.NoTarget,
-                "这条转发没有指定目标 App。", targetName, [new PastePayload.Files(paths)]);
+                L10n.Text("这条转发没有指定目标 App。"), targetName, [new PastePayload.Files(paths)]);
         }
 
         // The files, or their paths as text for an app — a terminal — that
@@ -170,7 +170,7 @@ public sealed class DeliveryEngine
         if (resolved is null)
         {
             return Fail(batch, DeliveryFailureKind.NotInstalled,
-                $"这台电脑上没有找到 {targetName}。", targetName, plan);
+                L10n.Format($"这台电脑上没有找到 {targetName}。"), targetName, plan);
         }
 
         resolved = await _env.ActivateAsync(resolved, ct).ConfigureAwait(false);
@@ -178,7 +178,7 @@ public sealed class DeliveryEngine
         if (!await WaitUntilForeground(resolved, ct).ConfigureAwait(false))
         {
             return Fail(batch, DeliveryFailureKind.DidNotBecomeActive,
-                $"{targetName} 没有切到前台，已经放弃自动粘贴。", targetName, plan);
+                L10n.Format($"{targetName} 没有切到前台，已经放弃自动粘贴。"), targetName, plan);
         }
 
         await _env.DelayAsync(_env.ForegroundSettle ?? ForegroundSettle, ct).ConfigureAwait(false);
@@ -216,12 +216,12 @@ public sealed class DeliveryEngine
             if (!WritePayload(plan[index]))
             {
                 return Fail(batch, DeliveryFailureKind.ClipboardWriteFailed,
-                    "系统没有接受这次剪贴板写入。", targetName, plan);
+                    L10n.Text("系统没有接受这次剪贴板写入。"), targetName, plan);
             }
             if (!_env.SendCtrlV())
             {
                 return Fail(batch, DeliveryFailureKind.KeystrokeRejected,
-                    "系统没有接受这次按键事件。", targetName, plan);
+                    L10n.Text("系统没有接受这次按键事件。"), targetName, plan);
             }
             _env.Log?.Invoke($"[deliver {batch.Id:N}] pasted {index + 1}/{plan.Count} fg={_env.ForegroundWindow()}");
         }
@@ -238,7 +238,6 @@ public sealed class DeliveryEngine
     /// </summary>
     private async Task<bool> WaitUntilForeground(ResolvedTarget target, CancellationToken ct)
     {
-        var ownPid = _env.ThisProcessId();
         var timeout = _env.ForegroundTimeout ?? ForegroundTimeout;
         var poll = _env.ForegroundPoll ?? ForegroundPoll;
         var deadline = Environment.TickCount64 + (long)timeout.TotalMilliseconds;
@@ -248,13 +247,13 @@ public sealed class DeliveryEngine
         {
             ct.ThrowIfCancellationRequested();
             var hwnd = _env.ForegroundWindow();
-            if (hwnd != 0 && target.OwnsForeground(hwnd, _env.WindowProcessId(hwnd), ownPid))
+            if (hwnd != 0 && target.OwnsForeground(hwnd, _env.WindowProcessId(hwnd)))
                 return true;
             if (hwnd != lastHwnd)
             {
                 lastHwnd = hwnd;
                 lastPid = hwnd == 0 ? 0 : _env.WindowProcessId(hwnd);
-                _env.Log?.Invoke($"[wait-foreground] hwnd={hwnd} pid={lastPid} (want hwnd={target.MainWindowHandle} pid={target.ProcessId?.ToString() ?? "any≠self"})");
+                _env.Log?.Invoke($"[wait-foreground] hwnd={hwnd} pid={lastPid} (want hwnd={target.MainWindowHandle} pid={target.ProcessId?.ToString() ?? "unknown"})");
             }
             await _env.DelayAsync(poll, ct).ConfigureAwait(false);
         }

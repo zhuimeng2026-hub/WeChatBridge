@@ -48,9 +48,6 @@ public sealed record DeliveryEnvironment
     /// </summary>
     public Func<nint, bool>? FocusTextInput { get; init; }
 
-    /// <summary>This process's id — the "not ours" marker for AUMID targets with no known pid.</summary>
-    public Func<uint> ThisProcessId { get; init; } = () => (uint)Environment.ProcessId;
-
     /// <summary>Delay between waits; tests substitute an instant no-op.</summary>
     public Func<TimeSpan, CancellationToken, Task> DelayAsync { get; init; } =
         (span, ct) => Task.Delay(span, ct);

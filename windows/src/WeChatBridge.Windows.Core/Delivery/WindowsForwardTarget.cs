@@ -62,15 +62,24 @@ public sealed record ResolvedTarget(
     /// Whether <paramref name="hwnd"/>/<paramref name="processId"/> — the pair
     /// <c>GetForegroundWindow</c>/<c>GetWindowThreadProcessId</c> returned —
     /// belongs to this target. A handle match wins because a packaged app's
-    /// process id is not always knowable; when nothing is known (AUMID launch),
-    /// any foreground window that is not ours is accepted — best effort, since
-    /// the user just watched the target open.
+    /// process id is not always knowable.
+    /// <para>
+    /// When the target exposes <em>neither</em> a window handle nor a process
+    /// id, this returns <c>false</c>: we cannot attribute the foreground
+    /// window to anybody, so claiming it would be a guess. The guess is not
+    /// harmless — the delivery would paste the archive into whatever window
+    /// the user happened to have in front (a code editor, a chat app, a
+    /// password field) while the intended target never even started. The
+    /// honest outcome is the foreground timeout and the
+    /// 「没有切到前台」 failure, with the manual payload already in the
+    /// clipboard so the user is one Ctrl+V away from their files.
+    /// </para>
     /// </summary>
-    public bool OwnsForeground(nint hwnd, uint processId, uint ownProcessId)
+    public bool OwnsForeground(nint hwnd, uint processId)
     {
         if (MainWindowHandle != 0 && hwnd == MainWindowHandle)
             return true;
-        return ProcessId is { } pid ? processId == (uint)pid : processId != ownProcessId;
+        return ProcessId is { } pid && processId == (uint)pid;
     }
 }
 
