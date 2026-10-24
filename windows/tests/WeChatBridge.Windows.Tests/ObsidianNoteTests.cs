@@ -206,4 +206,68 @@ public sealed class ObsidianNoteTests
         Assert.Contains("chat: \"甲\"", merged);
         Assert.Contains("scene: \"项目周会\"", merged);
     }
+
+    /// <summary>
+    /// Re-forwarding the same conversation must not duplicate messages.
+    /// <para>
+    /// The merge marker (「追加归档：[[附件/x.zip]]」) is written between two
+    /// messages, so it used to become part of the message above it. That
+    /// message then never matched the incoming record again, and every further
+    /// share of the same chat appended one more copy of it.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void ReSharingTheSameChatDoesNotDuplicateMessages()
+    {
+        var first = Txt("·甲\n2026年9月20日 09:10\n第一条\n");
+        var second = Txt("·甲\n2026年9月20日 09:10\n第一条\n\n·乙\n2026年9月20日 09:11\n第二条\n");
+        var note = Rendered(first);
+
+        // The second share adds 乙 and writes the marker after 甲.
+        var outcome = ObsidianNote.TryMerge(
+            note, second, null, "b.zip", "群", null,
+            new DateTimeOffset(2026, 9, 21, 0, 0, 0, TimeSpan.Zero), out var merged, Utc);
+
+        Assert.Equal(ObsidianNote.MergeOutcome.Merged, outcome);
+        Assert.NotNull(merged);
+        // The marker is part of the note the user reads.
+        Assert.Contains("> 追加归档：[[附件/b.zip]]", merged!);
+
+        // The third share of the same chat has nothing new to add: 甲's body
+        // carries the marker, and the marker is not part of the message.
+        outcome = ObsidianNote.TryMerge(
+            merged!, second, null, "c.zip", "群", null,
+            new DateTimeOffset(2026, 9, 22, 0, 0, 0, TimeSpan.Zero), out var again, Utc);
+
+        Assert.Equal(ObsidianNote.MergeOutcome.NothingNew, outcome);
+        Assert.Null(again);
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(merged!, "第一条"));
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(merged!, "第二条"));
+    }
+
+    /// <summary>
+    /// A share that overlaps an earlier one still adds only what is missing,
+    /// even after the note already carries a merge marker.
+    /// </summary>
+    [Fact]
+    public void AnOverlappingShareAddsOnlyTheMissingMessage()
+    {
+        var first = Txt("·甲\n2026年9月20日 09:10\n第一条\n");
+        var second = Txt("·甲\n2026年9月20日 09:10\n第一条\n\n·乙\n2026年9月20日 09:11\n第二条\n");
+        var third = Txt("·甲\n2026年9月20日 09:10\n第一条\n\n·乙\n2026年9月20日 09:11\n第二条\n\n·丙\n2026年9月20日 09:12\n第三条\n");
+
+        var outcome = ObsidianNote.TryMerge(
+            Rendered(first), second, null, "b.zip", "群", null,
+            DateTimeOffset.UnixEpoch, out var merged, Utc);
+        Assert.Equal(ObsidianNote.MergeOutcome.Merged, outcome);
+
+        outcome = ObsidianNote.TryMerge(
+            merged!, third, null, "c.zip", "群", null,
+            DateTimeOffset.UnixEpoch, out var again, Utc);
+
+        Assert.Equal(ObsidianNote.MergeOutcome.Merged, outcome);
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(again!, "第一条"));
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(again!, "第二条"));
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(again!, "第三条"));
+    }
 }

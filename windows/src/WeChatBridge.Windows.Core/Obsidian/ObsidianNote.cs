@@ -15,6 +15,15 @@ public static class ObsidianNote
         @"^\*\*(?<sender>.+?)\*\* · (?<stamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2})$",
         RegexOptions.Multiline | RegexOptions.Compiled);
 
+    /// <summary>
+    /// The line this writer appends when another archive is merged into an
+    /// existing note (「追加归档：[[附件/x.zip]]（时间）」). It is written
+    /// between two messages, so without excluding it here it would become
+    /// part of the message above it — and that message would never match an
+    /// incoming record again, so every further share would duplicate it.
+    /// </summary>
+    private const string ArchiveMarkerPrefix = "> 追加归档：";
+
     /// <summary>What <see cref="TryMerge"/> decided for an existing note.</summary>
     public enum MergeOutcome
     {
@@ -215,7 +224,7 @@ public static class ObsidianNote
         merged.Append('\n');
         if (!normalized.Contains("\n## 聊天记录\n", StringComparison.Ordinal))
             merged.Append("\n## 聊天记录\n");
-        merged.Append("\n> 追加归档：").Append(AttachmentLink(archiveName))
+        merged.Append('\n').Append(ArchiveMarkerPrefix).Append(AttachmentLink(archiveName))
             .Append('（').Append(StampFor(mergedAt, zone)).Append('）').Append('\n');
         foreach (var record in fresh)
         {
@@ -232,6 +241,10 @@ public static class ObsidianNote
     /// <summary>
     /// One record's identity in a note: sender, minute, and the body stripped
     /// of blank edges and any wiki-link lines this writer appended beside it.
+    /// The merge marker is stripped too: it is written between two messages,
+    /// so it belongs to the message above it — and a message whose body
+    /// carries it never matches the incoming record again, which made every
+    /// further share of the same chat duplicate one more message.
     /// </summary>
     private static string MessageKey(string sender, string stamp, string body)
     {
@@ -239,7 +252,8 @@ public static class ObsidianNote
             .Select(line => line.TrimEnd())
             .Where(line => line.Length > 0
                 && !line.StartsWith("![[", StringComparison.Ordinal)
-                && !line.StartsWith("[[", StringComparison.Ordinal))
+                && !line.StartsWith("[[", StringComparison.Ordinal)
+                && !line.StartsWith(ArchiveMarkerPrefix, StringComparison.Ordinal))
             .ToList();
         return $"{sender.Trim()}\n{stamp}\n{string.Join('\n', lines)}";
     }

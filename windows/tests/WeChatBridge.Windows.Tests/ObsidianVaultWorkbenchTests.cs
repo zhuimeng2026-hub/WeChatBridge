@@ -152,6 +152,112 @@ public sealed class ObsidianVaultWorkbenchTests
         finally { Directory.Delete(root, recursive: true); }
     }
 
+    /// <summary>
+    /// One unreadable folder must not take the whole listing down: the vault
+    /// still shows every note it can read. The failure is injected through
+    /// the enumeration seam — an ACL-denied directory is awkward to create
+    /// from a test that runs as the owner of the vault.
+    /// </summary>
+    [Fact]
+    public void AnUnreadableFolderDoesNotAbortTheVaultListing()
+    {
+        var root = NewVault();
+        try
+        {
+            var unreadable = Path.Combine(root, "locked");
+            Directory.CreateDirectory(unreadable);
+            File.WriteAllText(Path.Combine(unreadable, "hidden.md"), "# 读不到");
+            File.WriteAllText(Path.Combine(root, "readable.md"), "# 读得到");
+
+            var vault = new VaultWithUnreadableFolder(root, unreadable);
+
+            Assert.Equal(new[] { "readable.md" }, vault.ListMarkdownFiles());
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    /// <summary>
+    /// A note whose own folder cannot be enumerated still shows the
+    /// attachments the note itself links to.
+    /// </summary>
+    [Fact]
+    public void AnUnreadableNoteFolderStillListsTheAttachmentsTheNoteLinks()
+    {
+        var root = NewVault();
+        try
+        {
+            var unreadable = Path.Combine(root, "case");
+            Directory.CreateDirectory(Path.Combine(unreadable, "附件"));
+            File.WriteAllText(Path.Combine(unreadable, "record.md"),
+                "# Record\n原始归档：[[附件/archive.zip]]");
+            File.WriteAllBytes(Path.Combine(unreadable, "附件", "archive.zip"), [1, 2]);
+
+            var vault = new VaultWithUnreadableFolder(root, unreadable);
+
+            var attachments = vault.ListAttachments("case/record.md");
+
+            Assert.Equal(new[] { "case/附件/archive.zip" }, attachments.Select(item => item.RelativePath));
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    /// <summary>
+    /// A failed write must not leave a trail of empty notes behind: the file
+    /// is created before the write, so the save has to remove it again.
+    /// </summary>
+    [Fact]
+    public void AFailingWriteLeavesNoPartialNoteBehind()
+    {
+        var root = NewVault();
+        try
+        {
+            var vault = new VaultWithFailingWrite(root);
+
+            Assert.Throws<IOException>(() => vault.SaveNewAnalysis("草稿", "# 内容"));
+
+            // Neither the half-written note nor a trail of empty ones.
+            Assert.Empty(Directory.GetFiles(Path.Combine(root, "分析")));
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    /// <summary>
+    /// A vault whose folder cannot be enumerated. The failure is injected
+    /// through the enumeration seam: an ACL-denied directory is awkward to
+    /// create from a test that runs as the owner of the vault.
+    /// </summary>
+    private sealed class VaultWithUnreadableFolder : ObsidianVaultWorkbench
+    {
+        private readonly string _unreadable;
+
+        public VaultWithUnreadableFolder(string root, string unreadable) : base(root) => _unreadable = unreadable;
+
+        protected override IEnumerable<string> EnumerateMarkdownFiles(string path) =>
+            path.Equals(_unreadable, StringComparison.OrdinalIgnoreCase)
+                ? throw new UnauthorizedAccessException("denied")
+                : base.EnumerateMarkdownFiles(path);
+
+        protected override IEnumerable<string> EnumerateAllFiles(string path) =>
+            path.Equals(_unreadable, StringComparison.OrdinalIgnoreCase)
+                ? throw new UnauthorizedAccessException("denied")
+                : base.EnumerateAllFiles(path);
+    }
+
+    /// <summary>
+    /// A vault whose write fails midway — a full disk or an antivirus lock.
+    /// Neither is easy to arrange on a real disk, so the write is overridden.
+    /// </summary>
+    private sealed class VaultWithFailingWrite : ObsidianVaultWorkbench
+    {
+        public VaultWithFailingWrite(string root) : base(root) { }
+
+        protected override void WriteNote(FileStream stream, string markdown)
+        {
+            stream.Write([1, 2, 3]);
+            throw new IOException("disk full");
+        }
+    }
+
     private static string NewVault()
     {
         var root = Path.Combine(Path.GetTempPath(), "wcb-vault-" + Guid.NewGuid().ToString("N"));

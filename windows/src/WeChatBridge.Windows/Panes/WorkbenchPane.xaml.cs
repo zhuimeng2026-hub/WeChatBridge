@@ -381,22 +381,23 @@ public partial class WorkbenchPane : UserControl
         AttachmentsList.ItemsSource = null;
         try
         {
-            var document = ReadSourceText(row.RelativePath);
+            var note = LoadNote(row.RelativePath);
             _selectedPath = row.RelativePath;
             DocumentTitle.Text = row.Name;
             DocumentPath.Text = row.RelativePath;
-            DocumentBody.Text = document;
-            AttachmentsList.ItemsSource = _demoMode
-                ? _demoAttachments.GetValueOrDefault(row.RelativePath, [])
-                    .Select(name => new ObsidianAttachment("", L10n.Text(name), 0)).ToArray()
-                : _vault?.ListAttachments(row.RelativePath);
+            DocumentBody.Text = note.Markdown;
+            AttachmentsList.ItemsSource = note.Attachments;
             if (LayoutSelector.SelectedItem is ComboBoxItem { Tag: "Reading" })
                 CaseSelector.SelectedIndex = 0;
             if (string.IsNullOrWhiteSpace(DraftTitleBox.Text) || DraftTitleBox.Text == L10n.Text("新建分析草稿"))
                 DraftTitleBox.Text = row.Name.EndsWith(".md", StringComparison.OrdinalIgnoreCase)
                     ? row.Name[..^3] + L10n.Text("分析草稿")
                     : row.Name + L10n.Text("分析草稿");
-            StatusText.Text = L10n.Text("原文只读 · 勾选材料后可复制到剪贴板");
+            // The note was read, so it is on screen. A failing attachment
+            // listing is reported beside it instead of taking it away.
+            StatusText.Text = note.AttachmentError is null
+                ? L10n.Text("原文只读 · 勾选材料后可复制到剪贴板")
+                : L10n.Format($"读取附件失败：{note.AttachmentError.Message}");
             RefreshSourceLinks();
         }
         catch (Exception error)
@@ -407,6 +408,21 @@ public partial class WorkbenchPane : UserControl
             StatusText.Text = L10n.Format($"读取失败：{error.Message}");
         }
     }
+
+    /// <summary>
+    /// Reads a note and lists its attachments. The two steps fail
+    /// differently: a note that cannot be read leaves nothing to show, while
+    /// a folder that cannot be enumerated costs the user the attachments
+    /// only — the note stays on screen.
+    /// </summary>
+    private WorkbenchNote LoadNote(string relativePath) => _demoMode
+        ? WorkbenchNote.Load(
+            () => _demoDocuments.GetValueOrDefault(relativePath, ""),
+            () => _demoAttachments.GetValueOrDefault(relativePath, [])
+                .Select(name => new ObsidianAttachment("", L10n.Text(name), 0)).ToArray())
+        : WorkbenchNote.Load(
+            () => _vault?.ReadMarkdown(relativePath) ?? "",
+            () => _vault?.ListAttachments(relativePath) ?? []);
 
     private void MaterialStrip_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
@@ -436,9 +452,12 @@ public partial class WorkbenchPane : UserControl
         }
         try
         {
+            // The request is what the user pastes into an external tool, so it
+            // is read by them and by the agent: it speaks the interface's
+            // language rather than always Chinese.
             var sections = selectedPaths.Select(path => path == _selectedPath && passage.Length > 0
-                ? $"## 来源：{path} · 当前选中段落\n\n> {passage.Replace("\n", "\n> ", StringComparison.Ordinal)}"
-                : $"## 来源：{path}\n\n{ReadSourceText(path)}");
+                ? L10n.Format($"## 来源：{path} · 当前选中段落") + "\n\n> " + passage.Replace("\n", "\n> ", StringComparison.Ordinal)
+                : L10n.Format($"## 来源：{path}") + "\n\n" + ReadSourceText(path));
             var prompt = PromptBox.Text.Trim();
             var sectionArray = sections.ToArray();
             var request = string.IsNullOrWhiteSpace(prompt)
