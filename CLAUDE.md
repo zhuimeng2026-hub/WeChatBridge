@@ -484,7 +484,18 @@ ent=PRO        ← 大写、排序、去重后逗号连接
 - 沙箱类环境里 git 网络操作会**静默失败或超时**（特征是 `Empty reply from server`，同时 curl 正常——别误判成凭据问题），必须在沙箱外跑。
 
 看板本身就是进度源，别只看文档：`docs/progress/*.md` 里 ⬜ / ⏳ 的行是**代码尚未落地**。
-最新的一块工作是 **Windows 端的「知识工作台」**（分支 `feat/obsidian-workbench-variants`，
+最新的一块工作是 **Windows 端的「M1 桌面版 beta 就绪度」**（分支
+`feat/m1-desktop-beta-readiness`，**2026-10-24 已合进 `main`**；看板
+`docs/progress/feat/m1-desktop-beta-readiness.md`，与测试报告、测试输出同目录）：
+从 `origin/main` 拉平后跑全量测试，把测出来的 **11 处缺陷**修掉（投递抢前台、
+激活把 409 当成购买成功、畸形 JSON 卡死登录窗口、Obsidian 重复转发累积重复消息、
+附件列举失败清空笔记、一个读不到的目录中断整库列举、保存失败留下上千个空文件、
+`state.json` 原地覆写、台账损坏拖垮整个应用、ShareTarget 越界杀掉另一套安装的
+keeper、英文界面漏中文 60 余处），并加了一条本地化**静态守卫**
+（`LocalizationCoverageTests`：扫描每个 `L10n.Text/Format` 调用点的查表 key）。
+**Windows 端 665 项测试全绿**，买断版网络门禁、Go 服务端、后台冒烟均绿；
+**macOS 端本轮不计入验收范围**（当前没有 macOS 场景），仍由 CI 的 macOS job 守着。
+上一块工作是 **Windows 端的「知识工作台」**（分支 `feat/obsidian-workbench-variants`，
 **2026-10-24 已合进 `main`**，随后归档为 tag `archive/feat-obsidian-workbench-variants`
 并从 origin 删掉；看板 `docs/progress/feat/obsidian-workbench-variants.md`
 也在主干上，是 `docs/progress/` 下唯一的子目录）：
@@ -540,10 +551,12 @@ Windows 端新增「知识工作台」面板（阅读优先 / 案件工作区 / 
   `feat/admin-console`、`feat/windows-portable-usb`、`feat/server-convergence`，
   **`feat/client-license-gate` 的 worktree（`D:/WeChatBridge-C`）连同三个未跟踪测试文件一并删除**。
   **这些分支对应的看板从此是历史记录，不再是活的进度源**——
-  现在还活着的只有 `main` 上的看板，其中知识工作台那块是最新的一块（2026-10-24 已随分支合并进主干）。
+  现在还活着的只有 `main` 上的看板，其中 M1 桌面版 beta 就绪度那块是最新的一块
+  （2026-10-24 已随分支合并进主干；知识工作台那块是上一块）。
   远端分支清单：`git branch -r | grep origin/`（**origin 上的远端分支：二条**
-  ——`main` 与在途的 `feat/m1-desktop-beta-readiness`（2026-10-24 起，M1 桌面版
-  beta 就绪度这一块的工作分支，看板在 `docs/progress/feat/m1-desktop-beta-readiness.md`）。
+  ——`main` 与 `feat/m1-desktop-beta-readiness`（2026-10-24 起 M1 桌面版
+  beta 就绪度这一块的工作分支，**已快进合进 main**，但分支留着——
+  看板上还挂着未完成项；看板在 `docs/progress/feat/m1-desktop-beta-readiness.md`）。
   知识工作台那条分支 2026-10-24 合进 main 之后打了 `archive/feat-obsidian-workbench-variants`
   tag 就删掉了；`upstream` 的十二条 = `upstream/main` 本体加十一条
   上游 PR 分支，全是上游 PR 合并后的残留，**推不动也不该推**——
