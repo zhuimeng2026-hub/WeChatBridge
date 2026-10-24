@@ -146,3 +146,11 @@ macOS 端本机跑不了（需要 macOS + Xcode），由 CI 的 macOS job 守着
 - macOS 端本机无法编译与测试。
 - `ActivationService.SendAsync` 的超时没有转成 `ApiTimeoutException`
   （`AccountService` 有转），激活轮询超时会被当成取消静默结束——已登记，未在本轮修。
+
+### 一条观察：`ShareTargetKeeperTests.LoserOfKeeperElectionExitsInsteadOfLingering`
+
+机器内存吃紧的那一轮里，这条用例红过一次（那轮 AppTests 整体耗时 41 s，
+平时 12 s），单独重跑与整包重跑都是绿的（3 s / 25 s）。
+它会真的拉起 ShareTarget 进程并等 keeper 选举，属于**对机器负载敏感**的用例，
+不是本轮改动引入的回归——但它值得记一笔：CI 的 Windows 机器负载高时，
+这条用例也可能偶尔变红。
