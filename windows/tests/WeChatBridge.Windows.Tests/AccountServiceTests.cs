@@ -139,6 +139,32 @@ public sealed class AccountServiceTests
         Assert.Contains("无法识别", error.Message, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// The Go DTO declares <c>expiresAt</c> as a pointer, so a session can arrive
+    /// with <c>"expiresAt": null</c> on the wire. <c>GetDateTimeOffset()</c> raises
+    /// <see cref="InvalidOperationException"/> on that — not a
+    /// <see cref="JsonException"/> — so it used to escape the <c>catch</c> and land
+    /// in the fire-and-forget task behind the login window, leaving the customer
+    /// looking at 「正在获取登录链接…」 with the button disabled and no error at all.
+    /// <para>
+    /// The answer now is a refusal the window can show: the ticket has no expiry,
+    /// and an expiryless ticket has no wait budget to spend.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task BeginLoginRefusesASessionWithANullExpiry()
+    {
+        using var config = new TempLicenseConfig();
+        var transport = new FakeActivationTransport();
+        transport.Reply(201, $"{{\"ticket\":\"{Ticket}\",\"authorizeUrl\":\"https://example.invalid/\",\"qrImageUrl\":\"\",\"expiresAt\":null}}");
+        using var service = Service(transport, config);
+
+        var error = await Assert.ThrowsAsync<ApiException>(
+            () => service.BeginLoginAsync(InstallId, null, CancellationToken.None));
+
+        Assert.Contains("无法识别", error.Message, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task BeginLoginRejectsANullInstallId()
     {
@@ -221,6 +247,26 @@ public sealed class AccountServiceTests
         var error = await Assert.ThrowsAsync<ApiException>(() => service.PollAsync(Ticket, CancellationToken.None));
 
         Assert.Equal(500, error.StatusCode);
+    }
+
+    /// <summary>
+    /// A poll answer with no status is a malformed payload, and it has to be
+    /// reported as one rather than raised: <c>GetProperty("status")</c> raises
+    /// <see cref="KeyNotFoundException"/>, which the <c>catch (JsonException)</c>
+    /// around the read does not catch — and the exception would escape into the
+    /// fire-and-forget task that drives the login window.
+    /// </summary>
+    [Fact]
+    public async Task PollRefusesAnAnswerWithNoStatus()
+    {
+        using var config = new TempLicenseConfig();
+        var transport = new FakeActivationTransport();
+        transport.Reply(200, "{\"expiresAt\":\"2026-10-24T12:00:00Z\"}");
+        using var service = Service(transport, config);
+
+        var error = await Assert.ThrowsAsync<ApiException>(() => service.PollAsync(Ticket, CancellationToken.None));
+
+        Assert.Contains("无法识别", error.Message, StringComparison.Ordinal);
     }
 
     // -----------------------------------------------------------------------
@@ -479,6 +525,32 @@ public sealed class AccountServiceTests
         Assert.Null(service.Current);
     }
 
+    /// <summary>
+    /// The same hole, one field deeper: the token payload's <c>expiresAt</c> is
+    /// also a pointer on the Go side, and <c>GetDateTimeOffset()</c> on a null
+    /// raises <see cref="InvalidOperationException"/> rather than a
+    /// <see cref="JsonException"/>. The refresh has to answer
+    /// <see cref="LoginFailure.MalformedResponse"/> and sign the customer out
+    /// locally, not throw into the caller's task.
+    /// </summary>
+    [Fact]
+    public async Task RefreshTreatsANullExpiryAsAMalformedResponse()
+    {
+        using var config = new TempLicenseConfig();
+        var store = new AuthTokenStore(config.Root, config.Protector);
+        store.Save(FreshTokens());
+        var transport = new FakeActivationTransport();
+        transport.Reply(200, "{\"status\":\"authorized\",\"accessToken\":\"mock_at_2\",\"refreshToken\":\"mock_rt_2\",\"expiresAt\":null,\"account\":{\"id\":\"acc_demo0001\"}}");
+        using var service = Service(transport, config);
+
+        var outcome = await service.RefreshAsync(CancellationToken.None);
+
+        Assert.False(outcome.Succeeded);
+        Assert.Equal(LoginFailure.MalformedResponse, outcome.Failure);
+        Assert.Null(service.Current);
+        Assert.Null(store.Load());
+    }
+
     // -----------------------------------------------------------------------
     // Sign-out
     // -----------------------------------------------------------------------
@@ -602,6 +674,54 @@ public sealed class AccountServiceTests
         Assert.Null(service.Current);
         Assert.Null(store.Load());
         Assert.Equal(1, changes);
+    }
+
+    /// <summary>
+    /// The account view's timestamps are pointers on the Go side, so a null one is
+    /// a legitimate payload and must not take the read down: the display fields
+    /// fall back to their empty values.
+    /// </summary>
+    [Fact]
+    public async Task MeAsyncAcceptsAnAccountWithNullTimestamps()
+    {
+        using var config = new TempLicenseConfig();
+        var store = new AuthTokenStore(config.Root, config.Protector);
+        store.Save(FreshTokens());
+        var transport = new FakeActivationTransport();
+        transport.Reply(200,
+            "{\"id\":\"acc_demo0001\",\"nickname\":\"演示买家\",\"avatarUrl\":\"\",\"plan\":\"buyout\"," +
+            "\"createdAt\":null,\"lastLoginAt\":null,\"wechatBound\":true}");
+        using var service = Service(transport, config);
+
+        var outcome = await service.MeAsync(CancellationToken.None);
+
+        Assert.True(outcome.Succeeded, outcome.Detail);
+        Assert.Equal("演示买家", outcome.Tokens!.Account.Nickname);
+        Assert.Null(outcome.Tokens.Account.LastLoginAt);
+    }
+
+    /// <summary>
+    /// An account with no id is not an account. The read has to say so —
+    /// <see cref="LoginFailure.MalformedResponse"/> — rather than raising out of
+    /// the read and taking the caller's task with it. It also has to leave the
+    /// cached profile alone: a broken answer must not wipe what is on disk.
+    /// </summary>
+    [Fact]
+    public async Task MeAsyncTreatsAnAccountWithoutAnIdAsAMalformedResponse()
+    {
+        using var config = new TempLicenseConfig();
+        var store = new AuthTokenStore(config.Root, config.Protector);
+        store.Save(FreshTokens());
+        var transport = new FakeActivationTransport();
+        transport.Reply(200, "{\"nickname\":\"演示买家\",\"plan\":\"buyout\"}");
+        using var service = Service(transport, config);
+
+        var outcome = await service.MeAsync(CancellationToken.None);
+
+        Assert.False(outcome.Succeeded);
+        Assert.Equal(LoginFailure.MalformedResponse, outcome.Failure);
+        Assert.True(service.IsSignedIn);
+        Assert.Equal("mock_at_1", store.Load()?.AccessToken);
     }
 
     [Fact]

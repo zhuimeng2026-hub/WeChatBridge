@@ -75,7 +75,9 @@ public sealed class ActivationServiceTests
 
         var outcome = await service.RegisterAsync(InstallId, AnchorDigest, 3800, CancellationToken.None);
 
-        Assert.True(outcome.Succeeded, outcome.Detail);
+        // A registration is not a licence. Nothing was written to disk, so the
+        // outcome must not claim success — the caller polls for the licence.
+        Assert.False(outcome.Succeeded, "A registration is not a licence.");
         Assert.True(outcome.IsRegistered);
         Assert.Equal("act_abc123", outcome.RequestId);
         var request = transport.Single();
@@ -137,13 +139,19 @@ public sealed class ActivationServiceTests
     }
 
     /// <summary>
-    /// A conflict on register means this machine already has a live request — the
-    /// server's answer is "you are already in the queue", not a failure. It is
-    /// deliberately not marked retryable: pressing 登记 again would only produce
-    /// the same conflict, and the caller's next move is to poll, not to re-register.
+    /// A conflict on register means this machine already has a live request under
+    /// another account. The server's answer is "you are already in the queue", and
+    /// it is deliberately not marked retryable: pressing 登记 again would only
+    /// produce the same conflict.
+    /// <para>
+    /// It is emphatically not a success either. The old classification mapped a
+    /// conflict onto <c>ActivationFailure.None</c>, which made the outcome claim a
+    /// licence that was never written — the customer was told they had bought the
+    /// software, and no envelope ever reached the disk.
+    /// </para>
     /// </summary>
     [Fact]
-    public async Task RegisterConflictingWithALiveRequestIsNotAFailure()
+    public async Task RegisterConflictingWithALiveRequestIsNotASuccess()
     {
         using var config = new TempLicenseConfig();
         using var keys = new TestSigningKey();
@@ -153,9 +161,11 @@ public sealed class ActivationServiceTests
 
         var outcome = await service.RegisterAsync(InstallId, AnchorDigest, 3800, CancellationToken.None);
 
-        Assert.True(outcome.Succeeded, outcome.Detail);
+        Assert.False(outcome.Succeeded, "A conflict is not a purchase.");
+        Assert.Equal(ActivationFailure.Conflict, outcome.Failure);
         Assert.False(outcome.IsRegistered);
         Assert.Contains("已有进行中", outcome.Detail, StringComparison.Ordinal);
+        Assert.Null(new LicenseStore(config.Root).Load());
     }
 
     [Fact]
@@ -171,6 +181,30 @@ public sealed class ActivationServiceTests
 
         Assert.Equal(ActivationFailure.MalformedResponse, outcome.Failure);
         Assert.True(outcome.CanRetry);
+    }
+
+    /// <summary>
+    /// A registration answer with no request id is a malformed payload, not an
+    /// exception. <c>GetProperty("requestId")</c> raises
+    /// <see cref="KeyNotFoundException"/> — which is not a
+    /// <see cref="System.Text.Json.JsonException"/>, so the catch around the read
+    /// never saw it, and the exception escaped into the fire-and-forget task that
+    /// drives the purchase window.
+    /// </summary>
+    [Fact]
+    public async Task RegisterWithoutARequestIdIsReportedAsAMalformedResponse()
+    {
+        using var config = new TempLicenseConfig();
+        using var keys = new TestSigningKey();
+        var transport = new FakeActivationTransport();
+        transport.Reply(201, "{\"requestId\":null,\"status\":\"pending\"}");
+        var service = Service(config, transport, keys);
+
+        var outcome = await service.RegisterAsync(InstallId, AnchorDigest, 3800, CancellationToken.None);
+
+        Assert.Equal(ActivationFailure.MalformedResponse, outcome.Failure);
+        Assert.True(outcome.CanRetry);
+        Assert.False(outcome.Succeeded);
     }
 
     // -----------------------------------------------------------------------
@@ -192,7 +226,10 @@ public sealed class ActivationServiceTests
 
         var outcome = await service.CheckStatusAsync(CancellationToken.None);
 
-        Assert.True(outcome.Succeeded, outcome.Detail);
+        // No error, and no licence either: "nothing in flight" is a state the
+        // purchase page renders, not a purchase.
+        Assert.Equal(ActivationFailure.None, outcome.Failure);
+        Assert.False(outcome.Succeeded);
         Assert.True(outcome.CanRetry);
         Assert.False(outcome.Confirmed);
         var request = transport.Single();
@@ -211,7 +248,8 @@ public sealed class ActivationServiceTests
 
         var outcome = await service.CheckStatusAsync(CancellationToken.None);
 
-        Assert.True(outcome.Succeeded, outcome.Detail);
+        Assert.Equal(ActivationFailure.None, outcome.Failure);
+        Assert.False(outcome.Succeeded);
         Assert.False(outcome.Confirmed);
         Assert.Contains("等待卖家确认", outcome.Detail, StringComparison.Ordinal);
     }
@@ -251,6 +289,28 @@ public sealed class ActivationServiceTests
         Assert.Contains("客服", outcome.Detail, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// A status answer with no status is a malformed payload, and it has to be
+    /// reported as one: <c>GetProperty("status")</c> raises
+    /// <see cref="KeyNotFoundException"/>, which the <c>catch (JsonException)</c>
+    /// around the read does not catch.
+    /// </summary>
+    [Fact]
+    public async Task AStatusWithoutAStatusIsReportedAsAMalformedResponse()
+    {
+        using var config = new TempLicenseConfig();
+        using var keys = new TestSigningKey();
+        var transport = new FakeActivationTransport();
+        transport.Reply(200, "{\"licenseId\":\"lic_abc123\"}");
+        var service = Service(config, transport, keys);
+
+        var outcome = await service.CheckStatusAsync(CancellationToken.None);
+
+        Assert.Equal(ActivationFailure.MalformedResponse, outcome.Failure);
+        Assert.True(outcome.CanRetry);
+        Assert.False(outcome.Confirmed);
+    }
+
     // -----------------------------------------------------------------------
     // Collect — the order is the whole design
     // -----------------------------------------------------------------------
@@ -259,9 +319,15 @@ public sealed class ActivationServiceTests
     /// Confirmed-but-not-yet-readable is a real race: the handler signs on confirm
     /// and the read can lose. The next poll resolves it, so it is retryable rather
     /// than an error.
+    /// <para>
+    /// It is not a success either, and that is the half that matters: the old
+    /// classification turned the 409 into <c>ActivationFailure.None</c>, so the
+    /// outcome claimed a licence that no envelope was ever written behind. The
+    /// customer was told they owned the software.
+    /// </para>
     /// </summary>
     [Fact]
-    public async Task CollectBeforeTheSignatureLandsIsRetryable()
+    public async Task CollectBeforeTheSignatureLandsIsRetryableAndNotASuccess()
     {
         using var config = new TempLicenseConfig();
         using var keys = new TestSigningKey();
@@ -271,8 +337,10 @@ public sealed class ActivationServiceTests
 
         var outcome = await service.CollectAsync(InstallId, CancellationToken.None);
 
-        Assert.True(outcome.Succeeded, outcome.Detail);
+        Assert.False(outcome.Succeeded, "A licence that was never read is not a licence.");
+        Assert.Equal(ActivationFailure.LicenceNotReady, outcome.Failure);
         Assert.True(outcome.CanRetry);
+        Assert.Null(outcome.License);
         Assert.Null(new LicenseStore(config.Root).Load());
     }
 
@@ -361,6 +429,27 @@ public sealed class ActivationServiceTests
 
         Assert.Equal(ActivationFailure.MalformedResponse, outcome.Failure);
         Assert.True(outcome.CanRetry);
+        Assert.Null(new LicenseStore(config.Root).Load());
+    }
+
+    /// <summary>
+    /// A licence answer with no envelope is a malformed payload, not an escaped
+    /// <see cref="KeyNotFoundException"/>.
+    /// </summary>
+    [Fact]
+    public async Task CollectWithoutAnEnvelopeIsReportedAsAMalformedResponse()
+    {
+        using var config = new TempLicenseConfig();
+        using var keys = new TestSigningKey();
+        var transport = new FakeActivationTransport();
+        transport.Reply(200, "{\"token\":\"wcb1_abc\"}");
+        var service = Service(config, transport, keys);
+
+        var outcome = await service.CollectAsync(InstallId, CancellationToken.None);
+
+        Assert.Equal(ActivationFailure.MalformedResponse, outcome.Failure);
+        Assert.True(outcome.CanRetry);
+        Assert.Null(outcome.License);
         Assert.Null(new LicenseStore(config.Root).Load());
     }
 

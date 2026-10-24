@@ -141,6 +141,82 @@ public sealed record ActivationStatusView(string Status, string? LicenseId)
 public sealed record LicencePayload(string Token, Licensing.LicenseEnvelope Envelope);
 
 /// <summary>
+/// Reads fields off a JSON payload without raising.
+/// <para>
+/// <b>Why this exists.</b> <see cref="JsonElement.GetProperty(string)"/> raises
+/// <see cref="KeyNotFoundException"/> when a field is absent,
+/// <c>GetDateTimeOffset()</c> raises <see cref="InvalidOperationException"/> on a
+/// null or numeric value and <see cref="FormatException"/> on a string that is not
+/// a timestamp, and <c>GetString()</c> raises <see cref="InvalidOperationException"/>
+/// on a number. None of those is a <see cref="JsonException"/>, so a
+/// <c>catch (JsonException)</c> around a payload read does not catch them: the
+/// exception escapes into a fire-and-forget task, and the window the customer is
+/// looking at sits on 「正在获取登录链接…」 with the button disabled and no error
+/// to read. The server's own DTOs make this reachable — <c>expiresAt</c> and
+/// <c>createdAt</c> are pointers, and a pointer is <c>null</c> on the wire.
+/// </para>
+/// <para>
+/// Every read here answers with null instead of raising, and the caller decides
+/// whether a missing field is allowed. A required field that comes back null is a
+/// malformed payload, and the caller turns that into the same
+/// <c>MalformedResponse</c> answer as unparseable JSON.
+/// </para>
+/// </summary>
+internal static class JsonPayload
+{
+    /// <summary>Reads a string field. Null when it is absent, null, or not a string.</summary>
+    public static string? String(JsonElement root, string name)
+    {
+        if (root.ValueKind != JsonValueKind.Object)
+            return null;
+        if (!root.TryGetProperty(name, out var value))
+            return null;
+        return value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+    }
+
+    /// <summary>
+    /// Reads a timestamp field. Null when it is absent, null, or unreadable.
+    /// <para>
+    /// Strings are read as ISO-8601, which is what the account views carry;
+    /// numbers are read as unix seconds, which is the envelope's dialect.
+    /// </para>
+    /// </summary>
+    public static DateTimeOffset? Timestamp(JsonElement root, string name)
+    {
+        if (root.ValueKind != JsonValueKind.Object)
+            return null;
+        if (!root.TryGetProperty(name, out var value))
+            return null;
+        return value.ValueKind switch
+        {
+            JsonValueKind.String => value.TryGetDateTimeOffset(out var parsed) ? parsed : null,
+            JsonValueKind.Number => value.TryGetInt64(out var seconds)
+                ? DateTimeOffset.FromUnixTimeSeconds(seconds)
+                : null,
+            _ => null,
+        };
+    }
+
+    /// <summary>Reads a boolean field. Anything that is not <c>true</c> is false.</summary>
+    public static bool Boolean(JsonElement root, string name)
+    {
+        if (root.ValueKind != JsonValueKind.Object)
+            return false;
+        return root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.True;
+    }
+
+    /// <summary>Reads an object field. Null when it is absent, null, or not an object.</summary>
+    public static JsonElement? Object(JsonElement root, string name)
+    {
+        if (root.ValueKind != JsonValueKind.Object)
+            return null;
+        if (!root.TryGetProperty(name, out var value) || value.ValueKind != JsonValueKind.Object)
+            return null;
+        return value;
+    }
+}
+
+/// <summary>
 /// The error envelope, <c>{ error: { code, message, request_id } }</c>.
 /// <para>
 /// The server's <c>message</c> is already user-facing Chinese, written for a support
@@ -163,9 +239,9 @@ public sealed record ApiFailure(string Code, string Message, string RequestId)
                 error.ValueKind != JsonValueKind.Object)
                 return null;
 
-            var code = error.TryGetProperty("code", out var c) ? c.GetString() ?? "" : "";
-            var message = error.TryGetProperty("message", out var m) ? m.GetString() ?? "" : "";
-            var requestId = error.TryGetProperty("request_id", out var r) ? r.GetString() ?? "" : "";
+            var code = JsonPayload.String(error, "code") ?? "";
+            var message = JsonPayload.String(error, "message") ?? "";
+            var requestId = JsonPayload.String(error, "request_id") ?? "";
             return new ApiFailure(code, message, requestId);
         }
         catch (JsonException)

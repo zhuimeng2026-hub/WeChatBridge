@@ -33,7 +33,7 @@ public sealed record LoginOutcome(LoginFailure Failure, string Detail, AuthToken
     public bool Succeeded => Failure == LoginFailure.None && Tokens is not null;
 
     public static LoginOutcome Success(AuthTokens tokens) =>
-        new(LoginFailure.None, "签到成功。", tokens);
+        new(LoginFailure.None, L10n.Text("签到成功。"), tokens);
 
     public static LoginOutcome Failed(LoginFailure failure, string detail) => new(failure, detail);
 }
@@ -157,7 +157,7 @@ public sealed class AccountService : IDisposable
         {
             var failure = ApiFailure.TryParse(reply.Body);
             throw new ApiException(reply.StatusCode,
-                failure?.Message ?? $"创建登录会话失败（HTTP {reply.StatusCode}）。",
+                failure?.Message ?? L10n.Format($"创建登录会话失败（HTTP {reply.StatusCode}）。"),
                 failure?.Code ?? ApiErrorCodes.Internal,
                 failure?.RequestId ?? "");
         }
@@ -166,15 +166,24 @@ public sealed class AccountService : IDisposable
         {
             using var document = JsonDocument.Parse(reply.Body);
             var root = document.RootElement;
+            // The ticket is the one field with no sensible default: without it
+            // there is nothing to poll, and the expiry is what bounds the wait.
+            // The Go DTO declares expiresAt as a pointer, so a null there is a
+            // payload this client cannot use rather than a licence to guess.
+            var ticket = JsonPayload.String(root, "ticket");
+            if (string.IsNullOrEmpty(ticket))
+                throw new JsonException("The session answer carries no ticket.");
+            var expiresAt = JsonPayload.Timestamp(root, "expiresAt")
+                ?? throw new JsonException("The session answer carries no expiry.");
             return new SessionTicket(
-                root.GetProperty("ticket").GetString() ?? throw new JsonException("ticket is null"),
-                root.TryGetProperty("authorizeUrl", out var authorize) ? authorize.GetString() ?? "" : "",
-                root.TryGetProperty("qrImageUrl", out var qr) ? qr.GetString() ?? "" : "",
-                root.TryGetProperty("expiresAt", out var expires) ? expires.GetDateTimeOffset() : _clock());
+                ticket,
+                JsonPayload.String(root, "authorizeUrl") ?? "",
+                JsonPayload.String(root, "qrImageUrl") ?? "",
+                expiresAt);
         }
         catch (JsonException error)
         {
-            throw new ApiException(reply.StatusCode, "登录服务返回了无法识别的内容。", ApiErrorCodes.Internal, "", error);
+            throw new ApiException(reply.StatusCode, L10n.Text("登录服务返回了无法识别的内容。"), ApiErrorCodes.Internal, "", error);
         }
     }
 
@@ -204,7 +213,11 @@ public sealed class AccountService : IDisposable
         }
         catch (OperationCanceledException error) when (deadline.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
         {
-            throw new ApiTimeoutException($"登录服务在 {_timeout.TotalSeconds:0} 秒内没有返回二维码。", error);
+            // The seconds are rendered here rather than through a format
+            // specifier in the literal: the specifier would become part of
+            // the translation key ("{0:0}"), and a key nobody can write by
+            // hand is a key that will not be found.
+            throw new ApiTimeoutException(L10n.Format($"登录服务在 {_timeout.TotalSeconds.ToString("0", L10n.Culture)} 秒内没有返回二维码。"), error);
         }
     }
 
@@ -222,7 +235,7 @@ public sealed class AccountService : IDisposable
         {
             var failure = ApiFailure.TryParse(reply.Body);
             throw new ApiException(reply.StatusCode,
-                failure?.Message ?? $"查询登录状态失败（HTTP {reply.StatusCode}）。",
+                failure?.Message ?? L10n.Format($"查询登录状态失败（HTTP {reply.StatusCode}）。"),
                 failure?.Code ?? ApiErrorCodes.Internal,
                 failure?.RequestId ?? "");
         }
@@ -231,10 +244,12 @@ public sealed class AccountService : IDisposable
         {
             using var document = JsonDocument.Parse(reply.Body);
             var root = document.RootElement;
-            var status = root.GetProperty("status").GetString() ?? AuthStatus.Pending;
-            DateTimeOffset? expires = root.TryGetProperty("expiresAt", out var e) && e.ValueKind != JsonValueKind.Null
-                ? e.GetDateTimeOffset()
-                : null;
+            // The status is what the poll is for: absent, and there is nothing
+            // to wait on.
+            var status = JsonPayload.String(root, "status");
+            if (string.IsNullOrEmpty(status))
+                throw new JsonException("The poll answer carries no status.");
+            DateTimeOffset? expires = JsonPayload.Timestamp(root, "expiresAt");
 
             if (!string.Equals(status, AuthStatus.Authorized, StringComparison.Ordinal))
                 return new SessionPoll(status, expires, null);
@@ -244,7 +259,7 @@ public sealed class AccountService : IDisposable
         }
         catch (JsonException error)
         {
-            throw new ApiException(reply.StatusCode, "登录服务返回了无法识别的内容。", ApiErrorCodes.Internal, "", error);
+            throw new ApiException(reply.StatusCode, L10n.Text("登录服务返回了无法识别的内容。"), ApiErrorCodes.Internal, "", error);
         }
     }
 
@@ -281,7 +296,7 @@ public sealed class AccountService : IDisposable
                 // next attempt is free. Give up only when the ticket itself is dead.
                 _log?.Invoke($"account: poll {attempt} did not reach the service ({error.Message})");
                 if (_clock() >= deadlineAt)
-                    return LoginOutcome.Failed(LoginFailure.Unreachable, "没能联系上登录服务，请检查网络后重试。");
+                    return LoginOutcome.Failed(LoginFailure.Unreachable, L10n.Text("没能联系上登录服务，请检查网络后重试。"));
                 await BackoffAsync(attempt++, cancellationToken).ConfigureAwait(false);
                 continue;
             }
@@ -296,10 +311,10 @@ public sealed class AccountService : IDisposable
             }
 
             if (poll.IsExpired)
-                return LoginOutcome.Failed(LoginFailure.TicketExpired, "二维码已过期，请刷新后重新扫码。");
+                return LoginOutcome.Failed(LoginFailure.TicketExpired, L10n.Text("二维码已过期，请刷新后重新扫码。"));
 
             if (_clock() >= deadlineAt)
-                return LoginOutcome.Failed(LoginFailure.TimedOut, "等待扫码超时，请刷新后重新扫码。");
+                return LoginOutcome.Failed(LoginFailure.TimedOut, L10n.Text("等待扫码超时，请刷新后重新扫码。"));
 
             await BackoffAsync(attempt++, cancellationToken).ConfigureAwait(false);
         }
@@ -314,7 +329,7 @@ public sealed class AccountService : IDisposable
     {
         var refresh = _current?.RefreshToken;
         if (refresh is null)
-            return LoginOutcome.Failed(LoginFailure.SessionExpired, "尚未登录。");
+            return LoginOutcome.Failed(LoginFailure.SessionExpired, L10n.Text("尚未登录。"));
 
         var json = JsonSerializer.Serialize(new { refreshToken = refresh }, ActivationJson.Options);
         ApiReply reply;
@@ -324,7 +339,7 @@ public sealed class AccountService : IDisposable
         }
         catch (ApiTransportException error)
         {
-            return LoginOutcome.Failed(LoginFailure.Unreachable, $"没能联系上登录服务：{error.Message}");
+            return LoginOutcome.Failed(LoginFailure.Unreachable, L10n.Format($"没能联系上登录服务：{error.Message}"));
         }
 
         if (!reply.IsSuccess)
@@ -333,7 +348,7 @@ public sealed class AccountService : IDisposable
             // says no, the honest thing is to make the user scan again rather than
             // retry with a token that will never work.
             SignOutLocally();
-            return LoginOutcome.Failed(LoginFailure.SessionExpired, "登录已过期，请重新扫码登录。");
+            return LoginOutcome.Failed(LoginFailure.SessionExpired, L10n.Text("登录已过期，请重新扫码登录。"));
         }
 
         try
@@ -346,7 +361,7 @@ public sealed class AccountService : IDisposable
         catch (JsonException)
         {
             SignOutLocally();
-            return LoginOutcome.Failed(LoginFailure.MalformedResponse, "登录服务返回了无法识别的内容，请重新扫码登录。");
+            return LoginOutcome.Failed(LoginFailure.MalformedResponse, L10n.Text("登录服务返回了无法识别的内容，请重新扫码登录。"));
         }
     }
 
@@ -384,17 +399,17 @@ public sealed class AccountService : IDisposable
     {
         var access = BearerToken;
         if (string.IsNullOrWhiteSpace(access))
-            return LoginOutcome.Failed(LoginFailure.SessionExpired, "尚未登录。");
+            return LoginOutcome.Failed(LoginFailure.SessionExpired, L10n.Text("尚未登录。"));
 
         var reply = await SendAsync(ActivationEndpoint.MePath, null, bearer: access, cancellationToken).ConfigureAwait(false);
 
         if (reply.StatusCode == 401)
         {
             SignOutLocally();
-            return LoginOutcome.Failed(LoginFailure.SessionExpired, "登录已过期，请重新扫码。");
+            return LoginOutcome.Failed(LoginFailure.SessionExpired, L10n.Text("登录已过期，请重新扫码。"));
         }
         if (!reply.IsSuccess)
-            return LoginOutcome.Failed(LoginFailure.Unreachable, $"查询会话状态失败（HTTP {reply.StatusCode}）。");
+            return LoginOutcome.Failed(LoginFailure.Unreachable, L10n.Format($"查询会话状态失败（HTTP {reply.StatusCode}）。"));
 
         try
         {
@@ -405,7 +420,7 @@ public sealed class AccountService : IDisposable
                 // The server says yes, the disk says no. Treat it as logged out so
                 // the caller does the right thing on the next launch — and not
                 // invent a token out of thin air to "save" the response.
-                return LoginOutcome.Failed(LoginFailure.SessionExpired, "本地会话缺失。");
+                return LoginOutcome.Failed(LoginFailure.SessionExpired, L10n.Text("本地会话缺失。"));
             }
             _current = _current with { Account = account };
             _store?.Save(_current);
@@ -414,7 +429,7 @@ public sealed class AccountService : IDisposable
         }
         catch (JsonException)
         {
-            return LoginOutcome.Failed(LoginFailure.MalformedResponse, "返回内容无法识别。");
+            return LoginOutcome.Failed(LoginFailure.MalformedResponse, L10n.Text("返回内容无法识别。"));
         }
     }
 
@@ -442,16 +457,30 @@ public sealed class AccountService : IDisposable
         }
         catch (OperationCanceledException error) when (deadline.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
         {
-            throw new ApiTimeoutException($"登录服务在 {_timeout.TotalSeconds:0} 秒内没有响应。", error);
+            throw new ApiTimeoutException(L10n.Format($"登录服务在 {_timeout.TotalSeconds.ToString("0", L10n.Culture)} 秒内没有响应。"), error);
         }
     }
 
+    /// <summary>
+    /// Reads the token payload. Every field here is required: a session without an
+    /// access token, a refresh token or an expiry is not a session, and reading it
+    /// as one would leave the client believing it is signed in with a credential
+    /// nobody can use.
+    /// <para>
+    /// A field that is absent, null or of the wrong shape is a malformed payload,
+    /// and it says so by raising <see cref="JsonException"/> — the exception the
+    /// callers already turn into <see cref="LoginFailure.MalformedResponse"/>.
+    /// </para>
+    /// </summary>
     private static AuthTokens ReadTokens(JsonElement root)
     {
-        var access = root.GetProperty("accessToken").GetString() ?? throw new JsonException("accessToken is null");
-        var refresh = root.GetProperty("refreshToken").GetString() ?? throw new JsonException("refreshToken is null");
-        var expires = root.GetProperty("expiresAt").GetDateTimeOffset();
-        return new AuthTokens(access, refresh, expires, ReadAccount(root.GetProperty("account")));
+        var access = JsonPayload.String(root, "accessToken");
+        var refresh = JsonPayload.String(root, "refreshToken");
+        var expires = JsonPayload.Timestamp(root, "expiresAt");
+        var account = JsonPayload.Object(root, "account");
+        if (string.IsNullOrEmpty(access) || string.IsNullOrEmpty(refresh) || expires is null || account is null)
+            throw new JsonException("The token payload is missing a field this client needs.");
+        return new AuthTokens(access, refresh, expires.Value, ReadAccount(account.Value));
     }
 
     /// <summary>
@@ -459,19 +488,27 @@ public sealed class AccountService : IDisposable
     /// <see cref="ReadTokens"/> so the <c>/v1/account</c> read uses exactly the same
     /// field-by-field parsing as the login and refresh paths do. Two callers, one
     /// shape, no chance for them to drift if the wire ever grows a new field.
+    /// <para>
+    /// The identity is required; the display fields are not. A null
+    /// <c>createdAt</c> or <c>lastLoginAt</c> is a pointer on the Go side that
+    /// happens to be empty, and it must not take the read down with it.
+    /// </para>
     /// </summary>
     private static AccountView ReadAccount(JsonElement accountElement)
     {
+        if (accountElement.ValueKind != JsonValueKind.Object)
+            throw new JsonException("The account payload is not an object.");
+        var id = JsonPayload.String(accountElement, "id");
+        if (string.IsNullOrEmpty(id))
+            throw new JsonException("The account payload carries no id.");
         return new AccountView(
-            accountElement.GetProperty("id").GetString() ?? "",
-            accountElement.TryGetProperty("nickname", out var n) ? n.GetString() ?? "" : "",
-            accountElement.TryGetProperty("avatarUrl", out var a) ? a.GetString() ?? "" : "",
-            accountElement.TryGetProperty("plan", out var p) ? p.GetString() ?? "" : "",
-            accountElement.TryGetProperty("createdAt", out var c) ? c.GetDateTimeOffset() : default,
-            accountElement.TryGetProperty("lastLoginAt", out var l) && l.ValueKind != JsonValueKind.Null
-                ? l.GetDateTimeOffset()
-                : null,
-            accountElement.TryGetProperty("wechatBound", out var w) && w.ValueKind == JsonValueKind.True);
+            id,
+            JsonPayload.String(accountElement, "nickname") ?? "",
+            JsonPayload.String(accountElement, "avatarUrl") ?? "",
+            JsonPayload.String(accountElement, "plan") ?? "",
+            JsonPayload.Timestamp(accountElement, "createdAt") ?? default,
+            JsonPayload.Timestamp(accountElement, "lastLoginAt"),
+            JsonPayload.Boolean(accountElement, "wechatBound"));
     }
 }
 

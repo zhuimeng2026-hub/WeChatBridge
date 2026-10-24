@@ -31,6 +31,26 @@ public enum ActivationFailure
 
     /// <summary>This machine has no install identity, so there is nothing to bind a licence to.</summary>
     NoInstallId,
+
+    /// <summary>
+    /// The service holds the licence but cannot hand it over yet (HTTP 409): the
+    /// seller confirmed and the signature is still being produced. A pause, not
+    /// a failure — the next poll resolves it.
+    /// <para>
+    /// This is the one 409 the client is meant to keep waiting on. Reading it as
+    /// a success would tell a customer they own the software when no envelope
+    /// was ever written; reading it as a failure would end a purchase that is
+    /// one poll away from done.
+    /// </para>
+    /// </summary>
+    LicenceNotReady,
+
+    /// <summary>
+    /// The service refused because of the current state (HTTP 409) on a call that
+    /// does not read a licence: on registration, this machine already carries a
+    /// live request belonging to another account.
+    /// </summary>
+    Conflict,
 }
 
 /// <summary>What one activation call produced.</summary>
@@ -42,7 +62,18 @@ public sealed record ActivationOutcome(
     DateTimeOffset? IssuedAt = null,
     string? RequestId = null)
 {
-    public bool Succeeded => Failure == ActivationFailure.None;
+    /// <summary>
+    /// Whether this machine holds a licence.
+    /// <para>
+    /// Not "whether the call went well": a registration the server recorded and a
+    /// status poll that found the seller still waiting are both perfectly good
+    /// calls, and neither of them has produced a licence. Only the envelope that
+    /// was verified and written counts, so the shape here is the same as
+    /// <see cref="LoginOutcome.Succeeded"/>: no error <i>and</i> the thing that was
+    /// asked for.
+    /// </para>
+    /// </summary>
+    public bool Succeeded => Failure == ActivationFailure.None && License is not null;
 
     /// <summary>
     /// Whether the seller has confirmed. Only a status poll can set it, and it is the
@@ -54,17 +85,26 @@ public sealed record ActivationOutcome(
     /// <summary>
     /// Whether a registration is actually on the server's ledger.
     /// <para>
-    /// Distinct from <see cref="Succeeded"/>: a successful registration and a
-    /// successful licence are both <see cref="ActivationFailure.None"/>, but only one
-    /// of them has a request id to poll. A caller that treats "no error" as
-    /// "registered" would start polling for an order that does not exist, and the
-    /// user would sit there watching a spinner for an hour.
+    /// Distinct from <see cref="Succeeded"/>: a registration is not a licence, and
+    /// only the registration has a request id to poll. A caller that treats "no
+    /// error" as "licensed" would tell a customer they own the software when
+    /// nothing was written to disk; a caller that treats "no error" as "registered"
+    /// would poll for an order that does not exist, and the user would sit there
+    /// watching a spinner for an hour.
     /// </para>
     /// </summary>
     public bool IsRegistered => RequestId is not null;
 
     public static ActivationOutcome Success(LicenseEnvelope license, DateTimeOffset? issuedAt, string detail) =>
         new(ActivationFailure.None, false, detail, license, issuedAt);
+
+    /// <summary>
+    /// The call did its job and there is no error, but there is no licence either:
+    /// the registration is on the server's ledger, or the seller has not confirmed
+    /// yet. Neither is a failure, and neither is <see cref="Succeeded"/>.
+    /// </summary>
+    public static ActivationOutcome InProgress(string detail, string? requestId = null) =>
+        new(ActivationFailure.None, true, detail, RequestId: requestId);
 
     public static ActivationOutcome Failed(ActivationFailure failure, bool canRetry, string detail, string? requestId = null) =>
         new(failure, canRetry, detail, RequestId: requestId);
@@ -136,10 +176,10 @@ public sealed class ActivationService
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(installId))
-            return ActivationOutcome.Failed(ActivationFailure.NoInstallId, false, "本机尚未生成机器码，无法登记购买。");
+            return ActivationOutcome.Failed(ActivationFailure.NoInstallId, false, L10n.Text("本机尚未生成机器码，无法登记购买。"));
         var token = RequireToken();
         if (token is null)
-            return ActivationOutcome.Failed(ActivationFailure.NotSignedIn, false, "请先登录微信账号。");
+            return ActivationOutcome.Failed(ActivationFailure.NotSignedIn, false, L10n.Text("请先登录微信账号。"));
 
         var json = JsonSerializer.Serialize(
             new { installId, anchorDigest, amountFen }, ActivationJson.Options);
@@ -147,19 +187,22 @@ public sealed class ActivationService
             .ConfigureAwait(false);
 
         if (!reply.IsSuccess)
-            return Classify(reply, "登记购买失败，请稍后重试。");
+            return Classify(reply, L10n.Text("登记购买失败，请稍后重试。"));
 
         try
         {
             using var document = JsonDocument.Parse(reply.Body);
-            var requestId = document.RootElement.GetProperty("requestId").GetString() ?? "";
-            var status = document.RootElement.TryGetProperty("status", out var s) ? s.GetString() ?? "" : ActivationState.Pending;
+            // The request id is the only thing this client can poll on, so a
+            // reply without one is not a registration anybody can use.
+            var requestId = JsonPayload.String(document.RootElement, "requestId");
+            if (string.IsNullOrEmpty(requestId))
+                throw new JsonException("The registration answer carries no request id.");
             _log?.Invoke($"activation: registered {requestId} for install {installId}");
-            return ActivationOutcome.Failed(ActivationFailure.None, true, $"已登记，授权码 {requestId}，等待卖家确认。", requestId);
+            return ActivationOutcome.InProgress(L10n.Format($"已登记，授权码 {requestId}，等待卖家确认。"), requestId);
         }
         catch (JsonException)
         {
-            return ActivationOutcome.Failed(ActivationFailure.MalformedResponse, true, "登记结果无法识别，请稍后重试。");
+            return ActivationOutcome.Failed(ActivationFailure.MalformedResponse, true, L10n.Text("登记结果无法识别，请稍后重试。"));
         }
     }
 
@@ -168,7 +211,7 @@ public sealed class ActivationService
     {
         var token = RequireToken();
         if (token is null)
-            return ActivationOutcome.Failed(ActivationFailure.NotSignedIn, false, "请先登录微信账号。");
+            return ActivationOutcome.Failed(ActivationFailure.NotSignedIn, false, L10n.Text("请先登录微信账号。"));
 
         var reply = await SendAsync(ActivationEndpoint.ActivationStatusPath, null, token, cancellationToken)
             .ConfigureAwait(false);
@@ -178,32 +221,34 @@ public sealed class ActivationService
             // No registration at all. The mock and the real handler agree that this
             // is a "not found", and for a user it means the same thing: nothing is
             // in flight, so the purchase page should offer to register.
-            return ActivationOutcome.Failed(ActivationFailure.None, true, "还没有购买登记。");
+            return ActivationOutcome.InProgress(L10n.Text("还没有购买登记。"));
         }
 
         if (!reply.IsSuccess)
-            return Classify(reply, "查询授权状态失败，请稍后重试。");
+            return Classify(reply, L10n.Text("查询授权状态失败，请稍后重试。"));
 
         try
         {
             using var document = JsonDocument.Parse(reply.Body);
             var root = document.RootElement;
-            var status = root.GetProperty("status").GetString() ?? ActivationState.Pending;
-            var licenseId = root.TryGetProperty("licenseId", out var l) && l.ValueKind == JsonValueKind.String
-                ? l.GetString()
-                : null;
+            // The status is the whole answer here: without it there is nothing to
+            // wait for and nothing to collect.
+            var status = JsonPayload.String(root, "status");
+            if (string.IsNullOrEmpty(status))
+                throw new JsonException("The status answer carries no status.");
+            var licenseId = JsonPayload.String(root, "licenseId");
 
             if (string.Equals(status, ActivationState.Confirmed, StringComparison.Ordinal))
-                return ActivationOutcome.Failed(ActivationFailure.None, true, "卖家已确认，正在取许可证…") with { Confirmed = true };
+                return ActivationOutcome.InProgress(L10n.Text("卖家已确认，正在取许可证…")) with { Confirmed = true };
             if (string.Equals(status, ActivationState.Rejected, StringComparison.Ordinal))
                 return ActivationOutcome.Failed(ActivationFailure.Rejected, false,
-                    "卖家拒绝了本次登记。如已付款，请联系客服。");
+                    L10n.Text("卖家拒绝了本次登记。如已付款，请联系客服。"));
 
-            return ActivationOutcome.Failed(ActivationFailure.None, true, $"等待卖家确认（许可证 {licenseId ?? "待签发"}）。");
+            return ActivationOutcome.InProgress(L10n.Format($"等待卖家确认（许可证 {licenseId ?? L10n.Text("待签发")}）。"));
         }
         catch (JsonException)
         {
-            return ActivationOutcome.Failed(ActivationFailure.MalformedResponse, true, "授权状态无法识别，请稍后重试。");
+            return ActivationOutcome.Failed(ActivationFailure.MalformedResponse, true, L10n.Text("授权状态无法识别，请稍后重试。"));
         }
     }
 
@@ -212,36 +257,45 @@ public sealed class ActivationService
     /// <para>
     /// A 409 here means confirmed-but-not-yet-readable, which is a real state: the
     /// handler signs on confirm and the read can lose that race. It is treated as
-    /// retryable rather than as an error, because the next poll resolves it.
+    /// retryable rather than as an error, because the next poll resolves it — and
+    /// it is emphatically not a licence: no envelope was read, so nothing was
+    /// written, and saying otherwise would tell a customer they own the software
+    /// when they do not.
     /// </para>
     /// </summary>
     public async Task<ActivationOutcome> CollectAsync(string? installId, CancellationToken cancellationToken)
     {
         var token = RequireToken();
         if (token is null)
-            return ActivationOutcome.Failed(ActivationFailure.NotSignedIn, false, "请先登录微信账号。");
+            return ActivationOutcome.Failed(ActivationFailure.NotSignedIn, false, L10n.Text("请先登录微信账号。"));
 
         var reply = await SendAsync(ActivationEndpoint.ActivationLicencePath, null, token, cancellationToken)
             .ConfigureAwait(false);
 
         if (reply.StatusCode == 409)
-            return ActivationOutcome.Failed(ActivationFailure.None, true, "许可证正在签发，请稍候。");
+        {
+            var conflict = ApiFailure.TryParse(reply.Body);
+            return ActivationOutcome.Failed(ActivationFailure.LicenceNotReady, true,
+                conflict?.Message ?? L10n.Text("许可证正在签发，请稍候。"));
+        }
         if (!reply.IsSuccess)
-            return Classify(reply, "获取许可证失败，请稍后重试。");
+            return Classify(reply, L10n.Text("获取许可证失败，请稍后重试。"));
 
         LicenseEnvelope? envelope;
         try
         {
             using var document = JsonDocument.Parse(reply.Body);
-            envelope = document.RootElement.GetProperty("envelope").Deserialize<LicenseEnvelope>(ActivationJson.Options);
+            var payload = JsonPayload.Object(document.RootElement, "envelope")
+                ?? throw new JsonException("The licence answer carries no envelope.");
+            envelope = payload.Deserialize<LicenseEnvelope>(ActivationJson.Options);
         }
         catch (JsonException)
         {
-            return ActivationOutcome.Failed(ActivationFailure.MalformedResponse, true, "许可证内容无法识别，请稍后重试。");
+            return ActivationOutcome.Failed(ActivationFailure.MalformedResponse, true, L10n.Text("许可证内容无法识别，请稍后重试。"));
         }
 
         if (envelope is null)
-            return ActivationOutcome.Failed(ActivationFailure.MalformedResponse, true, "许可证内容无法识别，请稍后重试。");
+            return ActivationOutcome.Failed(ActivationFailure.MalformedResponse, true, L10n.Text("许可证内容无法识别，请稍后重试。"));
 
         return Accept(envelope, installId);
     }
@@ -258,7 +312,7 @@ public sealed class ActivationService
         {
             _log?.Invoke($"activation: licence refused — {verification.Failure}");
             return ActivationOutcome.Failed(ActivationFailure.LicenseUnverifiable, true,
-                "许可证验签未通过，请联系客服并提供单号。");
+                L10n.Text("许可证验签未通过，请联系客服并提供单号。"));
         }
 
         if (!string.IsNullOrWhiteSpace(installId) &&
@@ -270,12 +324,12 @@ public sealed class ActivationService
             // machine is the odd one out.
             _log?.Invoke($"activation: licence subject {envelope.Subject} is not this machine ({installId})");
             return ActivationOutcome.Failed(ActivationFailure.SubjectMismatch, false,
-                "这张许可证属于另一台机器，请联系客服换机重签。");
+                L10n.Text("这张许可证属于另一台机器，请联系客服换机重签。"));
         }
 
         _licenses.Save(envelope);
         _log?.Invoke($"activation: licence {envelope.Subject} written");
-        return ActivationOutcome.Success(envelope, envelope.IssuedAt, "授权成功，感谢购买。");
+        return ActivationOutcome.Success(envelope, envelope.IssuedAt, L10n.Text("授权成功，感谢购买。"));
     }
 
     private string? RequireToken()
@@ -291,10 +345,14 @@ public sealed class ActivationService
         var retryable = reply.StatusCode is 408 or 425 or 429 || reply.StatusCode >= 500;
         var detail = failure?.Message ?? $"{fallback}（HTTP {reply.StatusCode}）";
 
+        // A conflict is the service refusing because of the current state, not
+        // because anything went wrong. It used to be classified as "no error",
+        // which made the caller read a refusal as a purchase: no licence was
+        // ever written, and the customer was told they owned the software.
         var kind = code switch
         {
             ApiErrorCodes.Unauthorized => ActivationFailure.NotSignedIn,
-            ApiErrorCodes.Conflict => ActivationFailure.None,
+            ApiErrorCodes.Conflict => ActivationFailure.Conflict,
             _ => retryable ? ActivationFailure.Unreachable : ActivationFailure.MalformedResponse,
         };
         return ActivationOutcome.Failed(kind, retryable, detail);

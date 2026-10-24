@@ -60,10 +60,13 @@ public sealed class ActivationController : IDisposable
         string anchorDigest,
         int? amountFen = null,
         Action? onLicensed = null,
-        Action<string>? log = null)
+        Action<string>? log = null,
+        PollSchedule? schedule = null)
     {
         _activation = activation ?? throw new ArgumentNullException(nameof(activation));
-        _schedule = PollSchedule.Activation;
+        // Injectable so a test can drive the poll loop at a test's cadence
+        // instead of the five seconds a real seller wait starts with.
+        _schedule = schedule ?? PollSchedule.Activation;
         _amountFen = amountFen;
         _log = log;
         _onLicensed = onLicensed ?? (() => { });
@@ -93,8 +96,17 @@ public sealed class ActivationController : IDisposable
 
     public bool IsBusy => Stage is PurchaseStage.Registering or PurchaseStage.Collecting;
 
-    /// <summary>The window is polling for the seller. The only useful button is 停止.</summary>
-    public bool IsPolling => Stage == PurchaseStage.WaitingSeller;
+    /// <summary>
+    /// The window is waiting for an answer it could stop waiting for. The only
+    /// useful button is 停止.
+    /// <para>
+    /// The collecting stage counts, because a licence that never becomes readable
+    /// is a wait the customer has to be able to end: the seller confirmed, the
+    /// signature never landed, and the poll goes round again. Without 停止 on
+    /// screen, that wait would have no exit but the window's close button.
+    /// </para>
+    /// </summary>
+    public bool IsPolling => Stage is PurchaseStage.WaitingSeller or PurchaseStage.Collecting;
 
     public bool CanRetry => Stage is PurchaseStage.Failed or PurchaseStage.Rejected;
 
@@ -205,6 +217,17 @@ public sealed class ActivationController : IDisposable
                 Raise();
 
                 var collected = await _activation.CollectAsync(InstallId, _lifetime.Token).ConfigureAwait(true);
+                if (collected.Failure == ActivationFailure.LicenceNotReady)
+                {
+                    // The signature has not landed yet. Nothing was written, so
+                    // this is emphatically not a licence — and it is not a
+                    // failure either: the next poll is one step away from the
+                    // envelope. Keep waiting, and keep the button disabled.
+                    StatusMessage = collected.Detail;
+                    Stage = PurchaseStage.Collecting;
+                    Raise();
+                    continue;
+                }
                 Apply(collected);
                 return;
             }
@@ -231,6 +254,8 @@ public sealed class ActivationController : IDisposable
     private void Apply(ActivationOutcome outcome)
     {
         StatusMessage = outcome.Detail;
+        // Done means a licence was verified and written — the outcome says so
+        // itself, and nothing else may claim the stage.
         Stage = outcome.Succeeded
             ? PurchaseStage.Done
             : outcome.Failure == ActivationFailure.Rejected
