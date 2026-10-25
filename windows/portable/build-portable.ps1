@@ -201,7 +201,9 @@ if (Get-ChildItem $OutputDirectory -Recurse -File | Where-Object Extension -in '
 
 $hashes = Get-ChildItem $OutputDirectory -Recurse -File |
     ForEach-Object { (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash + '  ' + $_.FullName.Substring($OutputDirectory.Length + 1) }
-$hashes | Set-Content -LiteralPath (Join-Path $OutputDirectory 'SHA256SUMS.txt') -Encoding ascii
+# UTF8 (not ascii): the file list contains Chinese directory names (e.g.
+# Vault\31.微信会话); ascii mangled those paths and made the sums unverifiable.
+$hashes | Set-Content -LiteralPath (Join-Path $OutputDirectory 'SHA256SUMS.txt') -Encoding UTF8
 
 Write-Output "Edition: $Edition ($EditionToken)"
 Write-Output "Portable payload: $payload"
