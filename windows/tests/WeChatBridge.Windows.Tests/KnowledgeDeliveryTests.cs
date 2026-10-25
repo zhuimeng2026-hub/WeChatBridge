@@ -52,9 +52,12 @@ public sealed class KnowledgeDeliveryTests
         var note = File.ReadAllText(KnowledgeDelivery.Deliver([source], destination, "项目", null, null).Single());
         Assert.Contains("未包含可识别的聊天正文", note);
         Assert.DoesNotContain("## 聊天记录", note);
-        Assert.Contains("[[附件/其他/readme.txt]]", note);
+        // A .txt attachment is a text file, so it lands in 文本; a .bin has no
+        // known type and stays in 其他.
+        Assert.Contains("[[附件/文本/readme.txt]]", note);
         Assert.Contains("[[附件/其他/asset.bin]]", note);
-        Assert.True(File.Exists(Path.Combine(destination, "项目", "附件", "其他", "readme.txt")));
+        Assert.True(File.Exists(Path.Combine(destination, "项目", "附件", "文本", "readme.txt")));
+        Assert.True(File.Exists(Path.Combine(destination, "项目", "附件", "其他", "asset.bin")));
     }
 
     [Fact]
@@ -134,6 +137,73 @@ public sealed class KnowledgeDeliveryTests
         Assert.Equal(officeContainer, File.ReadAllBytes(saved));
         Assert.Contains($"[[附件/{category}/{name}]]", note);
         Assert.DoesNotContain("原始归档", note);
+    }
+
+    /// <summary>
+    /// The product naming decision (docs/PRODUCT_NAMING_ZH.md §2) asks for PDF,
+    /// PowerPoint, plain text and audio to be told apart from each other, not
+    /// pooled into 其他 — a PDF is the most common document a lawyer receives.
+    /// The extension test is case-insensitive, and a name with no extension is
+    /// not guessed at.
+    /// </summary>
+    [Theory]
+    [InlineData("contract.pdf", "PDF")]
+    [InlineData("CONTRACT.PDF", "PDF")]
+    [InlineData("deck.pptx", "演示文稿")]
+    [InlineData("slides.ppt", "演示文稿")]
+    [InlineData("notes.txt", "文本")]
+    [InlineData("readme.md", "文本")]
+    [InlineData("voice.mp3", "音频")]
+    [InlineData("memo.wav", "音频")]
+    [InlineData("unknown.xyz", "其他")]
+    [InlineData("noextension", "其他")]
+    public void EachDocumentKindGetsItsOwnFolder(string name, string category)
+    {
+        using var fixture = new TempInbox();
+        var source = fixture.WriteSource(name, "payload");
+        var destination = Path.Combine(fixture.Root, "vault");
+        Directory.CreateDirectory(destination);
+
+        var note = File.ReadAllText(KnowledgeDelivery.Deliver([source], destination, "项目", null, null).Single());
+        Assert.True(File.Exists(Path.Combine(destination, "项目", "附件", category, name)));
+        Assert.Contains($"[[附件/{category}/{name}]]", note);
+    }
+
+    /// <summary>
+    /// Every kind has to be its own folder, not a bucket of several: a folder
+    /// that mixes a PDF with a spreadsheet is no better than no classification
+    /// at all. One archive carrying all of them proves the split.
+    /// </summary>
+    [Fact]
+    public void OneArchiveSplitsEveryKindIntoItsOwnFolder()
+    {
+        using var fixture = new TempInbox();
+        var source = Zip(fixture, "mixed.zip", [
+            ("photo.png", "image"),
+            ("memo.docx", "word"),
+            ("contract.pdf", "pdf"),
+            ("table.xlsx", "sheet"),
+            ("deck.pptx", "slides"),
+            ("notes.txt", "text"),
+            ("voice.mp3", "audio"),
+            ("clip.mp4", "video"),
+            ("mystery.xyz", "other"),
+        ]);
+        var destination = Path.Combine(fixture.Root, "vault");
+        Directory.CreateDirectory(destination);
+
+        var note = File.ReadAllText(KnowledgeDelivery.Deliver([source], destination, "项目", null, null).Single());
+        var attachments = Path.Combine(destination, "项目", "附件");
+        foreach (var (name, category) in new[]
+        {
+            ("photo.png", "图片"), ("memo.docx", "Word文档"), ("contract.pdf", "PDF"),
+            ("table.xlsx", "电子表格"), ("deck.pptx", "演示文稿"), ("notes.txt", "文本"),
+            ("voice.mp3", "音频"), ("clip.mp4", "视频"), ("mystery.xyz", "其他"),
+        })
+        {
+            Assert.True(File.Exists(Path.Combine(attachments, category, name)), $"{category}/{name}");
+            Assert.Contains($"[[附件/{category}/{name}]]", note);
+        }
     }
 
     [Fact]
