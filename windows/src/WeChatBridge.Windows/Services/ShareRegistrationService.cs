@@ -7,7 +7,7 @@ namespace WeChatBridge.Windows.Services;
 
 /// <summary>
 /// Runs <c>Register-ShareTarget.ps1</c> from the Entries page, so a portable
-/// user can put 微信流 into the WeChat share menu on a machine that has never
+/// user can put 律档通 into the WeChat share menu on a machine that has never
 /// seen the installer.
 /// </summary>
 internal static class ShareRegistrationService
@@ -17,7 +17,7 @@ internal static class ShareRegistrationService
     public static Task<ShareRegistrationState> Current => ShareRegistrationProbe.CheckAsync();
 
     /// <summary>
-    /// True when an installed copy of 微信流 is on this machine. Registering from
+    /// True when an installed copy of 律档通 is on this machine. Registering from
     /// the portable build replaces the installed package's registration, because
     /// both carry the same package identity — deliberate, so the WeChat menu
     /// never shows two identically named rows — but the user has to be told.

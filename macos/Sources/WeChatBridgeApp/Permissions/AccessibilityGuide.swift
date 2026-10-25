@@ -275,7 +275,7 @@ private struct GuideCard: View {
                         .resizable()
                         .frame(width: 24, height: 24)
                         .accessibilityHidden(true)
-                    Text(verbatim: "微信流")
+                    Text(verbatim: "律档通")
                         .font(.system(size: 13))
                     Spacer(minLength: 0)
                 }

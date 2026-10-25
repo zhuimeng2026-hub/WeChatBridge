@@ -1,6 +1,6 @@
 ﻿<#
 .SYNOPSIS
-  One-time setup for the 微信流 portable build on a USB drive.
+  One-time setup for the 律档通 portable build on a USB drive.
 
 .DESCRIPTION
   Fetches Obsidian from its official releases, puts it on the drive, points the
@@ -32,7 +32,7 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
-$appDirectory = Join-Path $root '微信流'
+$appDirectory = Join-Path $root '律档通'
 $vaultDirectory = Join-Path $appDirectory 'Vault'
 $archiveFolder = Join-Path $vaultDirectory '31.微信会话'
 if (-not $ObsidianDirectory) { $ObsidianDirectory = Join-Path $appDirectory 'Obsidian' }
@@ -43,7 +43,7 @@ function Warn([string]$message) { Write-Host "    $message" -ForegroundColor Yel
 
 function Assert-AppDirectory {
     if (-not (Test-Path -LiteralPath (Join-Path $appDirectory 'WeChatBridge.Windows.exe'))) {
-        throw "没有找到微信流主程序。请确认压缩包已经完整解压，并且 FirstRun.bat 和「微信流」文件夹在同一级。"
+        throw "没有找到律档通主程序。请确认压缩包已经完整解压，并且 FirstRun.bat 和「律档通」文件夹在同一级。"
     }
 }
 
@@ -136,7 +136,7 @@ function Register-ObsidianProtocol {
 
 # --- main --------------------------------------------------------------------
 try {
-    Step '微信流 · 便携版首次运行'
+    Step '律档通 · 便携版首次运行'
     Assert-AppDirectory
 
     Step '正在准备知识库…'
@@ -149,13 +149,13 @@ try {
         Register-ObsidianProtocol
     }
 
-    Step '正在启动微信流…'
+    Step '正在启动律档通…'
     Start-Process -FilePath (Join-Path $appDirectory 'WeChatBridge.Windows.exe') -WorkingDirectory $appDirectory
-    Info '如果窗口没有出现，先检查「微信流\Data」目录是否可以写入。'
+    Info '如果窗口没有出现，先检查「律档通\Data」目录是否可以写入。'
 } catch {
     Write-Host ''
     Write-Host "首次运行失败：$($_.Exception.Message)" -ForegroundColor Red
-    Write-Host '你可以直接双击「微信流\WeChatBridge.Windows.exe」使用核心功能，Obsidian 只是可选的归档目标。' -ForegroundColor Yellow
+    Write-Host '你可以直接双击「律档通\WeChatBridge.Windows.exe」使用核心功能，Obsidian 只是可选的归档目标。' -ForegroundColor Yellow
     Read-Host '按回车键退出'
     exit 1
 }

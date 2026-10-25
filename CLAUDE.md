@@ -75,7 +75,7 @@ swift test --filter BatchStateTests           # 单个测试类/方法，正则�
 swift Scripts/check-localizations.swift       # 中英文资源四重校验（CI 步骤）
 Scripts/check-release-config.sh               # Bundle ID / App Group / entitlements / 12 槽位校验
 mise run verify                               # build+test+i18n+release-config+bundle 全套
-CONFIG=release Scripts/make-app.sh            # 装配 dist/微信流.app（主程序 + 12 个 appex）
+CONFIG=release Scripts/make-app.sh            # 装配 dist/律档通.app（主程序 + 12 个 appex）
 Scripts/install-dev-build.sh                  # 装到 ~/Applications，让扩展真正注册
 ```
 

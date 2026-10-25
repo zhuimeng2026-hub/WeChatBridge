@@ -39,7 +39,7 @@ public enum DisplayName {
     }
 
     /// A subfolder path, each component sanitized as a name and rejoined with
-    /// "/" so a multi-level value such as 「参考/微信流」 keeps its hierarchy.
+    /// "/" so a multi-level value such as 「参考/律档通」 keeps its hierarchy.
     /// Empty input or input with no usable components yields "".
     public static func subfolderPath(_ raw: String?) -> String {
         let components = (raw ?? "")

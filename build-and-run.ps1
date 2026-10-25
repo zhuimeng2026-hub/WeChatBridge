@@ -1,6 +1,6 @@
 ﻿<#
 .SYNOPSIS
-    一键构建微信流 Windows 客户端，构建成功后直接把它跑起来。
+    一键构建律档通 Windows 客户端，构建成功后直接把它跑起来。
 
 .DESCRIPTION
     产物是 windows\artifacts\publish\win-x64\WeChatBridge.Windows.exe——
@@ -22,7 +22,7 @@
 
 .PARAMETER Register
     额外注册微信「转发到其他应用」里的分享入口——**没有这一步，App 能开，但
-    微信的转发菜单里不会出现「微信流」**。这需要稀疏 MSIX、开发证书与
+    微信的转发菜单里不会出现「律档通」**。这需要稀疏 MSIX、开发证书与
     Windows SDK，且 Appx 相关的 cmdlet 只在 Windows PowerShell 5.1 上可用
     （PowerShell 7 加载 Appx 模块会失败，0x80131539），所以默认不做，
     要用请显式加 -Register。
@@ -123,7 +123,7 @@ function Stop-ProductRunningFrom([string]$Root) {
     }
 }
 
-Write-Host "微信流 Windows 客户端 · $Edition" -ForegroundColor White
+Write-Host "律档通 Windows 客户端 · $Edition" -ForegroundColor White
 Write-Host "仓库：$repositoryRoot"
 Write-Host "产物：$OutputDirectory"
 Write-Host ''
@@ -201,10 +201,10 @@ Write-Host "  双击运行   : 上面这个 exe（自包含，本机不需要装
 Write-Host "  数据目录   : $dataRoot"
 if ($sharePackage) {
     Write-Host "  分享入口   : 已注册（$sharePackage）"
-    Write-Host "                微信「转发到其他应用」里应该有「微信流」。取消注册："
+    Write-Host "                微信「转发到其他应用」里应该有「律档通」。取消注册："
     Write-Host "                powershell -ExecutionPolicy Bypass -File `"$unregisterScript`""
 } else {
-    Write-Host "  分享入口   : 未注册。微信「转发到其他应用」里不会有「微信流」，要加："
+    Write-Host "  分享入口   : 未注册。微信「转发到其他应用」里不会有「律档通」，要加："
     Write-Host "                powershell -ExecutionPolicy Bypass -File `".\build-and-run.ps1`" -Register"
 }
 Write-Host ''

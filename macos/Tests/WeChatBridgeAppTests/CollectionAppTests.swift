@@ -34,7 +34,7 @@ final class CollectionAppTests: XCTestCase {
                 }
             }
             XCTAssertTrue(succeeded, "Successful writes must be recognized even within the same second")
-            let notes = destination.appendingPathComponent("微信流")
+            let notes = destination.appendingPathComponent("律档通")
             let names = try FileManager.default.contentsOfDirectory(atPath: notes.path).filter { $0.hasSuffix(".md") }
             XCTAssertEqual(Set(names), ["研发群的聊天.md", "客户群的聊天.md"])
             for name in ["研发群", "客户群"] {
@@ -71,7 +71,7 @@ final class CollectionAppTests: XCTestCase {
             }
         }
         XCTAssertTrue(succeeded)
-        let notes = destination.appendingPathComponent("微信流")
+        let notes = destination.appendingPathComponent("律档通")
         XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: notes.path).filter { $0.hasSuffix(".md") }, ["产品讨论群的聊天.md"])
         let text = try String(contentsOf: notes.appendingPathComponent("产品讨论群的聊天.md"), encoding: .utf8)
         // Both fixtures share 85 text messages. Their final video messages

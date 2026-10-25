@@ -767,7 +767,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
     private async Task PerformForwardCore(ReadyBatch batch, ShareAction action, ForwardTarget? target,
         bool freshShare = false, SceneService.ShareContextPrefetch? prefetch = null)
     {
-        // 「微信流」 intent: the share menu names no destination, so the app asks
+        // 「律档通」 intent: the share menu names no destination, so the app asks
         // once the batch is durable. The pick maps onto the same action/target
         // pair every other path already uses, which keeps outcome records and
         // the scene pipeline identical.
@@ -1028,7 +1028,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
     }
 
     /// <summary>
-    /// The 「微信流」 answer: build the enabled-entry list and either auto-pick
+    /// The 「律档通」 answer: build the enabled-entry list and either auto-pick
     /// (zero or one option) or ask through <see cref="EntryPickerWindow"/>.
     /// The 0/1 fast paths mirror <c>CustomForwardDecision</c>: a list with
     /// one row is not a question.

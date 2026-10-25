@@ -45,7 +45,7 @@ public sealed class AppSettings
     /// <summary>Import newly-created chat ZIPs from WorkBuddy's local export folder.</summary>
     public bool WorkBuddyAutoImport { get; set; } = true;
     public string? DeliveryFolderPath { get; set; }
-    public string DeliverySubfolder { get; set; } = "微信流";
+    public string DeliverySubfolder { get; set; } = "律档通";
 
     public string? LastCollectionTarget { get; set; }
     public List<string> RecentCollectionFolders { get; set; } = [];

@@ -11,11 +11,11 @@
 	<key>CFBundleIdentifier</key>
 	<string>com.xiangming.wechatbridge</string>
 	<key>CFBundleDisplayName</key>
-	<string>微信流</string>
+	<string>律档通</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>微信流</string>
+	<string>律档通</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -42,7 +42,7 @@
 	<key>LSUIElement</key>
 	<true/>
 	<key>NSHumanReadableCopyright</key>
-	<string>微信流：本地处理微信聊天记录，不上传分享内容。基于 Dukou（渡口）二次开发。</string>
+	<string>律档通：本地处理微信聊天记录，不上传分享内容。基于 Dukou（渡口）二次开发。</string>
 	<key>NSScreenCaptureUsageDescription</key>
 	<string>用于识别微信群标题栏中的群名；截图只在内存中处理，不落盘。</string>
 	<key>SUEnableAutomaticChecks</key>

@@ -46,7 +46,7 @@ public static class KnowledgeDelivery
         if (paths.Count == 0) throw new FailureException(FailureKind.UnreadableArchive);
         FolderDelivery.ValidateFolder(vaultPath);
         var folderName = DisplayName.SubfolderPath(subfolder);
-        if (folderName.Length == 0) folderName = "微信流";
+        if (folderName.Length == 0) folderName = "律档通";
         var root = Path.Combine(vaultPath, folderName);
         var attachmentRoot = Path.Combine(root, "附件");
         Directory.CreateDirectory(root);

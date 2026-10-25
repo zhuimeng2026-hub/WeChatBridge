@@ -1,12 +1,12 @@
 <?xml version='1.0' encoding='utf-8'?>
 <WixLocalization xmlns="http://wixtoolset.org/schemas/v4/wxl" Culture="zh-cn" Language="2052">
-  <String Id="Caption" Value="微信流安装" />
-  <String Id="Title" Value="微信流" />
+  <String Id="Caption" Value="律档通安装" />
+  <String Id="Title" Value="律档通" />
   <String Id="CheckingForUpdatesLabel" Value="正在检查更新" />
   <String Id="UpdateButton" Value="更新到 [WixStdBAUpdateAvailable]" />
-  <String Id="InstallHeader" Value="安装微信流" />
-  <String Id="InstallMessage" Value="点击「一键安装」，即可在这台电脑上使用微信流。" />
-  <String Id="InstallMessageOptions" Value="点击「一键安装」，即可在这台电脑上使用微信流。" />
+  <String Id="InstallHeader" Value="安装律档通" />
+  <String Id="InstallMessage" Value="点击「一键安装」，即可在这台电脑上使用律档通。" />
+  <String Id="InstallMessageOptions" Value="点击「一键安装」，即可在这台电脑上使用律档通。" />
   <String Id="InstallVersion" Value="版本 [WixBundleVersion]" />
   <String Id="ConfirmCancelMessage" Value="要取消安装吗？" />
   <String Id="ExecuteUpgradeRelatedBundleMessage" Value="正在更新旧版本" />
@@ -27,20 +27,20 @@
   <String Id="ProgressLabel" Value="当前步骤：" />
   <String Id="OverallProgressPackageText" Value="正在准备…" />
   <String Id="ProgressCancelButton" Value="取消" />
-  <String Id="ModifyHeader" Value="微信流已安装" />
+  <String Id="ModifyHeader" Value="律档通已安装" />
   <String Id="ModifyRepairButton" Value="修复安装" />
   <String Id="ModifyUninstallButton" Value="卸载" />
   <String Id="ModifyCancelButton" Value="关闭" />
   <String Id="SuccessHeader" Value="安装完成" />
   <String Id="SuccessCacheHeader" Value="安装文件已准备好" />
-  <String Id="SuccessInstallHeader" Value="微信流已安装完成" />
+  <String Id="SuccessInstallHeader" Value="律档通已安装完成" />
   <String Id="SuccessLayoutHeader" Value="安装文件已保存" />
   <String Id="SuccessModifyHeader" Value="操作完成" />
   <String Id="SuccessRepairHeader" Value="修复完成" />
-  <String Id="SuccessUninstallHeader" Value="已卸载微信流" />
-  <String Id="SuccessUnsafeUninstallHeader" Value="已卸载微信流" />
-  <String Id="SuccessLaunchButton" Value="打开微信流" />
-  <String Id="SuccessRestartText" Value="请重新启动电脑后使用微信流。" />
+  <String Id="SuccessUninstallHeader" Value="已卸载律档通" />
+  <String Id="SuccessUnsafeUninstallHeader" Value="已卸载律档通" />
+  <String Id="SuccessLaunchButton" Value="打开律档通" />
+  <String Id="SuccessRestartText" Value="请重新启动电脑后使用律档通。" />
   <String Id="SuccessUninstallRestartText" Value="请重新启动电脑以完成卸载。" />
   <String Id="SuccessRestartButton" Value="重新启动" />
   <String Id="SuccessCloseButton" Value="完成" />
@@ -56,7 +56,7 @@
   <String Id="FailureRestartText" Value="请重新启动电脑以完成回滚。" />
   <String Id="FailureRestartButton" Value="重新启动" />
   <String Id="FailureCloseButton" Value="关闭" />
-  <String Id="FilesInUseTitle" Value="请先关闭微信流" />
+  <String Id="FilesInUseTitle" Value="请先关闭律档通" />
   <String Id="FilesInUseLabel" Value="以下程序正在使用需要更新的文件：" />
   <String Id="FilesInUseNetfxCloseRadioButton" Value="关闭程序后继续" />
   <String Id="FilesInUseCloseRadioButton" Value="关闭程序并尝试恢复" />

@@ -2,10 +2,10 @@
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
   <!-- Burn obtains consent before executing this machine-wide prerequisite.
        The application's MSI and Appx registration stay in the original user. -->
-  <Package Name="微信流分享入口证书" Language="2052" Codepage="936" Version="$(var.MsiVersion)"
-           Manufacturer="微信流" UpgradeCode="{B40B0E74-562A-47D1-A1E4-06E52E687C18}"
+  <Package Name="律档通分享入口证书" Language="2052" Codepage="936" Version="$(var.MsiVersion)"
+           Manufacturer="律档通" UpgradeCode="{B40B0E74-562A-47D1-A1E4-06E52E687C18}"
            Scope="perMachine" InstallerVersion="500" Compressed="yes">
-    <MajorUpgrade DowngradeErrorMessage="已安装更新版本的微信流分享入口证书。" />
+    <MajorUpgrade DowngradeErrorMessage="已安装更新版本的律档通分享入口证书。" />
     <MediaTemplate EmbedCab="yes" />
     <Property Id="ARPSYSTEMCOMPONENT" Value="1" />
     <StandardDirectory Id="ProgramFiles64Folder">

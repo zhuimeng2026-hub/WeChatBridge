@@ -55,7 +55,7 @@ public partial class WorkbenchPane : UserControl
         DraftTitleBox.ToolTip = L10n.Text("新笔记标题");
         ResultBox.ToolTip = L10n.Text("在此粘贴或编辑你的分析结果");
         PromptHint.Text = L10n.Text("写下整理要求。复制材料后，由你粘贴到已选择的工具；再把结果粘贴回右侧。工作台不会自动发送材料。");
-        ResultHint.Text = L10n.Text("在此粘贴或编辑结果。微信流不会把模板或示例标成 AI 结论。");
+        ResultHint.Text = L10n.Text("在此粘贴或编辑结果。律档通不会把模板或示例标成 AI 结论。");
         DraftTitleBox.Text = L10n.Text("新建分析草稿");
         SaveFolderBox.Text = L10n.Text("分析");
         SaveFolderBox.ToolTip = L10n.Text("在知识库内的保存文件夹");
@@ -508,7 +508,7 @@ public partial class WorkbenchPane : UserControl
             var result = ResultBox.Text.Trim();
             // The note speaks the interface's language: it is a document the user
             // takes away, so it must not read as Chinese in an English UI.
-            var markdown = $"# {DraftTitleBox.Text.Trim()}\n\n> {L10n.Text("本笔记由工作台新建。结果由用户粘贴或编辑；微信流未调用模型。")}\n\n"
+            var markdown = $"# {DraftTitleBox.Text.Trim()}\n\n> {L10n.Text("本笔记由工作台新建。结果由用户粘贴或编辑；律档通未调用模型。")}\n\n"
                 + $"## {L10n.Text("分析结果")}\n\n" + result + "\n\n"
                 + $"## {L10n.Text("请求记录")}\n\n"
                 + (_lastRequestAt is null

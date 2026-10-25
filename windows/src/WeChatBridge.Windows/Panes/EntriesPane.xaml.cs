@@ -109,7 +109,7 @@ public partial class EntriesPane : UserControl
         {
             case ShareRegistrationState.Registered:
                 ShareRegistrationTitle.Text = L10n.Text("微信分享菜单已启用");
-                ShareRegistrationDetail.Text = L10n.Text("请重启微信，在「转发到其他应用」里确认「微信流」。");
+                ShareRegistrationDetail.Text = L10n.Text("请重启微信，在「转发到其他应用」里确认「律档通」。");
                 ShareRegistrationButton.Visibility = Visibility.Collapsed;
                 break;
             case ShareRegistrationState.Moved:
@@ -127,7 +127,7 @@ public partial class EntriesPane : UserControl
             default:
                 ShareRegistrationTitle.Text = L10n.Text("微信分享菜单未启用");
                 ShareRegistrationDetail.Text = ShareRegistrationService.InstalledCopyPresent
-                    ? L10n.Text("启用后会顶掉本机已安装的微信流的分享入口（菜单里仍然只有一行）。不启用也能用：在「记录」页点「导入聊天文件」，或把 ZIP 拖进来。")
+                    ? L10n.Text("启用后会顶掉本机已安装的律档通的分享入口（菜单里仍然只有一行）。不启用也能用：在「记录」页点「导入聊天文件」，或把 ZIP 拖进来。")
                     : L10n.Text("不启用也能用：在「记录」页点「导入聊天文件」，或把 ZIP 拖进来。启用需要一次管理员授权，并在之后重启微信。");
                 ShareRegistrationButton.Visibility = Visibility.Visible;
                 ShareRegistrationButton.Content = L10n.Text("在这台电脑上启用分享入口");
@@ -147,7 +147,7 @@ public partial class EntriesPane : UserControl
             var result = await ShareRegistrationService.RegisterAsync();
             model.Notify(
                 result.Success
-                    ? L10n.Text("分享入口已注册，请重启微信后在「转发到其他应用」里确认「微信流」。")
+                    ? L10n.Text("分享入口已注册，请重启微信后在「转发到其他应用」里确认「律档通」。")
                     : result.Message ?? L10n.Text("注册失败。"),
                 buttonText: null,
                 warn: !result.Success);

@@ -93,7 +93,7 @@ public sealed partial class MainViewModel
         try
         {
             id ??= Collections.Ledger.Current?.Id ?? Collections.Ledger.Collections.LastOrDefault()?.Id;
-            if (id is null) { ShowToast(L10n.Text("从分享入口选择「分批收集到微信流」开始收集。")); return; }
+            if (id is null) { ShowToast(L10n.Text("从分享入口选择「分批收集到律档通」开始收集。")); return; }
             if (_collectionWindow is { } existing)
             {
                 existing.SelectCollection(id.Value);

@@ -161,7 +161,7 @@ public sealed class UiSmokeTests
                     Assert.True(File.Exists(savedNote));
                     // The note speaks the interface's language, so its headings and
                     // boilerplate are asserted through the same lookup the pane uses.
-                    Assert.Contains(L10n.Text("本笔记由工作台新建。结果由用户粘贴或编辑；微信流未调用模型。"), File.ReadAllText(savedNote));
+                    Assert.Contains(L10n.Text("本笔记由工作台新建。结果由用户粘贴或编辑；律档通未调用模型。"), File.ReadAllText(savedNote));
                     Assert.Contains("## " + L10n.Text("分析结果"), File.ReadAllText(savedNote));
                     Assert.Contains("## " + L10n.Text("参考材料"), File.ReadAllText(savedNote));
                     // The request log's timestamp line used to render the

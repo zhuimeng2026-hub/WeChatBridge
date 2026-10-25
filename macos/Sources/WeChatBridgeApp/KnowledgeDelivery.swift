@@ -23,7 +23,7 @@ enum KnowledgeDelivery {
     }
 
     /// The Obsidian entry: the vault is what the user configured, and the note
-    /// goes into a `微信流` (or named) subfolder of it.
+    /// goes into a `律档通` (or named) subfolder of it.
     @discardableResult
     static func deliver(
         urls: [URL],
@@ -36,7 +36,7 @@ enum KnowledgeDelivery {
         try FolderDelivery.validateFolder(vault)
 
         let subfolderPath = DisplayName.subfolderPath(subfolder)
-        let folderName = subfolderPath.isEmpty ? "微信流" : subfolderPath
+        let folderName = subfolderPath.isEmpty ? "律档通" : subfolderPath
         return try write(
             urls: urls,
             root: vault.appendingPathComponent(folderName, isDirectory: true),
@@ -46,7 +46,7 @@ enum KnowledgeDelivery {
     }
 
     /// The folder entry: the folder is what the user configured, and the note
-    /// goes into a `微信流` (or named) subfolder of it — the same landing
+    /// goes into a `律档通` (or named) subfolder of it — the same landing
     /// shape the Obsidian entry writes inside its vault.
     @discardableResult
     static func deliver(
@@ -60,7 +60,7 @@ enum KnowledgeDelivery {
         try FolderDelivery.validateFolder(folder)
 
         let subfolderPath = DisplayName.subfolderPath(subfolder)
-        let folderName = subfolderPath.isEmpty ? "微信流" : subfolderPath
+        let folderName = subfolderPath.isEmpty ? "律档通" : subfolderPath
         return try write(
             urls: urls,
             root: folder.appendingPathComponent(folderName, isDirectory: true),

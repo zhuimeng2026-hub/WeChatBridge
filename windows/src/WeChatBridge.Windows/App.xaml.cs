@@ -68,7 +68,7 @@ public partial class App : Application
                     System.Globalization.CultureInfo.CurrentCulture,
                     L10n.Text("无法在 {0} 创建数据目录。请检查磁盘是否已插入、是否可写，或换一个目录再试。"),
                     _paths.Root) + "\n\n" + error.Message,
-                L10n.Text("微信流"), MessageBoxButton.OK, MessageBoxImage.Warning);
+                L10n.Text("律档通"), MessageBoxButton.OK, MessageBoxImage.Warning);
             Shutdown(1);
             return;
         }

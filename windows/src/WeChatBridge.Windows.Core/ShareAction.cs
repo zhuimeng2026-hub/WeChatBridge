@@ -31,7 +31,7 @@ public enum ShareAction
     Clipboard,
     Custom,
     /// <summary>
-    /// The single entry Windows exposes to WeChat: 「微信流」. Picking it does
+    /// The single entry Windows exposes to WeChat: 「律档通」. Picking it does
     /// not name a destination — the app asks through its own entry picker and
     /// then forwards as the chosen action, which is why every per-app
     /// Application was folded into this one.
@@ -124,11 +124,11 @@ public static class ShareActions
         ShareAction.WeSight => "WeSight",
         ShareAction.DeepSeekHarness => "DeepSeek Harness",
         ShareAction.Folder => L10n.Text("文件夹"),
-        ShareAction.Collect => L10n.Text("微信流收集"),
+        ShareAction.Collect => L10n.Text("律档通收集"),
         ShareAction.Obsidian => "Obsidian",
         ShareAction.Clipboard => L10n.Text("剪贴板"),
         ShareAction.Custom => L10n.Text("所选应用"),
-        ShareAction.Hub => "微信流",
+        ShareAction.Hub => "律档通",
         _ => throw new ArgumentOutOfRangeException(nameof(action)),
     };
 
@@ -143,11 +143,11 @@ public static class ShareActions
         ShareAction.WeSight => L10n.Text("发给 WeSight"),
         ShareAction.DeepSeekHarness => L10n.Text("发给 DeepSeek Harness"),
         ShareAction.Folder => L10n.Text("沉淀到文件夹"),
-        ShareAction.Collect => L10n.Text("分批收集到微信流"),
+        ShareAction.Collect => L10n.Text("分批收集到律档通"),
         ShareAction.Obsidian => L10n.Text("沉淀到 Obsidian"),
         ShareAction.Clipboard => L10n.Text("复制到剪贴板"),
         ShareAction.Custom => L10n.Text("发送到自定义"),
-        ShareAction.Hub => "微信流",
+        ShareAction.Hub => "律档通",
         _ => throw new ArgumentOutOfRangeException(nameof(action)),
     };
 

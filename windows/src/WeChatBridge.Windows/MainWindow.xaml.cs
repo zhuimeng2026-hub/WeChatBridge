@@ -9,7 +9,7 @@ using WeChatBridge.Windows.Panes;
 namespace WeChatBridge.Windows;
 
 /// <summary>
-/// 微信流's only real window: a quiet column of navigation on the left, one
+/// 律档通's only real window: a quiet column of navigation on the left, one
 /// scrolling pane on the right — the port of the macOS settings window, with
 /// 记录 as the landing pane because the window is the app's whole surface here.
 /// </summary>
@@ -56,7 +56,7 @@ public partial class MainWindow : Window
             [AppTab.General] = (L10n.Text("通用"), L10n.Text("运行状态、启动项与保留策略"), new GeneralPane()),
             [AppTab.Entries] = (L10n.Text("入口"), L10n.Text("微信「转发到其他应用」里的可用操作"), new EntriesPane()),
             [AppTab.Scenes] = (L10n.Text("场景"), L10n.Text("按群聊绑定提示词与适用 Agent"), scenesPane),
-            [AppTab.Skills] = (L10n.Text("技能中心"), L10n.Text("微信流统一管理的技能库"), skillsPane),
+            [AppTab.Skills] = (L10n.Text("技能中心"), L10n.Text("律档通统一管理的技能库"), skillsPane),
             [AppTab.About] = (L10n.Text("关于"), L10n.Text("版本信息与项目链接"), new AboutPane()),
         };
         scenesPane.Bind(model.Scenes, model.Skills);

@@ -1,3 +1,3 @@
-"CFBundleName" = "微信流";
-"NSHumanReadableCopyright" = "微信流：本地处理微信聊天记录，不上传分享内容。基于 Dukou（渡口）二次开发。";
+"CFBundleName" = "律档通";
+"NSHumanReadableCopyright" = "律档通：本地处理微信聊天记录，不上传分享内容。基于 Dukou（渡口）二次开发。";
 "NSScreenCaptureUsageDescription" = "用于识别微信群标题栏中的群名；截图只在内存中处理，不落盘。";

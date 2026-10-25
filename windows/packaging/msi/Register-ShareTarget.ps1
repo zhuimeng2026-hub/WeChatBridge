@@ -83,7 +83,7 @@ try {
         Stop-Process -Force -ErrorAction SilentlyContinue
 
     # Also sweep the short-lived 1.0.7 ChatBridge.* registration — same
-    # publisher, so its share-menu row would linger next to 微信流's.
+    # publisher, so its share-menu row would linger next to 律档通's.
     Get-AppxPackage -ErrorAction SilentlyContinue |
         Where-Object { $_.Name -in 'WeChatBridge.Windows.ShareTarget', 'ChatBridge.Windows.ShareTarget' } |
         Remove-AppxPackage -ErrorAction SilentlyContinue

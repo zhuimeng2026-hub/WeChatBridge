@@ -3,7 +3,7 @@ using System.Text;
 namespace WeChatBridge.Windows.Core;
 
 /// <summary>
-/// Where 微信流 keeps user data, and how this copy tells itself apart from
+/// Where 律档通 keeps user data, and how this copy tells itself apart from
 /// another copy on the same machine.
 /// <para>
 /// An installed build lives under <c>%LOCALAPPDATA%\WeChatBridge</c>. The

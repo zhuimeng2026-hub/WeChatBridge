@@ -256,7 +256,7 @@ public struct SceneSettings: Codable, Hashable, Sendable {
                 keywords: ["客户", "甲方"],
                 enabled: false,
                 packageVersion: "1.0.0",
-                author: "微信流",
+                author: "律档通",
                 applicability: L10n.text("适合客户群、售后群和甲方沟通群。"),
                 isOfficial: true
             ),
@@ -269,7 +269,7 @@ public struct SceneSettings: Codable, Hashable, Sendable {
                 keywords: ["项目", "周会"],
                 enabled: false,
                 packageVersion: "1.0.0",
-                author: "微信流",
+                author: "律档通",
                 applicability: L10n.text("适合项目群、跨团队协作群和固定周会群。"),
                 isOfficial: true
             ),
@@ -282,7 +282,7 @@ public struct SceneSettings: Codable, Hashable, Sendable {
                 keywords: [],
                 enabled: false,
                 packageVersion: "1.0.0",
-                author: "微信流",
+                author: "律档通",
                 applicability: L10n.text("通用群聊摘要场景。"),
                 isOfficial: true
             ),
@@ -295,7 +295,7 @@ public struct SceneSettings: Codable, Hashable, Sendable {
                 keywords: ["公众号", "文章"],
                 enabled: false,
                 packageVersion: "1.0.0",
-                author: "微信流",
+                author: "律档通",
                 applicability: L10n.text("适合包含公众号文章分享的群聊和收藏群。"),
                 requiredSkillIDs: ["wechat-article-extract"],
                 isOfficial: true
@@ -309,7 +309,7 @@ public struct SceneSettings: Codable, Hashable, Sendable {
                 keywords: ["视频", "抖音", "B站"],
                 enabled: false,
                 packageVersion: "1.0.0",
-                author: "微信流",
+                author: "律档通",
                 applicability: L10n.text("适合经常分享视频链接或视频文件的群聊。"),
                 requiredSkillIDs: ["video-information-reading"],
                 isOfficial: true

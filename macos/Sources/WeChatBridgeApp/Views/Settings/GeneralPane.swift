@@ -16,7 +16,7 @@ struct GeneralPane: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Space.l) {
-            Text(L10n.text("微信流状态与应用偏好"))
+            Text(L10n.text("律档通状态与应用偏好"))
                 .font(Typo.paneBody)
                 .foregroundStyle(Theme.inkSecondary)
 
@@ -60,7 +60,7 @@ struct GeneralPane: View {
                     GeneralSettingRow(
                         systemImage: "dock.rectangle",
                         title: L10n.text("在 Dock 中显示"),
-                        detail: L10n.text("从 Dock 快速打开微信流设置。")
+                        detail: L10n.text("从 Dock 快速打开律档通设置。")
                     ) {
                         Toggle(L10n.text("在 Dock 中显示"), isOn: $preferences.showInDock)
                             .toggleStyle(SwitchToggleStyle())
@@ -252,7 +252,7 @@ struct GeneralPane: View {
 
     private var readinessTitle: String {
         guard !entries.states.isEmpty else { return L10n.text("正在检查分享入口") }
-        return hasUsableEntry ? L10n.text("微信流已可使用") : L10n.text("还差一步即可使用")
+        return hasUsableEntry ? L10n.text("律档通已可使用") : L10n.text("还差一步即可使用")
     }
 
     private var readinessDetail: String {

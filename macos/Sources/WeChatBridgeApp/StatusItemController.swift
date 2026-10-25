@@ -34,11 +34,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         statusItem.button?.action = #selector(statusItemClicked)
         statusItem.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
 
-        statusItem.button?.toolTip = L10n.text("微信流")
+        statusItem.button?.toolTip = L10n.text("律档通")
         let image = StatusGlyph.image
-        image.accessibilityDescription = L10n.text("微信流")
+        image.accessibilityDescription = L10n.text("律档通")
         statusItem.button?.image = image
-        statusItem.button?.setAccessibilityLabel(L10n.text("微信流"))
+        statusItem.button?.setAccessibilityLabel(L10n.text("律档通"))
     }
 
     @objc private func statusItemClicked(_ sender: NSStatusBarButton) {

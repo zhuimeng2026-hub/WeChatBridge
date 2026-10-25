@@ -1,6 +1,6 @@
 ﻿<#
 .SYNOPSIS
-  Register 微信流 as a WeChat share target on this computer, from a portable
+  Register 律档通 as a WeChat share target on this computer, from a portable
   installation on removable media.
 
 .DESCRIPTION
@@ -16,7 +16,7 @@
     * -SkipProcessKill, because Stop-Process on WeChatBridge.ShareTarget and
       WeChatBridge.Windows would kill the app whose button started this;
     * the package identity is deliberately the same as the installed build's,
-      so the WeChat menu shows one 微信流 row rather than two;
+      so the WeChat menu shows one 律档通 row rather than two;
     * no -CertificateTrustPrepared: nothing prepared the trust for us.
 
   Everything that makes registration actually correct is unchanged: Appx trust

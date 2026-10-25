@@ -29,7 +29,7 @@ final class KnowledgeDeliveryTests: XCTestCase {
     }
 
     /// The folder entry's shape, the same as the Obsidian entry's: the note
-    /// and its 附件/ sit in a 微信流 subfolder of the chosen folder, never
+    /// and its 附件/ sit in a 律档通 subfolder of the chosen folder, never
     /// directly in the folder itself.
     func testFolderDeliveryWritesNoteAndAttachmentsIntoAWeChatFlowSubfolder() throws {
         let notes = try KnowledgeDelivery.deliver(
@@ -39,10 +39,10 @@ final class KnowledgeDeliveryTests: XCTestCase {
             chatName: "项目群",
             sceneName: nil
         )
-        let flow = destination.appendingPathComponent("微信流", isDirectory: true)
+        let flow = destination.appendingPathComponent("律档通", isDirectory: true)
         let note = flow.appendingPathComponent("项目群的聊天.md")
         XCTAssertEqual(notes, [note])
-        XCTAssertEqual(try fm.contentsOfDirectory(atPath: destination.path), ["微信流"])
+        XCTAssertEqual(try fm.contentsOfDirectory(atPath: destination.path), ["律档通"])
         XCTAssertEqual(try fm.contentsOfDirectory(atPath: flow.path).sorted(), ["附件", "项目群的聊天.md"])
 
         let markdown = try String(contentsOf: note, encoding: .utf8)
@@ -72,7 +72,7 @@ final class KnowledgeDeliveryTests: XCTestCase {
     /// A same-named note WeChatBridge did not write is never touched; the new
     /// note takes the next free number instead.
     func testFolderDeliveryNumbersANoteItDidNotWrite() throws {
-        let flow = destination.appendingPathComponent("微信流", isDirectory: true)
+        let flow = destination.appendingPathComponent("律档通", isDirectory: true)
         let existing = flow.appendingPathComponent("项目群的聊天.md")
         try fm.createDirectory(at: flow, withIntermediateDirectories: true)
         try Data("user's own note".utf8).write(to: existing)
@@ -93,30 +93,30 @@ final class KnowledgeDeliveryTests: XCTestCase {
         let notes = try KnowledgeDelivery.deliver(
             urls: [try source()],
             folderPath: destination.path,
-            subfolder: "参考/微信流",
+            subfolder: "参考/律档通",
             chatName: "项目群",
             sceneName: nil
         )
-        XCTAssertEqual(notes, [destination.appendingPathComponent("参考/微信流/项目群的聊天.md")])
+        XCTAssertEqual(notes, [destination.appendingPathComponent("参考/律档通/项目群的聊天.md")])
         XCTAssertEqual(try fm.contentsOfDirectory(atPath: destination.path), ["参考"])
-        XCTAssertTrue(fm.fileExists(atPath: destination.appendingPathComponent("参考/微信流/附件/原始归档/聊天记录.zip").path))
+        XCTAssertTrue(fm.fileExists(atPath: destination.appendingPathComponent("参考/律档通/附件/原始归档/聊天记录.zip").path))
     }
 
     /// The Obsidian entry keeps its own landing place: the note goes into the
-    /// 微信流 subfolder (or the one the user named), not the vault root.
+    /// 律档通 subfolder (or the one the user named), not the vault root.
     func testObsidianDeliveryKeepsItsSubfolder() throws {
         let vault = root.appendingPathComponent("Vault", isDirectory: true)
         try fm.createDirectory(at: vault, withIntermediateDirectories: true)
         let notes = try KnowledgeDelivery.deliver(
             urls: [try source()],
             vaultPath: vault.path,
-            subfolder: "参考/微信流",
+            subfolder: "参考/律档通",
             chatName: "项目群",
             sceneName: nil
         )
-        XCTAssertEqual(notes, [vault.appendingPathComponent("参考/微信流/项目群的聊天.md")])
+        XCTAssertEqual(notes, [vault.appendingPathComponent("参考/律档通/项目群的聊天.md")])
         XCTAssertEqual(try fm.contentsOfDirectory(atPath: vault.path), ["参考"])
-        XCTAssertTrue(fm.fileExists(atPath: vault.appendingPathComponent("参考/微信流/附件/原始归档/聊天记录.zip").path))
+        XCTAssertTrue(fm.fileExists(atPath: vault.appendingPathComponent("参考/律档通/附件/原始归档/聊天记录.zip").path))
     }
 
     func testAttachmentOnlyArchiveKeepsNestedSameNamesAndInventoriesEveryFile() throws {
@@ -125,7 +125,7 @@ final class KnowledgeDeliveryTests: XCTestCase {
         let note = try XCTUnwrap(KnowledgeDelivery.deliver(
             urls: [archive], folderPath: destination.path, subfolder: "", chatName: nil, sceneName: nil
         ).first)
-        let flow = destination.appendingPathComponent("微信流", isDirectory: true)
+        let flow = destination.appendingPathComponent("律档通", isDirectory: true)
         let attachments = flow.appendingPathComponent("附件", isDirectory: true)
         let markdown = try String(contentsOf: note, encoding: .utf8)
 
@@ -157,7 +157,7 @@ final class KnowledgeDeliveryTests: XCTestCase {
             let markdown = try String(contentsOf: note, encoding: .utf8)
             XCTAssertTrue(markdown.contains("[[附件/\(category)/\(name)]]"))
             XCTAssertFalse(markdown.contains("原始 ZIP 已保留"))
-            XCTAssertEqual(try Data(contentsOf: destination.appendingPathComponent("微信流/附件/\(category)/\(name)")), bytes)
+            XCTAssertEqual(try Data(contentsOf: destination.appendingPathComponent("律档通/附件/\(category)/\(name)")), bytes)
         }
     }
 
@@ -169,7 +169,7 @@ final class KnowledgeDeliveryTests: XCTestCase {
         ).first)
         let markdown = try String(contentsOf: note, encoding: .utf8)
         XCTAssertTrue(markdown.contains("部分附件未能安全提取，原始 ZIP 已保留。"))
-        XCTAssertTrue(fm.fileExists(atPath: destination.appendingPathComponent("微信流/附件/原始归档/broken.zip").path))
+        XCTAssertTrue(fm.fileExists(atPath: destination.appendingPathComponent("律档通/附件/原始归档/broken.zip").path))
     }
 
     func testRepeatedTranscriptWithNewAttachmentInventoryDoesNotDuplicateMessages() throws {

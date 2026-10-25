@@ -60,9 +60,9 @@ public static class TrayMenu
             new Entry(null),
             new Entry(L10n.Text("打开 Inbox"), Action: Command.OpenInbox),
             new Entry(L10n.Text("设置…"), Action: Command.Settings),
-            new Entry(L10n.Text("关于微信流…"), Action: Command.About),
+            new Entry(L10n.Text("关于律档通…"), Action: Command.About),
             new Entry(null),
-            new Entry(L10n.Text("退出微信流"), Action: Command.Quit),
+            new Entry(L10n.Text("退出律档通"), Action: Command.Quit),
         ];
     }
 
@@ -187,7 +187,7 @@ public sealed class TrayIconService : IDisposable
         var data = IconData(Native.NifMessage | Native.NifIcon | Native.NifTip | Native.NifGuid);
         data.uCallbackMessage = Native.WmTrayIcon;
         data.hIcon = _icon;
-        data.szTip = "微信流";
+        data.szTip = "律档通";
         _added = Native.Shell_NotifyIcon(Native.NimAdd, ref data);
         if (!_added)
         {
@@ -336,7 +336,7 @@ public sealed class TrayIconService : IDisposable
         _balloonAction = action;
         _balloonRequestedAt = Environment.TickCount64;
         var data = IconData(Native.NifInfo);
-        data.szInfoTitle = "微信流";
+        data.szInfoTitle = "律档通";
         data.szInfo = actionTitle is null ? message : L10n.Format($"{message}（点击：{actionTitle}）");
         data.dwInfoFlags = warning ? Native.NiifWarning : Native.NiifInfo;
         if (!Native.Shell_NotifyIcon(Native.NimModify, ref data))

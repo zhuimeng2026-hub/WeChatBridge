@@ -75,7 +75,7 @@ final class Preferences: ObservableObject {
         pendingScene = defaults.data(forKey: Key.pendingScene)
             .flatMap { try? JSONDecoder().decode(PendingSceneSelection.self, from: $0) }
         obsidianVaultPath = defaults.string(forKey: Key.obsidianVaultPath)
-        obsidianSubfolder = defaults.string(forKey: Key.obsidianSubfolder) ?? "微信流"
+        obsidianSubfolder = defaults.string(forKey: Key.obsidianSubfolder) ?? "律档通"
         folderDeliveryPath = defaults.string(forKey: Key.folderDeliveryPath)
             ?? Self.defaultFolderDeliveryPath
         folderDeliverySubfolder = defaults.string(forKey: Key.folderDeliverySubfolder) ?? ""
@@ -157,7 +157,7 @@ final class Preferences: ObservableObject {
     }
 
     /// The subfolder of the destination folder the note lands in, allowed to
-    /// name several levels with `/`. Empty means the `微信流` default — the
+    /// name several levels with `/`. Empty means the `律档通` default — the
     /// same fallback the Obsidian entry applies inside the vault.
     @Published var folderDeliverySubfolder: String {
         didSet { defaults.set(folderDeliverySubfolder, forKey: Key.folderDeliverySubfolder) }

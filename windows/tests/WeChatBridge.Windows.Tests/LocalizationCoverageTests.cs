@@ -85,7 +85,7 @@ public sealed class LocalizationCoverageTests
     /// A translation that still contains Chinese, or that is empty, is just as
     /// broken as a missing one: the lookup succeeds and the Chinese comes out
     /// anyway. The product name is the one Chinese word the English UI keeps
-    /// on purpose — but it is written "WeChatBridge", never 「微信流」.
+    /// on purpose — but it is written "WeChatBridge", never 「律档通」.
     /// </summary>
     [Fact]
     public void EveryTranslationIsEnglishAndNotEmpty()

@@ -142,7 +142,7 @@ public enum ShareAction: String, Codable, Sendable, CaseIterable {
         case .weSight: return L10n.text("发给 WeSight")
         case .deepSeekHarness: return L10n.text("发给 DeepSeek Harness")
         case .obsidian: return L10n.text("沉淀到 Obsidian")
-        case .collect: return L10n.text("分批收集到微信流")
+        case .collect: return L10n.text("分批收集到律档通")
         case .folder: return L10n.text("沉淀到文件夹")
         case .clipboard: return L10n.text("复制到剪贴板")
         case .custom: return L10n.text("发送到自定义")

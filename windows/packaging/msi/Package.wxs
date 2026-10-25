@@ -21,10 +21,10 @@
   -->
 
   <Package Name="$(var.MsiPackageName)" Language="1033" Codepage="936" Version="$(var.MsiVersion)"
-           Manufacturer="微信流" UpgradeCode="{9D8B6223-A1B3-4E46-95C9-9C500833E4CA}"
+           Manufacturer="律档通" UpgradeCode="{9D8B6223-A1B3-4E46-95C9-9C500833E4CA}"
            Scope="perUser" InstallerVersion="500" Compressed="yes">
 
-    <MajorUpgrade DowngradeErrorMessage="已安装更新版本的微信流。" />
+    <MajorUpgrade DowngradeErrorMessage="已安装更新版本的律档通。" />
     <MediaTemplate EmbedCab="yes" />
 
     <ui:WixUI Id="WixUI_InstallDir" />
@@ -43,7 +43,7 @@
     <SetProperty Id="UnregisterShareTarget" Sequence="execute" Before="UnregisterShareTarget"
         Value="&quot;[System64Folder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File &quot;[INSTALLFOLDER]Unregister-ShareTarget.ps1&quot;" />
 
-    <Feature Id="Main" Title="微信流" Level="1" AllowAdvertise="no">
+    <Feature Id="Main" Title="律档通" Level="1" AllowAdvertise="no">
       <ComponentGroupRef Id="AppFiles" />
       <ComponentRef Id="StartMenuShortcut" />
     </Feature>
@@ -56,7 +56,7 @@
       </Directory>
     </StandardDirectory>
     <StandardDirectory Id="ProgramMenuFolder">
-      <Directory Id="WeChatBridgeProgramsFolder" Name="微信流" />
+      <Directory Id="WeChatBridgeProgramsFolder" Name="律档通" />
     </StandardDirectory>
   </Fragment>
 
@@ -69,7 +69,7 @@
   <Fragment>
     <DirectoryRef Id="WeChatBridgeProgramsFolder">
       <Component Id="StartMenuShortcut" Guid="{27836C97-D2EB-4891-AB2B-88F388DE7FA7}">
-        <Shortcut Id="WeChatBridgeShortcut" Name="微信流"
+        <Shortcut Id="WeChatBridgeShortcut" Name="律档通"
                   Target="[INSTALLFOLDER]WeChatBridge.Windows.exe"
                   WorkingDirectory="INSTALLFOLDER" Icon="AppIcon.ico" />
         <RegistryValue Root="HKCU" Key="Software\WeChatBridge" Name="installed" Type="integer" Value="1" KeyPath="yes" />

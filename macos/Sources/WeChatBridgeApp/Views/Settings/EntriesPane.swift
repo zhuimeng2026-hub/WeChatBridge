@@ -129,7 +129,7 @@ struct EntriesPane: View {
     }
 
     /// Two rows, the same pair the Obsidian entry shows: where the folder is,
-    /// then the subfolder of it the note lands in (`微信流` unless named).
+    /// then the subfolder of it the note lands in (`律档通` unless named).
     private var folderSettings: some View {
         VStack(spacing: 0) {
             SettingRow(

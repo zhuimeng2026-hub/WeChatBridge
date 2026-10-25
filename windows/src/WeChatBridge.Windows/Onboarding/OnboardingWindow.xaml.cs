@@ -64,7 +64,7 @@ public partial class OnboardingWindow : Window
         });
         RegistrationDetail.Text = L10n.Text(_registration switch
         {
-            ShareRegistrationState.Registered => "请重启微信，在「转发到其他应用」里确认「微信流」。",
+            ShareRegistrationState.Registered => "请重启微信，在「转发到其他应用」里确认「律档通」。",
             ShareRegistrationState.Moved => "插入 U 盘的位置变了，分享菜单会指向旧路径。请重新注册后再重启微信。",
             ShareRegistrationState.Unknown => "系统没有返回可判断的结果，可以稍后再检查一次。",
             _ => "请使用完整安装包重新安装并允许管理员授权，也可以先完成目标配置。",
@@ -104,7 +104,7 @@ public partial class OnboardingWindow : Window
             StartupToggle.IsChecked = _model.AutoStartEnabled;
             StartupFeedback.Text = L10n.Text(requested != _model.AutoStartEnabled
                 ? "系统未允许修改启动设置，请稍后在「通用」页重试。"
-                : _model.AutoStartEnabled ? "已开启，登录 Windows 后自动在后台运行。" : "已关闭，需要时再启动微信流。");
+                : _model.AutoStartEnabled ? "已开启，登录 Windows 后自动在后台运行。" : "已关闭，需要时再启动律档通。");
         }
         catch
         {

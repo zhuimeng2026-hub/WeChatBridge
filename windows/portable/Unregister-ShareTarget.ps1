@@ -1,6 +1,6 @@
 ﻿<#
 .SYNOPSIS
-  Remove the 微信流 share-target registration created by the portable build.
+  Remove the 律档通 share-target registration created by the portable build.
 
 .DESCRIPTION
   Undoes Register-ShareTarget.ps1: stops the helper, removes the per-user sparse
@@ -10,7 +10,7 @@
   Removing the package is enough to unregister it — the external content is
   never copied anywhere, it is referenced in place from the drive. The machine
   level certificates the registration installed are deliberately left alone:
-  they are shared with any other copy of 微信流 on this machine, and a user
+  they are shared with any other copy of 律档通 on this machine, and a user
   cannot remove them without administrator rights in any case.
 #>
 [CmdletBinding()]

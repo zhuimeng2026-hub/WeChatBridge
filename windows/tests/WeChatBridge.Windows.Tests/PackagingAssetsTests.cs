@@ -48,11 +48,13 @@ public sealed class PackagingAssetsTests
     /// <summary>
     /// Weixin hides share targets whose display name contains the contiguous brand
     /// substrings 微信 / WeChat / Weixin, but does not normalise zero-width characters.
-    /// The manifest therefore spells the product name with a U+2060 WORD JOINER between
-    /// 微 and 信 so it renders as 微信流 without containing the filtered substring. Any
-    /// tooling that rewrites these strings (normalisation, pretty-printing, code-gen)
-    /// can silently strip the joiner and make the target vanish from the share menu —
-    /// which is exactly the failure this assertion exists to catch.
+    /// The product used to be spelled with a U+2060 WORD JOINER between 微 and 信 to
+    /// dodge that filter; since the rename to 律档通 the name contains none of the
+    /// filtered substrings, so the joiner is gone and the plain spelling is used.
+    /// The assertion below is what keeps it that way: any tooling that rewrites these
+    /// strings back into a filtered substring — or reintroduces the brand word —
+    /// makes the target vanish from the share menu, which is exactly the failure
+    /// this assertion exists to catch.
     /// </summary>
     [Fact]
     public void DisplayStringsAvoidContiguousBrandSubstrings()
@@ -67,8 +69,8 @@ public sealed class PackagingAssetsTests
         Assert.NotEmpty(applications);
 
         // The product name is the package identity's string: the one place the
-        // U+2060 spelling must survive so the menu renders 微信流.
-        Assert.Contains("微⁠信流",
+        // menu must render 律档通.
+        Assert.Contains("律档通",
             manifest.Root.Element(Foundation + "Properties")!.Element(Foundation + "DisplayName")!.Value);
 
         // Every entry's user-visible strings — DisplayName, app Description and
@@ -98,7 +100,7 @@ public sealed class PackagingAssetsTests
     }
 
     /// <summary>
-    /// The manifest registers a single façade entry — Share.Hub, the 「微信流」
+    /// The manifest registers a single façade entry — Share.Hub, the 「律档通」
     /// row WeChat shows — whose Application Id the helper resolves through
     /// <see cref="Core.ShareActions.ShareEntryId"/> just like the retired
     /// per-app ids. Asserting the singleton rather than <c>All</c> keeps this

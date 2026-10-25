@@ -52,7 +52,7 @@ $EditionToken = [string](@($props.Project.PropertyGroup |
 if (-not $EditionToken) { throw "Directory.Build.props defines no <EditionToken> for edition '$Edition'." }
 
 # Programs and Features shows the MSI row and the Burn row separately. If both
-# read "微信流", a user with the two editions installed on two machines — or
+# read "律档通", a user with the two editions installed on two machines — or
 # support reading a bug report — has no way to tell which is which. The MSI's
 # own Package/@Name already carries the edition; the bundle has to as well.
 $ProductName = [string](@($props.Project.PropertyGroup |

@@ -49,7 +49,7 @@ final class DisplayNameTests: XCTestCase {
     func testSubfolderPathKeepsEveryLevelOfTheHierarchy() {
         // The reason this method exists: sanitize would collapse the value to
         // its last component, silently dropping the leading levels.
-        XCTAssertEqual(DisplayName.subfolderPath("参考/微信流"), "参考/微信流")
+        XCTAssertEqual(DisplayName.subfolderPath("参考/律档通"), "参考/律档通")
         // Empty components collapse away.
         XCTAssertEqual(DisplayName.subfolderPath("a//b"), "a/b")
         XCTAssertEqual(DisplayName.subfolderPath("/a/b/"), "a/b")
@@ -59,6 +59,6 @@ final class DisplayNameTests: XCTestCase {
         XCTAssertEqual(DisplayName.subfolderPath(""), "")
         XCTAssertEqual(DisplayName.subfolderPath(nil), "")
         // A single level behaves exactly as before.
-        XCTAssertEqual(DisplayName.subfolderPath("微信流"), "微信流")
+        XCTAssertEqual(DisplayName.subfolderPath("律档通"), "律档通")
     }
 }

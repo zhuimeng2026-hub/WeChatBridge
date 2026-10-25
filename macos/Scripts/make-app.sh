@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Assemble and sign 微信流.app, with its share extensions nested inside it.
+# Assemble and sign 律档通.app, with its share extensions nested inside it.
 #
 # Local development stays fast by building the host architecture and signing
 # ad-hoc. A distribution build passes both architectures, a Developer ID hash,

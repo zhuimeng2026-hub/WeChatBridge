@@ -1,6 +1,6 @@
 ﻿<#
 .SYNOPSIS
-  Build the 微信流 portable (USB stick) distribution.
+  Build the 律档通 portable (USB stick) distribution.
 
 .DESCRIPTION
   Produces a self-contained payload, a signed sparse MSIX for package identity,
@@ -10,7 +10,7 @@
           FirstRun.bat
           FirstRun.ps1
           使用说明.txt
-          微信流\                      <- PortableRoot
+          律档通\                      <- PortableRoot
               WeChatBridge.Windows.exe / .dll
               share-target\...
               Assets\  Resources\  resources.pri
@@ -81,7 +81,7 @@ $OutputDirectory = [IO.Path]::GetFullPath($OutputDirectory)
 # The portable root IS the directory holding the executable: AppLayout resolves
 # it as AppContext.BaseDirectory and derives Data\ from it. Introducing an extra
 # app\ level here would break that and silently strand the data one level up.
-$payload = Join-Path $OutputDirectory '微信流'
+$payload = Join-Path $OutputDirectory '律档通'
 $msix = Join-Path $payload 'WeChatBridge.ShareTarget.msix'
 $AppLayoutMarker = 'portable.flag'
 
@@ -213,7 +213,7 @@ if (Test-Path $zip) { Remove-Item -LiteralPath $zip -Force }
 $staging = Join-Path $env:TEMP "WeChatBridge-portable-$EditionToken-$Version"
 if (Test-Path $staging) { Remove-Item -LiteralPath $staging -Recurse -Force }
 New-Item -ItemType Directory -Path $staging -Force | Out-Null
-Copy-Item -LiteralPath $payload -Destination (Join-Path $staging '微信流') -Recurse
+Copy-Item -LiteralPath $payload -Destination (Join-Path $staging '律档通') -Recurse
 foreach ($name in 'FirstRun.ps1', 'FirstRun.bat', '使用说明.txt', 'LICENSE.txt', 'SHA256SUMS.txt') {
     $source = Join-Path $OutputDirectory $name
     if (Test-Path -LiteralPath $source) { Copy-Item -LiteralPath $source -Destination $staging -Force }

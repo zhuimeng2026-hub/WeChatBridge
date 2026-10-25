@@ -21,11 +21,11 @@ description = "Package AppIcon-artwork.png as the macOS PNG, ICNS and README ico
 run = "swift Scripts/make-icon.swift Resources/AppIcon-artwork.png Resources/AppIcon.png Resources/AppIcon.icns ../shared/Screenshots/app-icon-rounded.png"
 
 [tasks.bundle]
-description = "Assemble and sign a host-architecture dist/微信流.app"
+description = "Assemble and sign a host-architecture dist/律档通.app"
 run = "CONFIG=release Scripts/make-app.sh"
 
 [tasks.bundle-universal]
-description = "Assemble and sign a Universal 2 dist/微信流.app"
+description = "Assemble and sign a Universal 2 dist/律档通.app"
 run = "CONFIG=release ARCHS='arm64 x86_64' Scripts/make-app.sh"
 
 [tasks.install]

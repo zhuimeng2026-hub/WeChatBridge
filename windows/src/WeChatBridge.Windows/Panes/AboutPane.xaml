@@ -8,10 +8,10 @@
             <Image x:Name="AppIconImage" Width="76" Height="76"
                    Source="/WeChatBridge.Windows;component/Assets/AppIcon.png"
                    Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality"
-                   AutomationProperties.Name="{loc:Loc Key='微信流'}" />
+                   AutomationProperties.Name="{loc:Loc Key='律档通'}" />
             <StackPanel Margin="20,2,0,0" VerticalAlignment="Top">
                 <TextBlock FontSize="26" FontWeight="SemiBold"
-                           Foreground="{StaticResource InkColor}" Text="{loc:Loc Key='微信流'}" />
+                           Foreground="{StaticResource InkColor}" Text="{loc:Loc Key='律档通'}" />
                 <Border Margin="0,10,0,0" CornerRadius="9" Padding="9,4"
                         HorizontalAlignment="Left"
                         Background="{StaticResource SelectedColor}">
@@ -37,7 +37,7 @@
                 <TextBlock FontFamily="Segoe MDL2 Assets" FontSize="17" Width="26"
                            Foreground="{StaticResource InkSecondaryColor}" Text="&#xE946;" />
                 <TextBlock FontSize="17.5" FontWeight="SemiBold"
-                           Foreground="{StaticResource InkColor}" Text="{loc:Loc Key='微信流做什么'}" />
+                           Foreground="{StaticResource InkColor}" Text="{loc:Loc Key='律档通做什么'}" />
             </StackPanel>
             <TextBlock Margin="38,14,0,0" FontSize="14" MaxWidth="620"
                        Foreground="{StaticResource InkSecondaryColor}" TextWrapping="Wrap"

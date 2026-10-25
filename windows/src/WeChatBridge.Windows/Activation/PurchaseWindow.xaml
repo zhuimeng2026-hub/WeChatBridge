@@ -50,7 +50,7 @@
  <StackPanel>
  <TextBlock Style="{StaticResource Heading}" Text="{loc:Loc Key='购买授权'}"/>
  <TextBlock Style="{StaticResource Body}" Margin="0,8,0,0"
- Text="{loc:Loc Key='微信流买断版一次买断，永久离线可用。在浏览器里扫码付款，付完回到这里点「我已付款」，卖家核对到账后即可激活。'}" />
+ Text="{loc:Loc Key='律档通买断版一次买断，永久离线可用。在浏览器里扫码付款，付完回到这里点「我已付款」，卖家核对到账后即可激活。'}" />
 
  <!-- What the user is buying, and which machine it will be bound to. Shown before
       the payment instructions because the transfer note below is the machine code:

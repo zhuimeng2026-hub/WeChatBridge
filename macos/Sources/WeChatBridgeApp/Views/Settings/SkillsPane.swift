@@ -135,7 +135,7 @@ struct SkillsPane: View {
                 Button(L10n.text("导入 ZIP…")) { importing = true }
                     .buttonStyle(SettingsActionButtonStyle(width: nil))
 
-                Text(L10n.text("技能由微信流统一管理，场景用 {{skill:id}} 引用，转发时由目标 Agent 直接读取。"))
+                Text(L10n.text("技能由律档通统一管理，场景用 {{skill:id}} 引用，转发时由目标 Agent 直接读取。"))
                     .font(Typo.paneCaption)
                     .foregroundStyle(Theme.inkTertiary)
                     .fixedSize(horizontal: false, vertical: true)

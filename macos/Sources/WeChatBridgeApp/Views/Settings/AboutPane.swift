@@ -75,7 +75,7 @@ struct AboutPane: View {
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 8) {
-                Text(verbatim: "微信流")
+                Text(verbatim: "律档通")
                     .font(.system(size: 26, weight: .semibold))
                     .foregroundStyle(Theme.ink)
                 StatusPill(text: L10n.format("版本 %@ (%@)", AppVersion.short, AppVersion.build))

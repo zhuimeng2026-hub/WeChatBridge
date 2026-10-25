@@ -1125,7 +1125,7 @@ private enum SceneImportError: LocalizedError {
     case invalidPackage
     var errorDescription: String? {
         switch self {
-        case .unsupportedSchema: L10n.text("这个场景包由更新版本生成，当前微信流无法导入。")
+        case .unsupportedSchema: L10n.text("这个场景包由更新版本生成，当前律档通无法导入。")
         case .invalidPackage: L10n.text("场景包缺少 id、名称、版本、指令或版本格式无效。")
         }
     }

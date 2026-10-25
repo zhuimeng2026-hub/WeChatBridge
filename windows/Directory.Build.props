@@ -49,7 +49,7 @@
     <!-- MSI Package/@Name. Distinguishes the two products in Programs and
          Features; the UpgradeCode stays shared so the two are mutually
          exclusive on one machine (design doc 18.3). -->
-    <MsiPackageName>微信流（买断版）</MsiPackageName>
+    <MsiPackageName>律档通（买断版）</MsiPackageName>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(WeChatBridgeEdition)' == 'Subscription'">
@@ -58,7 +58,7 @@
     <WeChatBridgeEditionConstant>WECHATBRIDGE_SUBSCRIPTION</WeChatBridgeEditionConstant>
     <EditionToken>Subscription</EditionToken>
     <ProductEditionName>订阅版</ProductEditionName>
-    <MsiPackageName>微信流（订阅版）</MsiPackageName>
+    <MsiPackageName>律档通（订阅版）</MsiPackageName>
   </PropertyGroup>
 
   <!-- Set here, in .props, because the constant has to exist before any

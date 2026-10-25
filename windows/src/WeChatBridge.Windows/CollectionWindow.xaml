@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:loc="clr-namespace:WeChatBridge.Windows"
         xmlns:c="clr-namespace:WeChatBridge.Windows.Components"
-        Title="{loc:Loc Key='分批收集到微信流'}" Width="400" MinWidth="320" SizeToContent="Height"
+        Title="{loc:Loc Key='分批收集到律档通'}" Width="400" MinWidth="320" SizeToContent="Height"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent"
         ShowInTaskbar="False" ShowActivated="False" Topmost="True" ResizeMode="NoResize"
         WindowStartupLocation="Manual" PreviewKeyDown="Window_PreviewKeyDown">

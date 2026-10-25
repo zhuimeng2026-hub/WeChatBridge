@@ -162,7 +162,7 @@ internal sealed class ActivationGate : IDisposable
                 MessageBox.Show(
                     owner,
                     StatusText,
-                    L10n.Text("微信流"),
+                    L10n.Text("律档通"),
                     MessageBoxButton.OK,
                     MessageBoxImage.Information);
                 return page;

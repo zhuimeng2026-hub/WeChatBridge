@@ -253,7 +253,7 @@ for LOGO in doubao qwen claude chatgpt obsidian workbuddy; do
 done
 
 # 8. Sparkle. This fork keeps Sparkle linked but deliberately has no update
-#    feed until 微信流 owns its own appcast and signing key. If updates are
+#    feed until 律档通 owns its own appcast and signing key. If updates are
 #    switched back on, the same HTTPS/key/signature invariants as upstream
 #    apply immediately.
 AUTO_CHECKS="$(read_plist "$APP_INFO" SUEnableAutomaticChecks)"

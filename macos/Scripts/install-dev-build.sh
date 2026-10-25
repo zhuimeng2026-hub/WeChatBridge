@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install dist/微信流.app where Launch Services will index it, then report what
+# Install dist/律档通.app where Launch Services will index it, then report what
 # the system thinks of the share extension.
 #
 # An extension is only discovered inside an installed app: running the bundle
@@ -38,12 +38,12 @@ pluginkit -m -p com.apple.share-services -vvv 2>/dev/null | grep -i wechatbridge
 	exit 0
 }
 echo
-# The switches live in 微信流 now — the app gave up its sandbox for them — so
+# The switches live in 律档通 now — the app gave up its sandbox for them — so
 # that is the path this prints first. Every entry is listed by its real
 # identifier: the template plist holds only the first slot's, and make-app.sh
 # rewrites it per slot, so printing that one alone left four entries for the
 # reader to guess the suffix of.
-echo "If an entry is registered but disabled, open 微信流 → 设置 → 入口 and flip it,"
+echo "If an entry is registered but disabled, open 律档通 → 设置 → 入口 and flip it,"
 echo "or manage the same setting in System Settings → Login Items & Extensions → Sharing."
 echo "Per entry, from a terminal:"
 for SLOT_ROW in "${SHARE_SLOTS[@]}"; do
