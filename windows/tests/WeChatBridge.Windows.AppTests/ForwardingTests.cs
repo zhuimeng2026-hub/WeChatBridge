@@ -89,13 +89,21 @@ public sealed class ForwardingTests
         Assert.All(new[] { first, second }, b => Assert.Null(reader.StateFor(b.Id)?.SceneID));
         Assert.Equal(0, pickerCalls);
     }
-    private static async Task<ReadyBatch> Add(TempInbox fixture, InboxReader reader, string name, string chatName)
+    private static async Task<ReadyBatch> Add(TempInbox fixture, InboxReader reader, string name, string chatName,
+        IReadOnlyDictionary<string, string>? attachments = null)
     {
         var source = fixture.WriteSource(name, "");
         using (var stream = File.Open(source, FileMode.Create))
         using (var archive = new ZipArchive(stream, ZipArchiveMode.Create))
-        using (var writer = new StreamWriter(archive.CreateEntry("聊天记录.txt", CompressionLevel.NoCompression).Open(), new UTF8Encoding(false)))
-            writer.Write("·甲\n2026年9月20日 09:10\n第一条\n");
+        {
+            using (var writer = new StreamWriter(archive.CreateEntry("聊天记录.txt", CompressionLevel.NoCompression).Open(), new UTF8Encoding(false)))
+                writer.Write("·甲\n2026年9月20日 09:10\n第一条\n");
+            foreach (var (entryName, contents) in attachments ?? new Dictionary<string, string>())
+            {
+                using var writer = new StreamWriter(archive.CreateEntry(entryName).Open(), new UTF8Encoding(false));
+                writer.Write(contents);
+            }
+        }
         var committed = await InboxWriter.CommitAsync(fixture.Paths,
             [new InboxSourceFile(source, name, "application/zip", 0, 0)]);
         reader.RecordContext(committed.BatchId, chatName);
@@ -185,17 +193,25 @@ public sealed class ForwardingTests
     }
 
     [Fact]
-    public async Task CollectionFolderDeliverySavesOnlyOriginalsAndMissingFolderIsRetryable()
+    public async Task CollectionFolderDeliveryWritesNestedClassifiedArchivesAndMissingFolderIsRetryable()
     {
         using var fixture = new TempInbox();
         var reader = new InboxReader(fixture.Paths, InboxReader.Removal.Delete);
-        var first = await Add(fixture, reader, "one.zip", "甲群");
-        var second = await Add(fixture, reader, "two.zip", "乙群");
+        var first = await Add(fixture, reader, "one.zip", "甲群", new Dictionary<string, string>
+        {
+            ["images/PHOTO.JPG"] = "image-bytes",
+            ["sheets/report.CSV"] = "a,b\n1,2",
+        });
+        var second = await Add(fixture, reader, "two.zip", "乙群", new Dictionary<string, string>
+        {
+            ["docs/guide.DOCX"] = "word-bytes",
+        });
         var config = Path.Combine(fixture.Root, "config");
         using var scenes = Scenes(config);
         var model = new MainViewModel(fixture.Paths, config, false, scenes: scenes, copyPayload: _ => { });
         var group = model.Collections.Append(first, null);
         model.Collections.Append(second, null);
+        model.DeliveryFolderPath = Path.Combine(fixture.Root, "missing-output");
         await model.DeliverCollection(group, ShareAction.Folder, null);
         Assert.Equal(CollectionStatus.Retry, model.Collections.Ledger.Editable(group).Status);
         Assert.All(new[] { first, second }, batch => Assert.True(File.Exists(batch.Items[0].FullPath)));
@@ -204,11 +220,18 @@ public sealed class ForwardingTests
         model.DeliveryFolderPath = notes;
         model.DeliverySubfolder = "项目/周报";
         await model.DeliverCollection(group, ShareAction.Folder, null);
-        Assert.Empty(Directory.GetFiles(notes, "*.md", SearchOption.AllDirectories));
-        var saved = Directory.GetFiles(notes, "*.zip");
-        Assert.Equal(2, saved.Length);
-        Assert.Equal(File.ReadAllBytes(first.Items[0].FullPath), File.ReadAllBytes(Path.Combine(notes, "one.zip")));
-        Assert.Equal(File.ReadAllBytes(second.Items[0].FullPath), File.ReadAllBytes(Path.Combine(notes, "two.zip")));
+        var deliveryRoot = Path.Combine(notes, "项目", "周报");
+        Assert.Equal(new[] { "乙群的聊天.md", "甲群的聊天.md" }.Order().ToArray(),
+            Directory.GetFiles(deliveryRoot, "*.md").Select(Path.GetFileName).Order().ToArray());
+        var attachments = Path.Combine(deliveryRoot, "附件");
+        var firstArchive = Path.Combine(attachments, "原始归档", "one.zip");
+        var secondArchive = Path.Combine(attachments, "原始归档", "two.zip");
+        Assert.Equal(File.ReadAllBytes(first.Items[0].FullPath), File.ReadAllBytes(firstArchive));
+        Assert.Equal(File.ReadAllBytes(second.Items[0].FullPath), File.ReadAllBytes(secondArchive));
+        Assert.Equal("image-bytes", File.ReadAllText(Path.Combine(attachments, "图片", "PHOTO.JPG")));
+        Assert.Equal("a,b\n1,2", File.ReadAllText(Path.Combine(attachments, "电子表格", "report.CSV")));
+        Assert.Equal("word-bytes", File.ReadAllText(Path.Combine(attachments, "Word文档", "guide.DOCX")));
+        Assert.Contains("附件/图片/PHOTO.JPG", File.ReadAllText(Path.Combine(deliveryRoot, "甲群的聊天.md")));
         Assert.Equal(CollectionStatus.Delivered, model.Collections.Ledger.Editable(group).Status);
     }
 }

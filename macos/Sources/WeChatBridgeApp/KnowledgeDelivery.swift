@@ -87,18 +87,42 @@ enum KnowledgeDelivery {
 
         var written: [URL] = []
         for url in urls {
-            let data = try Data(contentsOf: url, options: .mappedIfSafe)
-            let transcript = try? WeChatNativeArchive.transcript(data)
-            guard let archive = try FolderDelivery.save(
-                [url],
-                to: attachments,
-                checkCancellation: {}
-            ).first else { throw Failure.unreadableArchive }
-            let media = extractMedia(
-                from: data,
-                transcript: transcript,
-                to: attachments
-            )
+            let isArchive = url.pathExtension.lowercased() == "zip"
+            let data: Data
+            if isArchive {
+                data = try Data(contentsOf: url, options: .mappedIfSafe)
+            } else {
+                data = Data()
+            }
+            let candidateTranscript = isArchive ? (try? WeChatNativeArchive.transcript(data)) ?? nil : nil
+            let transcript = candidateTranscript.flatMap { candidate in
+                (candidate.path as NSString).lastPathComponent == "聊天记录.txt"
+                    || !(candidate.records ?? []).isEmpty ? candidate : nil
+            }
+            let archivePath: String
+            let media: [String: String]
+            var extractionFailed = false
+            if isArchive {
+                let rawArchiveFolder = attachments.appendingPathComponent("原始归档", isDirectory: true)
+                try FileManager.default.createDirectory(at: rawArchiveFolder, withIntermediateDirectories: true)
+                guard let archive = try FolderDelivery.save([url], to: rawArchiveFolder, checkCancellation: {}).first else {
+                    throw Failure.unreadableArchive
+                }
+                archivePath = "原始归档/\(archive.lastPathComponent)"
+                let extraction = try extractMedia(from: data, transcript: transcript, to: attachments)
+                media = extraction.attachments
+                extractionFailed = extraction.failed
+            } else {
+                // Standalone files are ordinary attachments, never fed to the ZIP reader.
+                let category = category(for: url.lastPathComponent)
+                let categoryFolder = attachments.appendingPathComponent(category, isDirectory: true)
+                try FileManager.default.createDirectory(at: categoryFolder, withIntermediateDirectories: true)
+                guard let saved = try FolderDelivery.save([url], to: categoryFolder, checkCancellation: {}).first else {
+                    throw Failure.unreadableArchive
+                }
+                archivePath = "\(category)/\(saved.lastPathComponent)"
+                media = [url.path: "\(category)/\(saved.lastPathComponent)"]
+            }
 
             let title = ObsidianNote.title(
                 chatName: chatName,
@@ -111,8 +135,10 @@ enum KnowledgeDelivery {
                 sceneName: sceneName,
                 createdAt: Date(),
                 transcript: transcript,
-                archiveName: archive.lastPathComponent,
-                attachments: media
+                archiveName: archivePath,
+                attachments: media,
+                extractionFailed: extractionFailed,
+                hasArchive: isArchive
             )
             let preferred = root.appendingPathComponent(DisplayName.sanitize(title) + ".md")
             if let transcript,
@@ -121,10 +147,11 @@ enum KnowledgeDelivery {
                     existingMarkdown: existing,
                     transcript: transcript,
                     attachments: media,
-                    archiveName: archive.lastPathComponent,
+                    archiveName: archivePath,
                     chatName: chatName,
                     sceneName: sceneName,
-                    mergedAt: Date()
+                    mergedAt: Date(),
+                    extractionFailed: extractionFailed
                 ) {
                 case .merged(let merged):
                     try Data(merged.utf8).write(to: preferred, options: .atomic)
@@ -147,29 +174,51 @@ enum KnowledgeDelivery {
         return written
     }
 
+    private struct ExtractionResult {
+        let attachments: [String: String]
+        let failed: Bool
+    }
+
     private static func extractMedia(
         from data: Data,
         transcript: WeChatNativeArchive.Transcript?,
         to attachments: URL
-    ) -> [String: String] {
-        guard transcript != nil else { return [:] }
+    ) throws -> ExtractionResult {
         let staging = FileManager.default.temporaryDirectory
             .appendingPathComponent("wechatbridge-media-" + UUID().uuidString, isDirectory: true)
+        var result: [String: String] = [:]
         do {
             try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
             defer { try? FileManager.default.removeItem(at: staging) }
             let names = try WeChatNativeArchive.extract(data, to: staging)
                 .filter { $0 != transcript?.path }
-            let sources = names.map { staging.appendingPathComponent($0) }
-            let saved = try FolderDelivery.save(sources, to: attachments, checkCancellation: {})
-            var result: [String: String] = [:]
-            for (source, destination) in zip(sources, saved) {
-                result[source.lastPathComponent] = destination.lastPathComponent
+            for name in names {
+                let source = staging.appendingPathComponent(name)
+                let category = category(for: name)
+                let folder = attachments.appendingPathComponent(category, isDirectory: true)
+                try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+                guard let destination = try FolderDelivery.save([source], to: folder, checkCancellation: {}).first else { continue }
+                result[name] = "\(category)/\(destination.lastPathComponent)"
             }
-            return result
+            return ExtractionResult(attachments: result, failed: false)
+        } catch is CancellationError {
+            throw CancellationError()
         } catch {
-            return [:]
+            return ExtractionResult(attachments: result, failed: true)
         }
+    }
+
+    private static func category(for name: String) -> String {
+        let ext = (name as NSString).pathExtension.lowercased()
+        let images = Set(["png", "jpg", "jpeg", "gif", "bmp", "webp", "tif", "tiff", "heic", "heif", "avif", "svg", "ico"])
+        let word = Set(["doc", "docx", "docm", "dot", "dotx", "dotm", "rtf"])
+        let sheets = Set(["xls", "xlsx", "xlsm", "xlsb", "xlt", "xltx", "xltm", "csv", "tsv", "ods", "et"])
+        let video = Set(["mp4", "mov", "m4v", "avi", "mkv", "wmv", "flv", "webm", "mpg", "mpeg", "3gp", "ts"])
+        if images.contains(ext) { return "图片" }
+        if word.contains(ext) { return "Word文档" }
+        if sheets.contains(ext) { return "电子表格" }
+        if video.contains(ext) { return "视频" }
+        return "其他"
     }
 
     private static func uniqueURL(in folder: URL, name: String) -> URL {

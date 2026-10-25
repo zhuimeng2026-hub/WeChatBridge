@@ -75,9 +75,11 @@ public static class ObsidianNote
         string? sceneName,
         DateTimeOffset createdAt,
         WeChatNativeArchive.Transcript? transcript,
-        string archiveName,
+        string? archiveName,
         IReadOnlyDictionary<string, string>? attachments = null,
-        TimeZoneInfo? timeZone = null)
+        TimeZoneInfo? timeZone = null,
+        IReadOnlyList<string>? attachmentInventory = null,
+        string? extractionIssue = null)
     {
         var zone = timeZone ?? TimeZoneInfo.Local;
         string Stamp(DateTimeOffset value) => StampFor(value, zone);
@@ -95,7 +97,8 @@ public static class ObsidianNote
         yaml.Add($"exported: {Stamp(createdAt)}");
         if (transcript?.Records is { } counted)
             yaml.Add($"messages: {counted.Count}");
-        yaml.Add($"archive: {Quoted($"附件/{archiveName}")}");
+        if (archiveName is not null)
+            yaml.Add($"archive: {Quoted($"附件/{archiveName}")}");
         yaml.Add("---");
 
         var lines = new List<string>(yaml)
@@ -103,7 +106,7 @@ public static class ObsidianNote
             "",
             $"# {title}",
             "",
-            $"> 来源：微信 · 原始归档：[[附件/{archiveName}]]",
+            archiveName is null ? "> 来源：微信 · 独立附件" : $"> 来源：微信 · 原始归档：{AttachmentLink(archiveName)}",
         };
 
         if (transcript is not null)
@@ -134,7 +137,25 @@ public static class ObsidianNote
         else
         {
             lines.Add("");
-            lines.Add("未能从原始归档中解析聊天文本。原始 ZIP 已保留，可在附件中打开。");
+            lines.Add(archiveName is null
+                ? "此文件为独立附件，没有聊天正文。"
+                : "此 ZIP 未包含可识别的聊天正文。原始 ZIP 已保留，可在附件中打开。");
+        }
+        if (!string.IsNullOrEmpty(extractionIssue))
+        {
+            lines.Add("");
+            lines.Add("<!-- wechatbridge:warning:start -->");
+            lines.Add(extractionIssue);
+            lines.Add("<!-- wechatbridge:warning:end -->");
+        }
+        if (attachmentInventory is { Count: > 0 })
+        {
+            lines.Add("");
+            lines.Add("<!-- wechatbridge:attachment-inventory:start -->");
+            lines.Add("## 附件清单");
+            foreach (var attachment in attachmentInventory.Distinct(StringComparer.Ordinal))
+                lines.Add($"- {AttachmentLink(attachment)}");
+            lines.Add("<!-- wechatbridge:attachment-inventory:end -->");
         }
         lines.Add("");
         return string.Join('\n', lines);
@@ -160,7 +181,9 @@ public static class ObsidianNote
         string? sceneName,
         DateTimeOffset mergedAt,
         out string? mergedMarkdown,
-        TimeZoneInfo? timeZone = null)
+        TimeZoneInfo? timeZone = null,
+        IReadOnlyList<string>? attachmentInventory = null,
+        string? extractionIssue = null)
     {
         mergedMarkdown = null;
         if (transcript.Records is not { Count: > 0 } records)
@@ -175,23 +198,32 @@ public static class ObsidianNote
         if (closing < 0)
             return MergeOutcome.NotApplicable;
 
-        var headers = MessageHeader.Matches(normalized);
+        // Generated inventory/warning blocks can occur between forwarded batches.
+        // Exclude only these marked blocks from message identity parsing, while
+        // leaving the actual Markdown untouched for the replacement output.
+        var messageContent = StripGeneratedMetadata(normalized);
+        var headers = MessageHeader.Matches(messageContent);
         var known = new HashSet<string>(StringComparer.Ordinal);
         for (var index = 0; index < headers.Count; index++)
         {
             var bodyStart = headers[index].Index + headers[index].Length;
-            var bodyEnd = index + 1 < headers.Count ? headers[index + 1].Index : normalized.Length;
+            var bodyEnd = index + 1 < headers.Count ? headers[index + 1].Index : messageContent.Length;
             known.Add(MessageKey(
                 headers[index].Groups["sender"].Value,
                 headers[index].Groups["stamp"].Value,
-                normalized[bodyStart..bodyEnd]));
+                messageContent[bodyStart..bodyEnd]));
         }
 
         var fresh = records
             .Where(record => !known.Contains(
                 MessageKey(record.Sender, StampFor(record.Date, zone), record.Text)))
             .ToList();
-        if (fresh.Count == 0)
+        var newAttachments = (attachmentInventory ?? [])
+            .Distinct(StringComparer.Ordinal)
+            .Where(path => !normalized.Contains(AttachmentLink(path), StringComparison.Ordinal))
+            .ToList();
+        var newArchive = !normalized.Contains(AttachmentLink(archiveName), StringComparison.Ordinal);
+        if (fresh.Count == 0 && newAttachments.Count == 0 && string.IsNullOrEmpty(extractionIssue))
             return MergeOutcome.NothingNew;
 
         var frontLines = normalized[4..closing].Split('\n').ToList();
@@ -201,7 +233,8 @@ public static class ObsidianNote
             if (at >= 0) frontLines[at] = line; else frontLines.Add(line);
         }
         Upsert("exported", $"exported: {StampFor(mergedAt, zone)}");
-        Upsert("messages", $"messages: {headers.Count + fresh.Count}");
+        if (fresh.Count > 0 || frontLines.Any(l => l.StartsWith("messages:", StringComparison.Ordinal)))
+            Upsert("messages", $"messages: {headers.Count + fresh.Count}");
         if (!string.IsNullOrEmpty(chatName)
             && !frontLines.Any(l => l.StartsWith("chat:", StringComparison.Ordinal)))
             frontLines.Add($"chat: {Quoted(chatName)}");
@@ -215,8 +248,10 @@ public static class ObsidianNote
         merged.Append('\n');
         if (!normalized.Contains("\n## 聊天记录\n", StringComparison.Ordinal))
             merged.Append("\n## 聊天记录\n");
-        merged.Append("\n> 追加归档：").Append(AttachmentLink(archiveName))
-            .Append('（').Append(StampFor(mergedAt, zone)).Append('）').Append('\n');
+        if (newArchive)
+            merged.Append("\n<!-- wechatbridge:archive:start -->\n> 追加归档：")
+                .Append(AttachmentLink(archiveName))
+                .Append('（').Append(StampFor(mergedAt, zone)).Append("）\n<!-- wechatbridge:archive:end -->\n");
         foreach (var record in fresh)
         {
             merged.Append("\n**").Append(record.Sender).Append("** · ")
@@ -225,6 +260,16 @@ public static class ObsidianNote
             foreach (var attachment in ReferencedAttachments(record.Text, attachments))
                 merged.Append('\n').Append(AttachmentLink(attachment)).Append('\n');
         }
+        if (newAttachments.Count > 0)
+        {
+            merged.Append("\n<!-- wechatbridge:attachment-inventory:start -->\n## 附件清单\n");
+            foreach (var attachment in newAttachments)
+                merged.Append("- ").Append(AttachmentLink(attachment)).Append('\n');
+            merged.Append("<!-- wechatbridge:attachment-inventory:end -->\n");
+        }
+        if (!string.IsNullOrEmpty(extractionIssue))
+            merged.Append("\n<!-- wechatbridge:warning:start -->\n")
+                .Append(extractionIssue).Append("\n<!-- wechatbridge:warning:end -->\n");
         mergedMarkdown = merged.ToString();
         return MergeOutcome.Merged;
     }
@@ -242,6 +287,16 @@ public static class ObsidianNote
                 && !line.StartsWith("[[", StringComparison.Ordinal))
             .ToList();
         return $"{sender.Trim()}\n{stamp}\n{string.Join('\n', lines)}";
+    }
+
+    private static string StripGeneratedMetadata(string markdown)
+    {
+        var withoutInventory = Regex.Replace(markdown,
+            @"(?s)<!-- wechatbridge:attachment-inventory:start -->.*?<!-- wechatbridge:attachment-inventory:end -->", "");
+        var withoutWarnings = Regex.Replace(withoutInventory,
+            @"(?s)<!-- wechatbridge:warning:start -->.*?<!-- wechatbridge:warning:end -->", "");
+        return Regex.Replace(withoutWarnings,
+            @"(?s)<!-- wechatbridge:archive:start -->.*?<!-- wechatbridge:archive:end -->", "");
     }
 
     private static string StampFor(DateTimeOffset value, TimeZoneInfo zone) =>
@@ -263,11 +318,14 @@ public static class ObsidianNote
         var ordered = available.Keys
             .OrderByDescending(k => Encoding.UTF8.GetByteCount(k))
             .ThenBy(k => k, StringComparer.Ordinal);
+        var leafCounts = available.Keys.GroupBy(key => Path.GetFileName(key) ?? string.Empty, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.Count(), StringComparer.Ordinal);
         foreach (var name in ordered)
         {
-            if (name.Length == 0
-                || !remaining.Contains(name, StringComparison.Ordinal)
-                || !available.TryGetValue(name, out var saved))
+            var leaf = Path.GetFileName(name);
+            var match = remaining.Contains(name, StringComparison.Ordinal)
+                || (leafCounts.GetValueOrDefault(leaf) == 1 && remaining.Contains(leaf, StringComparison.Ordinal));
+            if (name.Length == 0 || !match || !available.TryGetValue(name, out var saved))
             {
                 continue;
             }

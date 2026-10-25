@@ -27,7 +27,7 @@
             </Grid>
             <c:CollectionScrollViewer x:Name="DeliveryScroll" Grid.Row="1" MaxHeight="470" VerticalScrollBarVisibility="Auto">
                 <StackPanel>
-                    <TextBlock Text="{loc:Loc Key='选择一个已安装应用，或保存原始文件。'}" Foreground="{DynamicResource InkSecondaryColor}" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,14"/>
+                    <TextBlock Text="{loc:Loc Key='选择已安装应用、复制原始文件，或保存聊天与附件。'}" Foreground="{DynamicResource InkSecondaryColor}" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,14"/>
                     <c:CollectionTargetList x:Name="Targets" SelectionMode="Single" MaxHeight="285" SelectionChanged="Target_Changed"
                                             AutomationProperties.Name="{loc:Loc Key=交付目标}">
                         <c:CollectionTargetList.ItemTemplate><DataTemplate>

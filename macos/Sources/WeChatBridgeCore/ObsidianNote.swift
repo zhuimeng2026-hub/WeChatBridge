@@ -42,6 +42,8 @@ public enum ObsidianNote {
         transcript: WeChatNativeArchive.Transcript?,
         archiveName: String,
         attachments: [String: String] = [:],
+        extractionFailed: Bool = false,
+        hasArchive: Bool = true,
         timeZone: TimeZone = .current
     ) -> String {
         let formatter = DateFormatter()
@@ -59,14 +61,16 @@ public enum ObsidianNote {
         if let sceneName, !sceneName.isEmpty { yaml.append("scene: \(quoted(sceneName))") }
         yaml.append("exported: \(formatter.string(from: createdAt))")
         if let count = transcript?.records?.count { yaml.append("messages: \(count)") }
-        yaml.append("archive: \(quoted("附件/\(archiveName)"))")
+        if hasArchive { yaml.append("archive: \(quoted(attachmentPath(archiveName)))") }
         yaml.append("---")
 
         var lines = yaml
         lines.append("")
         lines.append("# \(title)")
         lines.append("")
-        lines.append("> 来源：微信 · 原始归档：[[附件/\(archiveName)]]")
+        lines.append(hasArchive
+            ? "> 来源：微信 · 原始归档：\(attachmentLink(archiveName))"
+            : "> 来源：微信 · 附件：\(attachmentLink(archiveName))")
 
         if let transcript {
             lines.append("")
@@ -88,7 +92,28 @@ public enum ObsidianNote {
             }
         } else {
             lines.append("")
-            lines.append("未能从原始归档中解析聊天文本。原始 ZIP 已保留，可在附件中打开。")
+            lines.append(hasArchive
+                ? "未能从原始归档中解析聊天文本。原始 ZIP 已保留，可在附件中打开。"
+                : "这是独立附件，已按文件类型保存。")
+        }
+        if !attachments.isEmpty || !archiveName.isEmpty {
+            lines.append("")
+            lines.append("<!-- wechatbridge-attachments:start -->")
+            lines.append("## 附件清单")
+            var inventory = Set(attachments.values)
+            if hasArchive, !archiveName.isEmpty { inventory.insert(archiveName) }
+            for path in inventory.sorted() {
+                lines.append("- \(attachmentLink(path))")
+            }
+            if extractionFailed && hasArchive {
+                lines.append("部分附件未能安全提取，原始 ZIP 已保留。")
+            }
+            lines.append("<!-- wechatbridge-attachments:end -->")
+        } else if extractionFailed && hasArchive {
+            lines.append("")
+            lines.append("<!-- wechatbridge-attachments:start -->")
+            lines.append("部分附件未能安全提取，原始 ZIP 已保留。")
+            lines.append("<!-- wechatbridge-attachments:end -->")
         }
         lines.append("")
         return lines.joined(separator: "\n")
@@ -104,6 +129,7 @@ public enum ObsidianNote {
         chatName: String?,
         sceneName: String?,
         mergedAt: Date,
+        extractionFailed: Bool = false,
         timeZone: TimeZone = .current
     ) -> MergeOutcome {
         guard let records = transcript.records, !records.isEmpty else { return .notApplicable }
@@ -123,23 +149,28 @@ public enum ObsidianNote {
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.timeZone = timeZone
         formatter.dateFormat = "yyyy-MM-dd HH:mm"
+        let analysisMarkdown = markdown.replacingOccurrences(
+            of: #"(?s)<!-- wechatbridge-attachments:start -->.*?<!-- wechatbridge-attachments:end -->"#,
+            with: "",
+            options: .regularExpression
+        )
         guard let regex = try? NSRegularExpression(
             pattern: #"(?m)^\*\*(.+?)\*\* · (\d{4}-\d{2}-\d{2} \d{2}:\d{2})$"#
         ) else { return .notApplicable }
-        let matches = regex.matches(in: markdown, range: NSRange(markdown.startIndex..., in: markdown))
+        let matches = regex.matches(in: analysisMarkdown, range: NSRange(analysisMarkdown.startIndex..., in: analysisMarkdown))
         var known = Set<String>()
         for (index, match) in matches.enumerated() {
-            guard let senderRange = Range(match.range(at: 1), in: markdown),
-                  let stampRange = Range(match.range(at: 2), in: markdown),
-                  let headerRange = Range(match.range, in: markdown)
+            guard let senderRange = Range(match.range(at: 1), in: analysisMarkdown),
+                  let stampRange = Range(match.range(at: 2), in: analysisMarkdown),
+                  let headerRange = Range(match.range, in: analysisMarkdown)
             else { continue }
             let bodyEnd = index + 1 < matches.count
-                ? Range(matches[index + 1].range, in: markdown)!.lowerBound
-                : markdown.endIndex
+                ? Range(matches[index + 1].range, in: analysisMarkdown)!.lowerBound
+                : analysisMarkdown.endIndex
             known.insert(messageKey(
-                sender: String(markdown[senderRange]),
-                stamp: String(markdown[stampRange]),
-                body: String(markdown[headerRange.upperBound..<bodyEnd])
+                sender: String(analysisMarkdown[senderRange]),
+                stamp: String(analysisMarkdown[stampRange]),
+                body: String(analysisMarkdown[headerRange.upperBound..<bodyEnd])
             ))
         }
 
@@ -150,7 +181,15 @@ public enum ObsidianNote {
                 body: $0.text
             ))
         }
-        guard !fresh.isEmpty else { return .nothingNew }
+        guard !fresh.isEmpty else {
+            let updated = appendingInventory(
+                to: existingMarkdown,
+                archiveName: archiveName,
+                attachments: attachments,
+                extractionFailed: extractionFailed
+            )
+            return updated == existingMarkdown ? .nothingNew : .merged(updated)
+        }
 
         func upsert(_ name: String, _ line: String) {
             if let index = frontMatter.firstIndex(where: { $0.hasPrefix(name + ":") }) {
@@ -177,7 +216,41 @@ public enum ObsidianNote {
                 result += "\n\(attachmentLink(attachment))\n"
             }
         }
+        result = appendingInventory(
+            to: result,
+            archiveName: archiveName,
+            attachments: attachments,
+            extractionFailed: extractionFailed
+        )
         return .merged(result)
+    }
+
+    private static func appendingInventory(
+        to markdown: String,
+        archiveName: String,
+        attachments: [String: String],
+        extractionFailed: Bool
+    ) -> String {
+        var result = markdown
+        let startMarker = "<!-- wechatbridge-attachments:start -->"
+        let endMarker = "<!-- wechatbridge-attachments:end -->"
+        var listed = Set(attachments.values)
+        if !attachments.isEmpty, !archiveName.isEmpty { listed.insert(archiveName) }
+        let inventorySection = result.components(separatedBy: "## 附件清单").dropFirst().joined(separator: "## 附件清单")
+        let missing = listed.filter { !inventorySection.contains("- \(attachmentLink($0))") }.sorted()
+        let warning = "部分附件未能安全提取，原始 ZIP 已保留。"
+        if let endRange = result.range(of: endMarker), result.contains(startMarker) {
+            var addition = missing.map { "- \(attachmentLink($0))\n" }.joined()
+            if extractionFailed && !result.contains(warning) { addition += warning + "\n" }
+            result.insert(contentsOf: addition, at: endRange.lowerBound)
+        } else if !missing.isEmpty || extractionFailed {
+            var block = "\n\n\(startMarker)\n## 附件清单\n"
+            block += missing.map { "- \(attachmentLink($0))\n" }.joined()
+            if extractionFailed { block += warning + "\n" }
+            block += "\(endMarker)\n"
+            result += block
+        }
+        return result
     }
 
     private static func messageKey(sender: String, stamp: String, body: String) -> String {
@@ -201,18 +274,29 @@ public enum ObsidianNote {
     ) -> [String] {
         var remaining = text
         var result: [String] = []
-        for name in available.keys.sorted(by: {
+        let keys = available.keys.sorted(by: {
             $0.utf8.count == $1.utf8.count ? $0 < $1 : $0.utf8.count > $1.utf8.count
-        }) {
+        })
+        for name in keys {
             guard !name.isEmpty, remaining.contains(name), let saved = available[name] else { continue }
             result.append(saved)
             remaining = remaining.replacingOccurrences(of: name, with: "")
         }
-        return result
+        // ZIP entries can share a leaf name in different directories. A bare
+        // mention is linked only when that leaf identifies exactly one entry.
+        let byLeaf = Dictionary(grouping: keys, by: { ($0 as NSString).lastPathComponent })
+        for leaf in byLeaf.keys.sorted(by: { $0.utf8.count > $1.utf8.count }) {
+            guard let matches = byLeaf[leaf], matches.count == 1,
+                  remaining.contains(leaf), let saved = available[matches[0]] else { continue }
+            result.append(saved)
+            remaining = remaining.replacingOccurrences(of: leaf, with: "")
+        }
+        var seen = Set<String>()
+        return result.filter { seen.insert($0).inserted }
     }
 
     private static func attachmentLink(_ name: String) -> String {
-        let path = "附件/\(name)"
+        let path = attachmentPath(name)
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "[", with: "\\[")
             .replacingOccurrences(of: "]", with: "\\]")
@@ -225,6 +309,11 @@ public enum ObsidianNote {
             return "[[\(path)]]"
         }
         return "![[\(path)]]"
+    }
+
+    private static func attachmentPath(_ name: String) -> String {
+        let normalized = name.replacingOccurrences(of: "\\", with: "/")
+        return normalized.hasPrefix("附件/") ? normalized : "附件/\(normalized)"
     }
 
     private static func quoted(_ value: String) -> String {
