@@ -332,7 +332,7 @@ public sealed class CollectionTests
         var repeated = KnowledgeDelivery.Deliver([source], destination, "项目/周报", "甲群", null);
         Assert.Equal(notes, repeated);
         Assert.Single(Directory.GetFiles(Path.Combine(destination, "项目", "周报"), "*.md"));
-        Assert.NotEmpty(Directory.GetFiles(Path.Combine(destination, "项目", "周报", "附件"), "*.zip"));
+        Assert.NotEmpty(Directory.GetFiles(Path.Combine(destination, "项目", "周报", "附件", "原始归档"), "*.zip"));
     }
 
     [Fact]

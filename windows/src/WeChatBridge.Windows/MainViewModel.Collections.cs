@@ -182,11 +182,15 @@ public sealed partial class MainViewModel
                 if (action == ShareAction.Folder)
                 {
                     var root = folderPath ?? _settings.DeliveryFolderPath;
-                    if (string.IsNullOrWhiteSpace(root)) throw new InvalidOperationException(L10n.Text("请选择保存原始文件的文件夹。"));
-                    var saved = await Task.Run(() => FolderDelivery.Save(aggregate.Items.Select(i => i.FullPath).ToList(), root));
+                    if (string.IsNullOrWhiteSpace(root)) throw new InvalidOperationException(L10n.Text("请选择保存聊天 Markdown 和附件的文件夹。"));
+                    var notes = new List<string>();
+                    foreach (var batch in batches)
+                        notes.AddRange(await Task.Run(() => KnowledgeDelivery.Deliver(
+                            batch.Items.Select(i => i.FullPath).ToList(), root,
+                            _settings.DeliverySubfolder, batch.ChatName, null)));
                     succeeded = true;
-                    detail = L10n.Format($"已保存 {saved.Count} 个原始文件到文件夹。");
-                    DeliveryNotificationRequested?.Invoke(detail, L10n.Text("查看文件"), () => RevealFile(saved[0]));
+                    detail = L10n.Format($"已保存 {notes.Distinct().Count()} 篇笔记和分类附件，原始 ZIP 已保留。");
+                    DeliveryNotificationRequested?.Invoke(detail, L10n.Text("查看文件"), () => RevealFile(notes[0]));
                 }
                 else if (action == ShareAction.Obsidian)
                 {

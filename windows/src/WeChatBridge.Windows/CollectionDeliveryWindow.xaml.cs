@@ -28,7 +28,7 @@ public partial class CollectionDeliveryWindow : Window
         public string Detail => L10n.Text(Action switch
         {
             ShareAction.Clipboard => "复制原始文件，稍后手动粘贴",
-            ShareAction.Folder => "保留原始 ZIP，保存到你选择的文件夹",
+            ShareAction.Folder => "生成聊天 Markdown 和分类附件，保留原始 ZIP",
             ShareAction.Obsidian => "整理为笔记，写入已配置的知识库",
             _ => "打开应用并附加原始文件",
         });
@@ -117,7 +117,7 @@ public partial class CollectionDeliveryWindow : Window
         DestinationHint.Text = L10n.Text(target?.Action switch
         {
             ShareAction.Clipboard => "复制后，前往目标应用手动粘贴文件。",
-            ShareAction.Folder => "下一步选择文件夹，原始 ZIP 将完整保存。",
+            ShareAction.Folder => "选择文件夹后，将按聊天生成 Markdown，并分类保存附件；原始 ZIP 会完整保留。",
             ShareAction.Obsidian => "聊天记录将整理成笔记，原始 ZIP 仍会保留。",
             _ => "附加到应用后，请在目标应用确认附件。",
         });
@@ -133,7 +133,7 @@ public partial class CollectionDeliveryWindow : Window
         Confirm.Content = target?.Action switch
         {
             ShareAction.Clipboard => L10n.Format($"复制 {_batches.Sum(b => b.Items.Count)} 个文件"),
-            ShareAction.Folder => L10n.Format($"保存 {_batches.Sum(b => b.Items.Count)} 个文件"),
+            ShareAction.Folder => L10n.Text("生成 Markdown 并保存附件"),
             null => L10n.Text("请选择交付目标"),
             _ => L10n.Format($"附加到 {target.Title}"),
         };

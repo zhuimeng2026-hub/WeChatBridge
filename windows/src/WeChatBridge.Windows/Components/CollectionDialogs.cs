@@ -69,10 +69,10 @@ public sealed class CollectionFolderWindow : CollectionDialogWindow
     private readonly TaskCompletionSource<string?> _result = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private string? _directory;
     private int _revision;
-    public CollectionFolderWindow(string? initialPath, IReadOnlyList<string> recent) : base(L10n.Text("保存原始文件"))
+    public CollectionFolderWindow(string? initialPath, IReadOnlyList<string> recent) : base(L10n.Text("保存聊天与附件"))
     {
         var body = new StackPanel(); body.Children.Add(Header(Title));
-        body.Children.Add(Caption(L10n.Text("选择文件夹，保留原始 ZIP 和媒体内容。")));
+        body.Children.Add(Caption(L10n.Text("选择文件夹，生成聊天 Markdown、分类保存附件并保留原始 ZIP。")));
         if (recent.Count > 0)
         {
             var choices = new CollectionComboBox { ItemsSource = recent, Margin = new Thickness(0,0,0,12) };

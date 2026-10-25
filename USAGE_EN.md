@@ -31,6 +31,7 @@ Supported agents:
 
 - Send to Codex / Claude / Doubao / QwenWork / WorkBuddy / WeSight: activate the target app and paste the archive.
 - Save to Obsidian: create a Markdown note and keep the original WeChat export.
+- Save to a folder: create Markdown per chat, keep original ZIPs under `附件/原始归档`, and sort extracted files into `图片`, `Word文档`, `电子表格`, `视频`, and `其他` (images, Word documents, spreadsheets, videos, and other files). ZIPs containing attachments but no chat TXT are also extracted and listed.
 - Copy to Clipboard: write the files without pasting, so you decide where they land.
 - Send to Custom: add any macOS app; terminal-style apps can receive file paths only.
 

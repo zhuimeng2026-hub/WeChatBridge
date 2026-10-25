@@ -8,6 +8,7 @@ final class KnowledgeDeliveryTests: XCTestCase {
     /// naming images/photo.png, plus that image — the same fixture
     /// WeChatNativeArchiveTests parses.
     private let storedZIP = "UEsDBBQAAAgAAMBAJV0fGRySiQAAAIkAAAAQAAAA6IGK5aSp6K6w5b2VLnR4dMK355SyCjIwMjblubQ55pyINeaXpSAwODowNQrkvaDlpb0K56ys5LqM6KGMCgrCt+S5mQoyMDI25bm0OeaciDXml6UgMDg6MDUK5L2g5aW9CuesrOS6jOihjAoKwrfnlLIKMjAyNuW5tDnmnIg15pelIDA4OjA2CmltYWdlcy9waG90by5wbmcKUEsDBBQAAAAAAMBAJV2KfiaRIAAAACAAAAAQAAAAaW1hZ2VzL3Bob3RvLnBuZwABAgMEBQYHCAkKCwwNDg8QERITFBUWFxgZGhscHR4fUEsBAhQDFAAACAAAwEAlXR8ZHJKJAAAAiQAAABAAAAAAAAAAAAAAAIABAAAAAOiBiuWkqeiusOW9lS50eHRQSwECFAMUAAAAAADAQCVdin4mkSAAAAAgAAAAEAAAAAAAAAAAAAAAgAG3AAAAaW1hZ2VzL3Bob3RvLnBuZ1BLBQYAAAAAAgACAHwAAAAFAQAAAAA="
+    private let attachmentOnlyZIP = "UEsDBBQAAAAIALuyWV3xhmx6BQAAAAMAAAARAAAAaW1hZ2VzL2Evc2FtZS5wbmfLz0sFAFBLAwQUAAAACAC7slldZorKEQUAAAADAAAADQAAAGRvY3Mvc2FtZS5wbmcrKc8HAFBLAwQUAAAACAC7slldiUrewQ0AAAALAAAACgAAAFJFQURNRS50eHQryEnMzFPIyy9JLQYAUEsDBBQAAAAIALuyWV0xo+XLBgAAAAQAAAAKAAAAc2hlZXQuWExTWEvKz88GAFBLAQIUABQAAAAIALuyWV3xhmx6BQAAAAMAAAARAAAAAAAAAAAAAACAAQAAAABpbWFnZXMvYS9zYW1lLnBuZ1BLAQIUABQAAAAIALuyWV1misoRBQAAAAMAAAANAAAAAAAAAAAAAACAATQAAABkb2NzL3NhbWUucG5nUEsBAhQAFAAAAAgAu7JZXYlK3sENAAAACwAAAAoAAAAAAAAAAAAAAIABZAAAAFJFQURNRS50eHRQSwECFAAUAAAACAC7slldMaPlywYAAAAEAAAACgAAAAAAAAAAAAAAgAGZAAAAc2hlZXQuWExTWFBLBQYAAAAABAAEAOoAAADHAAAAAAA="
 
     private var root: URL!
     private var destination: URL!
@@ -47,11 +48,13 @@ final class KnowledgeDeliveryTests: XCTestCase {
         let markdown = try String(contentsOf: note, encoding: .utf8)
         XCTAssertTrue(markdown.contains("# 项目群的聊天"))
         XCTAssertTrue(markdown.contains("甲"))
-        XCTAssertTrue(markdown.contains("[[附件/聊天记录.zip]]"))
-        XCTAssertTrue(markdown.contains("![[附件/photo.png]]"))
+        XCTAssertTrue(markdown.contains("[[附件/原始归档/聊天记录.zip]]"))
+        XCTAssertTrue(markdown.contains("![[附件/图片/photo.png]]"))
 
         let attachments = try fm.contentsOfDirectory(atPath: flow.appendingPathComponent("附件").path).sorted()
-        XCTAssertEqual(attachments, ["photo.png", "聊天记录.zip"])
+        XCTAssertEqual(attachments, ["原始归档", "图片"])
+        XCTAssertTrue(fm.fileExists(atPath: flow.appendingPathComponent("附件/图片/photo.png").path))
+        XCTAssertTrue(fm.fileExists(atPath: flow.appendingPathComponent("附件/原始归档/聊天记录.zip").path))
     }
 
     /// A folder the user has not got (deleted, unmounted) is a failure, not a
@@ -96,7 +99,7 @@ final class KnowledgeDeliveryTests: XCTestCase {
         )
         XCTAssertEqual(notes, [destination.appendingPathComponent("参考/微信流/项目群的聊天.md")])
         XCTAssertEqual(try fm.contentsOfDirectory(atPath: destination.path), ["参考"])
-        XCTAssertTrue(fm.fileExists(atPath: destination.appendingPathComponent("参考/微信流/附件/聊天记录.zip").path))
+        XCTAssertTrue(fm.fileExists(atPath: destination.appendingPathComponent("参考/微信流/附件/原始归档/聊天记录.zip").path))
     }
 
     /// The Obsidian entry keeps its own landing place: the note goes into the
@@ -113,6 +116,75 @@ final class KnowledgeDeliveryTests: XCTestCase {
         )
         XCTAssertEqual(notes, [vault.appendingPathComponent("参考/微信流/项目群的聊天.md")])
         XCTAssertEqual(try fm.contentsOfDirectory(atPath: vault.path), ["参考"])
-        XCTAssertTrue(fm.fileExists(atPath: vault.appendingPathComponent("参考/微信流/附件/聊天记录.zip").path))
+        XCTAssertTrue(fm.fileExists(atPath: vault.appendingPathComponent("参考/微信流/附件/原始归档/聊天记录.zip").path))
+    }
+
+    func testAttachmentOnlyArchiveKeepsNestedSameNamesAndInventoriesEveryFile() throws {
+        let archive = root.appendingPathComponent("only-files.zip")
+        try XCTUnwrap(Data(base64Encoded: attachmentOnlyZIP)).write(to: archive)
+        let note = try XCTUnwrap(KnowledgeDelivery.deliver(
+            urls: [archive], folderPath: destination.path, subfolder: "", chatName: nil, sceneName: nil
+        ).first)
+        let flow = destination.appendingPathComponent("微信流", isDirectory: true)
+        let attachments = flow.appendingPathComponent("附件", isDirectory: true)
+        let markdown = try String(contentsOf: note, encoding: .utf8)
+
+        XCTAssertTrue(markdown.contains("未能从原始归档中解析聊天文本"))
+        XCTAssertFalse(markdown.contains("## 聊天记录"))
+        XCTAssertTrue(markdown.contains("[[附件/原始归档/only-files.zip]]"))
+        XCTAssertTrue(markdown.contains("[[附件/图片/same.png]]"))
+        XCTAssertTrue(markdown.contains("[[附件/图片/same (2).png]]"))
+        XCTAssertTrue(markdown.contains("[[附件/其他/README.txt]]"))
+        XCTAssertTrue(markdown.contains("[[附件/电子表格/sheet.XLSX]]"))
+        XCTAssertEqual(try String(contentsOf: attachments.appendingPathComponent("图片/same.png"), encoding: .utf8), "one")
+        XCTAssertEqual(try String(contentsOf: attachments.appendingPathComponent("图片/same (2).png"), encoding: .utf8), "two")
+        XCTAssertEqual(try String(contentsOf: attachments.appendingPathComponent("其他/README.txt"), encoding: .utf8), "plain notes")
+        XCTAssertEqual(try String(contentsOf: attachments.appendingPathComponent("电子表格/sheet.XLSX"), encoding: .utf8), "book")
+    }
+
+    func testOrdinaryFileIsClassifiedWithoutAttemptingZIPExtraction() throws {
+        let files: [(String, String, Data)] = [
+            ("standalone.JPG", "图片", Data([0, 1, 2, 3])),
+            ("document.DOCX", "Word文档", Data([0x50, 0x4b, 0x03, 0x04, 1, 2])),
+            ("book.XLSX", "电子表格", Data([0x50, 0x4b, 0x03, 0x04, 3, 4])),
+        ]
+        for (name, category, bytes) in files {
+            let file = root.appendingPathComponent(name)
+            try bytes.write(to: file)
+            let note = try XCTUnwrap(KnowledgeDelivery.deliver(
+                urls: [file], folderPath: destination.path, subfolder: "", chatName: nil, sceneName: nil
+            ).first)
+            let markdown = try String(contentsOf: note, encoding: .utf8)
+            XCTAssertTrue(markdown.contains("[[附件/\(category)/\(name)]]"))
+            XCTAssertFalse(markdown.contains("原始 ZIP 已保留"))
+            XCTAssertEqual(try Data(contentsOf: destination.appendingPathComponent("微信流/附件/\(category)/\(name)")), bytes)
+        }
+    }
+
+    func testInvalidZipKeepsOriginalAndReportsExtractionFailure() throws {
+        let archive = root.appendingPathComponent("broken.zip")
+        try Data([0x50, 0x4b, 0x03, 0x04, 1, 2, 3]).write(to: archive)
+        let note = try XCTUnwrap(KnowledgeDelivery.deliver(
+            urls: [archive], folderPath: destination.path, subfolder: "", chatName: nil, sceneName: nil
+        ).first)
+        let markdown = try String(contentsOf: note, encoding: .utf8)
+        XCTAssertTrue(markdown.contains("部分附件未能安全提取，原始 ZIP 已保留。"))
+        XCTAssertTrue(fm.fileExists(atPath: destination.appendingPathComponent("微信流/附件/原始归档/broken.zip").path))
+    }
+
+    func testRepeatedTranscriptWithNewAttachmentInventoryDoesNotDuplicateMessages() throws {
+        let archive = try source()
+        var note: URL?
+        for _ in 0..<3 {
+            note = try XCTUnwrap(KnowledgeDelivery.deliver(
+                urls: [archive], folderPath: destination.path, subfolder: "", chatName: "项目群", sceneName: nil
+            ).first)
+        }
+        let markdown = try String(contentsOf: try XCTUnwrap(note), encoding: .utf8)
+        XCTAssertEqual(markdown.components(separatedBy: "**甲**").count - 1, 2)
+        XCTAssertEqual(markdown.components(separatedBy: "**乙**").count - 1, 1)
+        XCTAssertTrue(markdown.contains("messages: 3"))
+        XCTAssertTrue(markdown.contains("- ![[附件/图片/photo (2).png]]"))
+        XCTAssertTrue(markdown.contains("- ![[附件/图片/photo (3).png]]"))
     }
 }

@@ -119,7 +119,7 @@ public sealed class ObsidianNoteTests
             timeZone: Utc);
 
         Assert.Contains("title: \"a \\\"quoted\\\" title\"", note);
-        Assert.Contains("未能从原始归档中解析聊天文本", note);
+        Assert.Contains("未包含可识别的聊天正文", note);
     }
 
     private static WeChatNativeArchive.Transcript Txt(string body) =>

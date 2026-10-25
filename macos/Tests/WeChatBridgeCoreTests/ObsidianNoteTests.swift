@@ -103,6 +103,34 @@ final class ObsidianNoteTests: XCTestCase {
         XCTAssertFalse(note.contains("![[附件/微信图片_202609202355_1.jpg]]"))
     }
 
+    func testNestedAttachmentKeysPreserveDistinctFilesAndOnlyUniqueLeafMentionsLink() throws {
+        let body = "·甲\n2026年9月20日 09:10\nimages/a/same.png and docs/same.png; same.png; images/c/unique.png and unique.png\n"
+        let transcript = WeChatNativeArchive.Transcript(
+            path: "聊天记录.txt", body: body,
+            records: try WeChatTranscriptRecord.parse(body, timeZone: TimeZone(secondsFromGMT: 0)!)
+        )
+        let note = ObsidianNote.render(
+            title: "项目群的聊天", chatName: nil, sceneName: nil,
+            createdAt: Date(timeIntervalSince1970: 0), transcript: transcript,
+            archiveName: "原始归档/chat.zip",
+            attachments: [
+                "images/a/same.png": "图片/same.png",
+                "docs/same.png": "图片/same (2).png",
+                "images/c/unique.png": "图片/unique.png",
+                "README.txt": "其他/README.txt",
+            ], timeZone: TimeZone(secondsFromGMT: 0)!
+        )
+
+        XCTAssertTrue(note.contains("![[附件/图片/same.png]]"))
+        XCTAssertTrue(note.contains("![[附件/图片/same (2).png]]"))
+        XCTAssertTrue(note.contains("[[附件/其他/README.txt]]"))
+        XCTAssertTrue(note.contains("[[附件/原始归档/chat.zip]]"))
+        XCTAssertEqual(note.components(separatedBy: "- ![[附件/图片/same.png]]").count - 1, 1)
+        XCTAssertEqual(note.components(separatedBy: "- ![[附件/图片/same (2).png]]").count - 1, 1)
+        let conversation = note.components(separatedBy: "<!-- wechatbridge-attachments:start -->").first ?? note
+        XCTAssertEqual(conversation.components(separatedBy: "![[附件/图片/unique.png]]").count - 1, 1)
+    }
+
     func testOCRTitleWinsOverTranscriptParticipants() {
         let body = """
         ·甲
@@ -220,6 +248,20 @@ final class ObsidianNoteTests: XCTestCase {
             ),
             .nothingNew
         )
+        guard case .merged(let inventoried) = ObsidianNote.merge(
+            existingMarkdown: generated,
+            transcript: transcript,
+            attachments: ["new/readme.txt": "其他/readme.txt"],
+            archiveName: "原始归档/b.zip",
+            chatName: "群",
+            sceneName: nil,
+            mergedAt: Date(),
+            extractionFailed: true,
+            timeZone: zone
+        ) else { return XCTFail("无新消息时也应补全新批次的附件清单") }
+        XCTAssertTrue(inventoried.contains("- [[附件/原始归档/b.zip]]"))
+        XCTAssertTrue(inventoried.contains("- [[附件/其他/readme.txt]]"))
+        XCTAssertTrue(inventoried.contains("部分附件未能安全提取，原始 ZIP 已保留。"))
         XCTAssertEqual(
             ObsidianNote.merge(
                 existingMarkdown: "---\ntitle: \"群的聊天\"\n---\n# 用户笔记\n",
