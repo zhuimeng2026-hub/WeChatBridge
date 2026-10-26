@@ -326,6 +326,7 @@
   "技能包只能包含普通文件和目录。": "Skill packages may contain only regular files and directories.",
   "技能包包含越界路径。": "The skill package contains a path outside its root.",
   "无法读取技能包。": "The skill package could not be read.",
+  "无法初始化知识库目录。": "The vault folder could not be initialised.",
   "需要屏幕录制权限才能识别微信群名。": "Screen Recording permission is required to read the WeChat group name.",
   "没有找到可见的微信聊天窗口。": "No visible WeChat chat window was found.",
   "无法读取微信标题栏。": "The WeChat title bar could not be read.",
