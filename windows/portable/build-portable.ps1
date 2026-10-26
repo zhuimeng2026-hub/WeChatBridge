@@ -199,11 +199,16 @@ if (Get-ChildItem $OutputDirectory -Recurse -File | Where-Object Extension -in '
     throw 'Private signing material must never be packaged.'
 }
 
+$sumsPath = Join-Path $OutputDirectory 'SHA256SUMS.txt'
+# The manifest must not list itself: a file cannot contain its own hash, and
+# listing the previous run's manifest made every verification report a
+# mismatch on that one line. Exclude it explicitly.
 $hashes = Get-ChildItem $OutputDirectory -Recurse -File |
+    Where-Object { $_.FullName -ne $sumsPath } |
     ForEach-Object { (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash + '  ' + $_.FullName.Substring($OutputDirectory.Length + 1) }
 # UTF8 (not ascii): the file list contains Chinese directory names (e.g.
 # Vault\31.微信会话); ascii mangled those paths and made the sums unverifiable.
-$hashes | Set-Content -LiteralPath (Join-Path $OutputDirectory 'SHA256SUMS.txt') -Encoding UTF8
+$hashes | Set-Content -LiteralPath $sumsPath -Encoding UTF8
 
 Write-Output "Edition: $Edition ($EditionToken)"
 Write-Output "Portable payload: $payload"
