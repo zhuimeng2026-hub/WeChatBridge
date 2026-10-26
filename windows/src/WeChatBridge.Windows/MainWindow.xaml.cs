@@ -86,7 +86,16 @@ public partial class MainWindow : Window
             _reception.SetVault(dialog.FolderName, _reception.Settings.ObsidianSubfolder);
     }
 
-    private void OpenVault_Click(object sender, RoutedEventArgs e) => _reception.OpenVault();
+    private void OpenVault_Click(object sender, RoutedEventArgs e)
+    {
+        // Nothing configured yet: take the user straight to Settings so they
+        // can pick a vault, rather than popping a "please choose" notice that
+        // leaves them hunting for the right window.
+        if (!_reception.Settings.IsVaultConfigured)
+            OpenSettings();
+        else
+            _reception.OpenVault();
+    }
 
     private void RowAction_Click(object sender, RoutedEventArgs e)
     {

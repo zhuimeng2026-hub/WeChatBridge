@@ -272,6 +272,55 @@ internal static class ObsidianVaultRegistry
     }
 
     /// <summary>
+    /// Turns a plain folder into a usable Obsidian vault.
+    /// <para>
+    /// Obsidian treats any folder that contains a <c>.obsidian</c> directory as
+    /// a vault; an empty folder the user just picked in Settings is not one
+    /// yet, and merely adding it to <c>obsidian.json</c> (see <see cref="Register"/>)
+    /// is not enough — Obsidian only reads that file at startup, and a folder
+    /// with no <c>.obsidian</c> of its own is not something it will open cleanly.
+    /// Creating <c>.obsidian</c> makes the empty pick a real vault so delivery
+    /// and <c>obsidian://open</c> resolve against it.
+    /// </para>
+    /// <para>
+    /// Idempotent: a folder that already has <c>.obsidian</c> is left untouched,
+    /// and a folder the user pointed at a pre-existing vault keeps whatever
+    /// Obsidian already wrote there.
+    /// </para>
+    /// </summary>
+    /// <param name="vaultPath">The vault folder to initialise.</param>
+    /// <param name="error">Why the initialisation failed, when it did.</param>
+    /// <returns>True when the folder now contains a <c>.obsidian</c> directory.</returns>
+    public static bool EnsureVaultInitialized(string vaultPath, out string? error)
+    {
+        error = null;
+        var normalized = Normalize(vaultPath);
+        if (normalized.Length == 0)
+        {
+            error = "知识库路径为空。";
+            return false;
+        }
+        if (!Directory.Exists(normalized))
+        {
+            error = $"知识库目录不存在：{normalized}";
+            return false;
+        }
+        var obsidianDir = Path.Combine(normalized, ".obsidian");
+        try
+        {
+            if (!Directory.Exists(obsidianDir))
+                Directory.CreateDirectory(obsidianDir);
+            return true;
+        }
+        catch (Exception write) when (write is IOException or UnauthorizedAccessException
+            or NotSupportedException or ArgumentException)
+        {
+            error = $"无法初始化知识库目录：{write.Message}";
+            return false;
+        }
+    }
+
+    /// <summary>
     /// A 16-character hex id that is not already in use. Obsidian's own ids
     /// look like this and nothing else depends on their value.
     /// </summary>

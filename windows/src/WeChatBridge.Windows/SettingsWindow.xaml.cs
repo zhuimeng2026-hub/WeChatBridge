@@ -156,6 +156,14 @@ public partial class SettingsWindow : Window
             return;
         }
 
+        // An empty folder the user just picked is not yet an Obsidian vault.
+        // Initialise it (create .obsidian) so delivery and obsidian://open work.
+        if (!ObsidianVaultRegistry.EnsureVaultInitialized(vault, out var initError))
+        {
+            ShowError(VaultError, initError ?? L10n.Text("无法初始化知识库目录。"));
+            return;
+        }
+
         var subfolder = SubfolderBox.Text.Trim();
         if (!IsValidSubfolder(subfolder, out var reason))
         {

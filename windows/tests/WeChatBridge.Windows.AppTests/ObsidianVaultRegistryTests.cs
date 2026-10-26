@@ -297,4 +297,50 @@ public sealed class ObsidianVaultRegistryTests : IDisposable
         var vault = root["vaults"]!.AsObject().First().Value!.AsObject();
         Assert.Equal(folder, vault["path"]!.GetValue<string>());
     }
+
+    // --- vault initialisation ----------------------------------------------
+
+    [Fact]
+    public void EnsureVaultInitialized_creates_obsidian_dir_in_an_empty_folder()
+    {
+        var folder = NewFolder("empty");
+
+        Assert.True(ObsidianVaultRegistry.EnsureVaultInitialized(folder, out var error));
+
+        Assert.Null(error);
+        Assert.True(Directory.Exists(Path.Combine(folder, ".obsidian")));
+    }
+
+    [Fact]
+    public void EnsureVaultInitialized_is_idempotent_and_keeps_existing_config()
+    {
+        var folder = NewFolder("vault");
+        var marker = Path.Combine(folder, ".obsidian", "app.json");
+        Directory.CreateDirectory(Path.Combine(folder, ".obsidian"));
+        File.WriteAllText(marker, "{\"custom\":true}");
+
+        Assert.True(ObsidianVaultRegistry.EnsureVaultInitialized(folder, out var error));
+
+        Assert.Null(error);
+        Assert.True(File.Exists(marker));
+        Assert.Equal("{\"custom\":true}", File.ReadAllText(marker));
+    }
+
+    [Fact]
+    public void EnsureVaultInitialized_reports_failure_for_a_missing_directory()
+    {
+        var missing = Path.Combine(_root, "no-such-folder");
+
+        Assert.False(ObsidianVaultRegistry.EnsureVaultInitialized(missing, out var error));
+
+        Assert.NotNull(error);
+    }
+
+    [Fact]
+    public void EnsureVaultInitialized_reports_failure_for_a_blank_path()
+    {
+        Assert.False(ObsidianVaultRegistry.EnsureVaultInitialized("   ", out var error));
+
+        Assert.NotNull(error);
+    }
 }
