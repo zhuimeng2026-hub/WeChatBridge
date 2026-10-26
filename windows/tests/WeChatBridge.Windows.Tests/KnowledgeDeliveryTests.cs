@@ -234,8 +234,8 @@ public sealed class KnowledgeDeliveryTests
     {
         using var fixture = new TempInbox();
         const string transcript = "·甲\\n2026年9月20日 09:10\\n同一条消息\\n";
-        var first = Zip(fixture, "first.zip", [("聊天记录.txt", transcript), ("photo.jpg", "photo")]);
-        var second = Zip(fixture, "second.zip", [("聊天记录.txt", transcript), ("photo.jpg", "photo")]);
+        var first = Zip(fixture, "first.zip", [("聊天记录.txt", transcript)]);
+        var second = Zip(fixture, "second.zip", [("聊天记录.txt", transcript)]);
         var destination = Path.Combine(fixture.Root, "vault");
         Directory.CreateDirectory(destination);
 
