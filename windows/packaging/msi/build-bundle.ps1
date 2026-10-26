@@ -96,11 +96,11 @@ $Runtime = @{
 }[$Arch]
 
 if ($Arch -eq 'x64') {
-  $msi = Join-Path $DistDir "WeChatBridge-$EditionToken-$Version-Windows.msi"
-  $out = Join-Path $DistDir "WeChatBridge-$EditionToken-$Version-Windows-Setup.exe"
+  $msi = Join-Path $DistDir "律档通-$EditionToken-$Version-Windows.msi"
+  $out = Join-Path $DistDir "律档通-$EditionToken-$Version-Windows-Setup.exe"
 } else {
-  $msi = Join-Path $DistDir "WeChatBridge-$EditionToken-$Version-Windows-arm64.msi"
-  $out = Join-Path $DistDir "WeChatBridge-$EditionToken-$Version-Windows-arm64-Setup.exe"
+  $msi = Join-Path $DistDir "律档通-$EditionToken-$Version-Windows-arm64.msi"
+  $out = Join-Path $DistDir "律档通-$EditionToken-$Version-Windows-arm64-Setup.exe"
 }
 $icon = Join-Path $DistDir "payload\$Arch\Assets\AppIcon.ico"
 if (-not $CertificateTrustMsiPath) {
