@@ -341,10 +341,11 @@ public sealed class ReceptionService : INotifyPropertyChanged, IDisposable
         var vault = _settings.ObsidianVaultPath;
         if (string.IsNullOrWhiteSpace(vault) || !Directory.Exists(vault))
         {
+            InboxLogger.Write(_paths, $"打开知识库失败：知识库文件夹不可用（{vault ?? "未配置"}）");
             Notify("知识库文件夹不可用，请重新选择。");
             return;
         }
-        if (!TryStartUri("obsidian://open?path=" + Uri.EscapeDataString(vault)))
+        if (!OpenInObsidian(vault, null, "知识库"))
             Reveal(vault);
     }
 
@@ -353,12 +354,116 @@ public sealed class ReceptionService : INotifyPropertyChanged, IDisposable
         var note = row.Job.NotePath;
         if (string.IsNullOrWhiteSpace(note) || !File.Exists(note))
         {
+            InboxLogger.Write(_paths, $"打开笔记失败：文件不存在（{note ?? "无路径"}）");
             Notify("笔记位置已改变，已为你打开保存文件夹。");
             Reveal(row.Job.VaultPath ?? _settings.ObsidianVaultPath ?? "");
             return;
         }
-        if (!TryStartUri("obsidian://open?path=" + Uri.EscapeDataString(note)))
+        if (!OpenInObsidian(note, row.Job.VaultPath, "笔记"))
             Reveal(Path.GetDirectoryName(note) ?? "");
+    }
+
+    /// <summary>
+    /// Opens a path in Obsidian, and says so in the log either way.
+    /// <para>
+    /// The subtlety is that <c>obsidian://open?path=…</c> only resolves a path
+    /// that already sits inside a vault Obsidian knows about. Point it at an
+    /// unregistered folder and Obsidian answers with a "Vault not found"
+    /// dialog: the URI launches, the process starts, and the failure never
+    /// reaches this code. So the registry is consulted first, and the vault is
+    /// registered when it is missing.
+    /// </para>
+    /// <para>
+    /// Registration only reaches Obsidian's configuration file, and Obsidian
+    /// reads that file at startup — a vault added while Obsidian runs is not
+    /// recognised until the next start. Rather than leave the user staring at
+    /// a dialog they did not cause, that case falls back to the file manager
+    /// and says why.
+    /// </para>
+    /// </summary>
+    /// <param name="target">The vault folder or note to open.</param>
+    /// <param name="vaultPath">The vault the target belongs to, when known.</param>
+    /// <param name="what">"知识库" or "笔记" — used in the log only.</param>
+    /// <returns>True when Obsidian was asked to open the target.</returns>
+    private bool OpenInObsidian(string target, string? vaultPath, string what)
+    {
+        var vault = vaultPath ?? _settings.ObsidianVaultPath ?? "";
+
+        if (!ObsidianProtocol.IsRegistered())
+        {
+            InboxLogger.Write(_paths, $"打开{what}失败：obsidian:// 协议未注册，已回退到资源管理器。");
+            Notify("未检测到 Obsidian，已为你打开文件夹。");
+            return false;
+        }
+
+        var registered = ObsidianVaultRegistry.FindContaining(target)
+            ?? (string.IsNullOrWhiteSpace(vault) ? null : ObsidianVaultRegistry.FindContaining(vault));
+
+        if (registered is null)
+        {
+            // Not known to Obsidian. Register the vault that owns the target.
+            var toRegister = string.IsNullOrWhiteSpace(vault) ? target : vault;
+            if (!ObsidianVaultRegistry.Register(toRegister, out var id, out var error))
+            {
+                InboxLogger.Write(_paths, $"打开{what}失败：知识库注册失败（{error}），已回退到资源管理器。");
+                Notify("无法在 Obsidian 中打开，已为你打开文件夹。");
+                return false;
+            }
+
+            // Obsidian reads its configuration at startup. When it is not
+            // running, the registration above is in place by the time the URI
+            // starts it, so the vault resolves. When it is running, its
+            // in-memory list predates the registration and the same URI would
+            // raise the very dialog this code exists to avoid.
+            if (ObsidianVaultRegistry.IsRunning())
+            {
+                InboxLogger.Write(_paths,
+                    $"打开{what}：知识库已写入 Obsidian 注册表（id={id}），但 Obsidian 正在运行，"
+                    + "需重启后才会识别，本次改为在资源管理器中打开。");
+                Notify("该知识库刚添加到 Obsidian，重启 Obsidian 后即可直接在 Obsidian 中打开；现在先为你打开文件夹。");
+                return false;
+            }
+
+            registered = new ObsidianVaultEntry(id!, toRegister);
+        }
+
+        // Inside a registered vault: vault + file is the documented form and
+        // does not depend on how Obsidian resolves an absolute path.
+        var uri = string.IsNullOrWhiteSpace(vault)
+            ? $"obsidian://open?vault={Uri.EscapeDataString(registered.Id)}"
+            : BuildNoteUri(registered.Id, vault, target);
+
+        if (!TryStartUri(uri, out var failure))
+        {
+            InboxLogger.Write(_paths, $"打开{what}失败：无法启动协议（{failure}），已回退到资源管理器。");
+            Notify("无法在 Obsidian 中打开，已为你打开文件夹。");
+            return false;
+        }
+
+        InboxLogger.Write(_paths, $"打开{what}：{uri}（目标 {target}）");
+        return true;
+    }
+
+    /// <summary>
+    /// Builds an <c>obsidian://open?vault=…&file=…</c> URI for a file inside
+    /// a vault. The file is expressed relative to the vault root, the way
+    /// Obsidian's own "Copy Obsidian URL" does it.
+    /// </summary>
+    private static string BuildNoteUri(string vaultId, string vaultPath, string notePath)
+    {
+        var root = vaultPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        string relative;
+        try
+        {
+            relative = Path.GetRelativePath(root, notePath);
+        }
+        catch (Exception error) when (error is ArgumentException or PathTooLongException)
+        {
+            relative = notePath;
+        }
+        var file = string.Join('/',
+            relative.Replace('\\', '/').Split('/').Select(Uri.EscapeDataString));
+        return $"obsidian://open?vault={Uri.EscapeDataString(vaultId)}&file={file}";
     }
 
     public void Retry(ReceptionRow row)
@@ -1077,8 +1182,17 @@ public sealed class ReceptionService : INotifyPropertyChanged, IDisposable
         NotificationRequested?.Invoke(message);
     }
 
-    private static bool TryStartUri(string uri)
+    /// <summary>
+    /// Starts a URI through the shell.
+    /// <para>
+    /// The failure reason is returned rather than swallowed: the caller logs
+    /// it, and a launch that fails for an unknown reason is the difference
+    /// between "Obsidian was not installed" and "Obsidian said no".
+    /// </para>
+    /// </summary>
+    private static bool TryStartUri(string uri, out string? failure)
     {
+        failure = null;
         try
         {
             Process.Start(new ProcessStartInfo(uri) { UseShellExecute = true });
@@ -1086,6 +1200,7 @@ public sealed class ReceptionService : INotifyPropertyChanged, IDisposable
         }
         catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException)
         {
+            failure = error.Message;
             return false;
         }
     }
