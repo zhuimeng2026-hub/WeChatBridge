@@ -45,7 +45,7 @@ public partial class App : Application
     private InboxPaths? _paths;
     private MainViewModel? _model;
     private TrayIconService? _tray;
-    private WorkBuddyArchiveWatcher? _workBuddyWatcher;
+    private ReceptionService? _reception;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -96,16 +96,21 @@ public partial class App : Application
         _prefetchEvent = new EventWaitHandle(false, EventResetMode.AutoReset, PrefetchEventName);
         _collectionImportEvent = new EventWaitHandle(false, EventResetMode.AutoReset, CollectionImportProgress.EventName);
         _shutdown = new CancellationTokenSource();
-        var requestedBatch = ReadArgument(e.Args, "--batch-id");
+        var settingsStore = new AppSettingsStore();
+        // Load once here so a migrated settings file is written back even when
+        // the user never opens the settings dialog.
+        _ = settingsStore.Load();
+        _reception = new ReceptionService(settingsStore, _paths);
+        settingsStore.Save(_reception.Settings);
+        _reception.NotificationRequested += message => _model?.ShowToast(message);
+
         var model = new MainViewModel(_paths);
         _model = model;
-        model.WorkBuddyAutoImportChanged += ConfigureWorkBuddyWatcher;
-        ConfigureWorkBuddyWatcher(model.WorkBuddyAutoImport);
-        var window = new MainWindow(model, requestedBatch);
+        var window = new MainWindow(_reception);
         MainWindow = window;
         // The tray exists in every instance — it is the resident process's
         // only chrome when the window is hidden.
-        _tray = new TrayIconService(model, () => window, Shutdown);
+        _tray = new TrayIconService(model, () => window, Shutdown, _reception);
         // Closing the window hides it to the tray; the share relay must stay
         // resident, so only the tray's 退出 really ends the process.
         ShutdownMode = ShutdownMode.OnExplicitShutdown;
@@ -116,33 +121,13 @@ public partial class App : Application
         if (!background)
         {
             window.Show();
-            // The guide is written for an installed build: it tells an unregistered
-            // user to reinstall the full package, offers a sign-in-startup toggle
-            // that a removable drive cannot honour, and lists twelve entries that
-            // mean nothing before the share menu is registered. Portable mode skips
-            // it — the Entries page carries the share-registration action instead.
-            if (!AppLayout.Current.IsPortable && new OnboardingStateStore().NeedsOnboarding())
-                new OnboardingWindow(model) { Owner = window }.Show();
-
-            // The licence layer is resolved once, here, rather than lazily by whichever
-            // pane happens to ask first: a purchased licence should already be in force
-            // before anything reads it, and a resolution that fails belongs in the log
-            // next to startup rather than surfacing later as a pane that quietly shows
-            // the wrong thing.
+            // The licence layer is resolved once, here, rather than lazily by
+            // whichever surface asks first: a purchased licence should already
+            // be in force before anything reads it, and a resolution that fails
+            // belongs in the log next to startup.
             var licensing = LicensingBootstrap.Current;
             LogStartup($"licensing: edition={licensing.EditionName} pro={licensing.IsPro} " +
                 $"activation={licensing.Resolution.Activation} detail={licensing.Resolution.Detail}");
-
-            // The buy-out gate. Reached only from an interactive launch — the
-            // --background instance above returns long before this, because putting a
-            // window up would steal the foreground from the target app mid-delivery.
-            //
-            // It locks nothing: forwarding is available to everyone, and this only
-            // offers a path to buying. Offered once per install; the 通用 page keeps
-            // the button for anyone who wants it later.
-            var gate = ActivationGate.Current;
-            var page = gate.ShowAtStartup(window, LogStartup);
-            LogStartup($"activation: gate offered {page}, state={gate.Snapshot.State}");
         }
         // MainWindow's inbox load rides the Loaded event — a hidden window
         // never raises it, so a background launch must load explicitly or it
@@ -196,7 +181,7 @@ public partial class App : Application
     protected override void OnExit(ExitEventArgs e)
     {
         _tray?.Dispose();
-        _workBuddyWatcher?.Dispose();
+        _reception?.Dispose();
         _model?.DisposeServices();
         _shutdown?.Cancel();
         _changeEvent?.Dispose();
@@ -209,32 +194,6 @@ public partial class App : Application
             _mutex.Dispose();
         }
         base.OnExit(e);
-    }
-
-    private void ConfigureWorkBuddyWatcher(bool enabled)
-    {
-        _workBuddyWatcher?.Dispose();
-        _workBuddyWatcher = null;
-        if (!enabled || _model is null || _paths is null) return;
-        try
-        {
-            _workBuddyWatcher = new WorkBuddyArchiveWatcher(
-                path => Dispatcher.BeginInvoke(new Action(() => _ = ImportWorkBuddyArchiveAsync(path))),
-                error => InboxLogger.Write(_paths, L10n.Text("WorkBuddy 自动导入监听失败"), error));
-            InboxLogger.Write(_paths, $"WorkBuddy 自动导入已启用：{WorkBuddyArchiveWatcher.DefaultDirectory}");
-        }
-        catch (Exception error)
-        {
-            InboxLogger.Write(_paths, L10n.Text("WorkBuddy 自动导入监听失败"), error);
-            _model.ShowToast(L10n.Text("无法监视 WorkBuddy 聊天记录目录。"), warning: true);
-        }
-    }
-
-    private async Task ImportWorkBuddyArchiveAsync(string path)
-    {
-        if (_model is null || MainWindow is not MainWindow window) return;
-        await _model.ImportWorkBuddyArchiveAsync(path);
-        window.RefreshBatches();
     }
 
     private async Task WaitForChangesAsync(CancellationToken cancellationToken)

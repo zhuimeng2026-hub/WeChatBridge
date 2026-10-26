@@ -11,7 +11,7 @@ namespace WeChatBridge.Windows;
 public sealed class AppSettings
 {
     public const string FileName = "settings.json";
-    public const int CurrentSchemaVersion = 1;
+    public const int CurrentSchemaVersion = 2;
 
     /// <summary>
     /// A week, matching macOS <c>Preferences.defaultHistoryRetentionDays</c>:
@@ -38,12 +38,34 @@ public sealed class AppSettings
     public string? ObsidianVaultPath { get; set; }
 
     /// <summary>Folder under the vault the chat Markdown and original ZIP land in.</summary>
-    public string ObsidianSubfolder { get; set; } = "31.微信会话";
+    /// <remarks>
+    /// New installs use 微信聊天; an upgraded settings file keeps whatever it had
+    /// (see <see cref="Migrate"/>), so an existing vault layout never moves.
+    /// </remarks>
+    public string ObsidianSubfolder { get; set; } = "微信聊天";
     public bool AutoArchiveWorkBuddyToObsidian { get; set; } = true;
     public string Language { get; set; } = "system";
     public bool OpenObsidianAfterDelivery { get; set; }
     /// <summary>Import newly-created chat ZIPs from WorkBuddy's local export folder.</summary>
     public bool WorkBuddyAutoImport { get; set; } = true;
+
+    /// <summary>
+    /// A user-chosen source directory. Empty means "auto": the current user's
+    /// documented WorkBuddy export folder. A value here is only ever set by the
+    /// user; detection never writes it.
+    /// </summary>
+    public string? WorkBuddyDirectoryOverride { get; set; }
+
+    /// <summary>
+    /// Reception is paused and must stay paused across restarts. New installs
+    /// start receiving; an upgrade from a settings file that had auto-import
+    /// switched off becomes paused rather than silently starting to receive.
+    /// </summary>
+    public bool ReceptionPaused { get; set; }
+
+    /// <summary>Successful-archive notifications only; failures stay visible in the list.</summary>
+    public bool NotifyOnArchiveSuccess { get; set; } = true;
+
     public string? DeliveryFolderPath { get; set; }
     public string DeliverySubfolder { get; set; } = "律档通";
 
@@ -72,6 +94,27 @@ public sealed class AppSettings
     public bool IsEntryEnabled(ShareAction action) =>
         !DisabledEntries.Contains(action.RawValue());
 
+    /// <summary>True once a vault has been chosen; the minimal window keys its first-use state off this.</summary>
+    public bool IsVaultConfigured => !string.IsNullOrWhiteSpace(ObsidianVaultPath);
+
+    /// <summary>
+    /// Brings an older settings file up to the current schema. Never moves the
+    /// vault or the subfolder: an existing user's layout is data, not a default.
+    /// </summary>
+    public AppSettings Migrate()
+    {
+        if (SchemaVersion >= CurrentSchemaVersion)
+            return this;
+        if (SchemaVersion < 2)
+        {
+            // The old auto-import switch carried the same intent as 暂停接收:
+            // switched off meant "not now", not "never".
+            ReceptionPaused = !WorkBuddyAutoImport;
+        }
+        SchemaVersion = CurrentSchemaVersion;
+        return this;
+    }
+
     public void SetEntryEnabled(ShareAction action, bool enabled)
     {
         var raw = action.RawValue();
@@ -89,8 +132,13 @@ public sealed class AppSettingsStore
     public AppSettingsStore(string? directory = null) =>
         _directory = directory ?? ConfigStore.DefaultDirectory;
 
-    public AppSettings Load() =>
-        ConfigStore.Load<AppSettings>(_directory, AppSettings.FileName) ?? new AppSettings();
+    public AppSettings Load()
+    {
+        var loaded = ConfigStore.Load<AppSettings>(_directory, AppSettings.FileName);
+        // A missing file is a brand-new install, not a migration: it starts at
+        // the current schema with the new-install defaults.
+        return loaded is null ? new AppSettings() : loaded.Migrate();
+    }
 
     public void Save(AppSettings settings) =>
         ConfigStore.Save(_directory, AppSettings.FileName, settings);

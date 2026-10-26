@@ -11,6 +11,24 @@ public static class KnowledgeDelivery
 {
     public enum FailureKind { NotConfigured, UnreadableArchive }
 
+    /// <summary>
+    /// Whether the archive landed whole. <see cref="Partial"/> means every file the
+    /// delivery could produce was committed, but the transcript or some media was
+    /// not converted — the note says so and the caller must not report plain success.
+    /// </summary>
+    public enum DeliveryStatus { Complete, Partial }
+
+    /// <summary>
+    /// What a delivery actually produced. The paths are the ones written, not ones
+    /// re-derived from the chat name, so 「打开笔记」 opens the real file.
+    /// </summary>
+    public sealed record DeliveryResult(
+        IReadOnlyList<string> Notes,
+        IReadOnlyList<string> Archives,
+        IReadOnlyList<string> Attachments,
+        DeliveryStatus Status,
+        IReadOnlyList<string> Warnings);
+
     public sealed class FailureException : Exception
     {
         public FailureException(FailureKind kind, Exception? inner = null)
@@ -41,6 +59,15 @@ public static class KnowledgeDelivery
     /// <summary>Delivers into an explicitly selected vault and subfolder.</summary>
     public static List<string> Deliver(
         IReadOnlyList<string> paths, string vaultPath, string subfolder,
+        string? chatName, string? sceneName, CancellationToken cancellationToken = default) =>
+        DeliverResult(paths, vaultPath, subfolder, chatName, sceneName, cancellationToken).Notes.ToList();
+
+    /// <summary>
+    /// Delivers and reports what actually landed: the note paths to open, the
+    /// archived ZIPs, the extracted attachments, and whether anything degraded.
+    /// </summary>
+    public static DeliveryResult DeliverResult(
+        IReadOnlyList<string> paths, string vaultPath, string subfolder,
         string? chatName, string? sceneName, CancellationToken cancellationToken = default)
     {
         if (paths.Count == 0) throw new FailureException(FailureKind.UnreadableArchive);
@@ -53,6 +80,9 @@ public static class KnowledgeDelivery
         Directory.CreateDirectory(attachmentRoot);
 
         var written = new List<string>();
+        var archivesWritten = new List<string>();
+        var attachmentsWritten = new List<string>();
+        var warnings = new List<string>();
         foreach (var path in paths)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -81,6 +111,7 @@ public static class KnowledgeDelivery
                 Directory.CreateDirectory(archiveFolder);
                 var savedArchive = FolderDelivery.Save([path], archiveFolder, cancellationToken).Single();
                 archiveRelative = $"原始归档/{Path.GetFileName(savedArchive)}";
+                archivesWritten.Add(savedArchive);
 
                 var staging = Path.Combine(Path.GetTempPath(), "wechatbridge-media-" + Guid.NewGuid().ToString("N"));
                 try
@@ -102,6 +133,7 @@ public static class KnowledgeDelivery
                         var saved = FolderDelivery.Save([sourcePath], categoryFolder, cancellationToken).Single();
                         var relative = $"{category}/{Path.GetFileName(saved)}";
                         attachmentPaths.Add(relative);
+                        attachmentsWritten.Add(saved);
                         referenceMap[sourceName] = relative;
                     }
                 }
@@ -109,6 +141,7 @@ public static class KnowledgeDelivery
                 catch
                 {
                     extractionIssue = "附件提取未完成，原始 ZIP 已保留；请检查 ZIP 是否损坏或包含不支持的内容。";
+                    warnings.Add(extractionIssue);
                 }
                 finally { TryDeleteDirectory(staging); }
             }
@@ -155,7 +188,12 @@ public static class KnowledgeDelivery
             WriteAtomic(note, markdown);
             written.Add(note);
         }
-        return written;
+        return new DeliveryResult(
+            written,
+            archivesWritten,
+            attachmentsWritten,
+            warnings.Count == 0 ? DeliveryStatus.Complete : DeliveryStatus.Partial,
+            warnings);
     }
 
     // Office Open XML documents are ZIP containers too, but are ordinary standalone
