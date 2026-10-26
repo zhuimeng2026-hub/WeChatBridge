@@ -67,6 +67,22 @@
                             Style="{StaticResource SettingsButton}" Click="ResetSource_Click" />
                 </StackPanel>
 
+                <!-- Diagnostics: the log is the evidence, and the user has to
+                     be able to reach it without knowing where it is. -->
+                <Separator Margin="0,20,0,0" />
+                <TextBlock Text="{loc:Loc Key='诊断日志'}" Margin="0,16,0,6" FontSize="12.5"
+                           Foreground="{StaticResource InkSecondaryColor}" />
+                <TextBlock x:Name="LogPathText" FontSize="12" TextWrapping="Wrap"
+                           Foreground="{StaticResource InkColor}" />
+                <TextBlock x:Name="LogHintText" Margin="0,4,0,0" FontSize="11.5" TextWrapping="Wrap"
+                           Foreground="{StaticResource InkTertiaryColor}" />
+                <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                    <Button Content="{loc:Loc Key='导出诊断日志'}" Style="{StaticResource SettingsButton}"
+                            Click="ExportLog_Click" />
+                    <Button Content="{loc:Loc Key='打开日志目录'}" Margin="8,0,0,0"
+                            Style="{StaticResource SettingsButton}" Click="OpenLogFolder_Click" />
+                </StackPanel>
+
                 <TextBlock x:Name="VersionText" Margin="0,22,0,0" FontSize="11.5"
                            Foreground="{StaticResource InkTertiaryColor}" />
             </StackPanel>

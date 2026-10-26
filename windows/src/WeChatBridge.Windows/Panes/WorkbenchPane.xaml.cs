@@ -8,6 +8,7 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Media;
 using Microsoft.Win32;
 using WeChatBridge.Windows.Core;
+using WeChatBridge.Windows.Services;
 
 namespace WeChatBridge.Windows.Panes;
 
@@ -159,7 +160,11 @@ public partial class WorkbenchPane : UserControl
     {
         if (SearchHint is not null) SearchHint.Visibility = string.IsNullOrEmpty(SearchBox.Text) ? Visibility.Visible : Visibility.Collapsed;
         try { Refilter(); }
-        catch (Exception error) { StatusText.Text = L10n.Format($"搜索失败：{error.Message}"); }
+        catch (Exception error)
+        {
+            DiagnosticSink.Warn("按关键字筛选内容失败。", error);
+            StatusText.Text = L10n.Format($"搜索失败：{error.Message}");
+        }
     }
 
     private void Layout_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -436,7 +441,11 @@ public partial class WorkbenchPane : UserControl
         if (CaseSelector.SelectedItem is not ComboBoxItem { Tag: string scope }) return;
         _activeCaseScope = scope;
         try { Refilter(); }
-        catch (Exception error) { StatusText.Text = L10n.Format($"筛选失败：{error.Message}"); }
+        catch (Exception error)
+        {
+            DiagnosticSink.Warn("按案例范围筛选内容失败。", error);
+            StatusText.Text = L10n.Format($"筛选失败：{error.Message}");
+        }
     }
 
     private void CopyRequest_Click(object sender, RoutedEventArgs e)

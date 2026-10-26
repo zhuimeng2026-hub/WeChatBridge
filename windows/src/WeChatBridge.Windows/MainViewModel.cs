@@ -63,7 +63,17 @@ public sealed class BatchRow : INotifyPropertyChanged
             BoundaryText = CollectionSummary.Format([_metadata], SizeText) + "\n"
                 + string.Join("\n\n", references.Select(r => $"{r.Label} · {r.Record.Date.LocalDateTime:yyyy-MM-dd HH:mm} · {r.Record.Sender}\n{r.Record.Text}"));
         }
-        catch { _metadata = new(null, null, null); BoundaryText = L10n.Text("未能读取位置参考，原始文件已保存"); }
+        catch (Exception error)
+        {
+            // The raw file is kept, so nothing is lost — but the batch's
+            // position in the conversation is gone, and the user sees a
+            // generic sentence. The reason belongs in the log.
+            // (The sink, not _paths: this runs during construction, before
+            // the field is assigned.)
+            DiagnosticSink.Warn("读取位置参考失败，原始文件已保存。", error);
+            _metadata = new(null, null, null);
+            BoundaryText = L10n.Text("未能读取位置参考，原始文件已保存");
+        }
         finally
         {
             _readingBoundaries = false;
@@ -1199,7 +1209,11 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
         foreach (var batch in _batches.Where(b => !Collections.Ledger.ProtectedBatchIDs.Contains(b.Id)))
         {
             try { _reader.Discard(batch.Id); }
-            catch (Exception error) { InboxFailure = error.Message; }
+            catch (Exception error)
+            {
+                InboxLogger.Write(_paths, $"丢弃批次失败：{batch.Id:N}", error);
+                InboxFailure = error.Message;
+            }
         }
         Reload();
     }

@@ -66,9 +66,16 @@ public static class KnowledgeDelivery
     /// Delivers and reports what actually landed: the note paths to open, the
     /// archived ZIPs, the extracted attachments, and whether anything degraded.
     /// </summary>
+    /// <param name="diagnose">
+    /// Receives a message and an optional exception whenever a step degrades
+    /// instead of failing outright. Null disables the reporting, which is what
+    /// the macOS build and the tests use — the Core library must not assume a
+    /// log destination it does not own.
+    /// </param>
     public static DeliveryResult DeliverResult(
         IReadOnlyList<string> paths, string vaultPath, string subfolder,
-        string? chatName, string? sceneName, CancellationToken cancellationToken = default)
+        string? chatName, string? sceneName, CancellationToken cancellationToken = default,
+        Action<string, Exception?>? diagnose = null)
     {
         if (paths.Count == 0) throw new FailureException(FailureKind.UnreadableArchive);
         FolderDelivery.ValidateFolder(vaultPath);
@@ -105,7 +112,14 @@ public static class KnowledgeDelivery
                         transcript = null;
                 }
                 catch (OperationCanceledException) { throw; }
-                catch { transcript = null; }
+                catch (Exception error)
+                {
+                    // The transcript is optional: a ZIP that does not parse as
+                    // a native WeChat archive still gets archived, just
+                    // without a readable transcript. Say so, with the reason.
+                    diagnose?.Invoke("无法解析聊天记录正文，笔记将不含消息正文。", error);
+                    transcript = null;
+                }
 
                 var archiveFolder = Path.Combine(attachmentRoot, "原始归档");
                 Directory.CreateDirectory(archiveFolder);
@@ -138,8 +152,12 @@ public static class KnowledgeDelivery
                     }
                 }
                 catch (OperationCanceledException) { throw; }
-                catch
+                catch (Exception error)
                 {
+                    // The archive itself is already saved, so this is a
+                    // degradation rather than a failure — but the attachments
+                    // are missing, and the user needs to know why.
+                    diagnose?.Invoke("附件提取未完成，原始 ZIP 已保留。", error);
                     extractionIssue = "附件提取未完成，原始 ZIP 已保留；请检查 ZIP 是否损坏或包含不支持的内容。";
                     warnings.Add(extractionIssue);
                 }

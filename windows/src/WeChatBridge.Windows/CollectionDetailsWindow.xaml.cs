@@ -6,6 +6,7 @@ using System.Windows.Media;
 using System.Windows.Threading;
 using WeChatBridge.Windows.Core;
 using WeChatBridge.Windows.Components;
+using WeChatBridge.Windows.Services;
 
 namespace WeChatBridge.Windows;
 
@@ -348,7 +349,11 @@ public partial class CollectionDetailsWindow : Window
             await Task.Delay(1200);
             button.Content = L10n.Text("复制这条文字");
         }
-        catch (Exception error) { Message.Text = error.Message; }
+        catch (Exception error)
+        {
+            DiagnosticSink.Warn("复制消息文字失败。", error);
+            Message.Text = error.Message;
+        }
     }
     private void More_Click(object sender, RoutedEventArgs e)
     {

@@ -230,7 +230,14 @@ public sealed class InboxReader
         {
             if (protectedBatchIDs?.Contains(batch.Id) == true || reference - batch.CreatedAt <= olderThan)
                 continue;
-            try { Discard(batch.Id); removed++; } catch { }
+            try { Discard(batch.Id); removed++; }
+            catch (Exception error)
+            {
+                // The batch stays on disk because it could not be removed.
+                // That is the safe outcome, but it means the cleanup did not
+                // do what it said, and the reason belongs in the log.
+                DiagnosticLog.Warn(_paths, $"清理过期批次失败：{batch.Id:N}", error);
+            }
         }
         return removed + PruneUnreadable(olderThan, reference, protectedBatchIDs);
     }
@@ -256,7 +263,11 @@ public sealed class InboxReader
                 ?? new DateTimeOffset(File.GetCreationTimeUtc(directory), TimeSpan.Zero);
             if (now - created <= olderThan)
                 continue;
-            try { TrashOrRemove(directory); removed++; } catch { }
+            try { TrashOrRemove(directory); removed++; }
+            catch (Exception error)
+            {
+                DiagnosticLog.Warn(_paths, $"清理无法读取的批次目录失败：{directory}", error);
+            }
         }
         return removed;
     }
@@ -271,8 +282,18 @@ public sealed class InboxReader
         foreach (var file in Directory.EnumerateFiles(directory, "*.json"))
         {
             string? text = null;
-            try { text = File.ReadAllText(file); } catch { }
-            try { File.Delete(file); } catch { }
+            try { text = File.ReadAllText(file); }
+            catch (Exception error)
+            {
+                // A failure report that cannot be read is a report the user
+                // never sees. It is kept, so the next run can try again.
+                DiagnosticLog.Warn(_paths, $"读取失败报告失败：{file}", error);
+            }
+            try { File.Delete(file); }
+            catch (Exception error)
+            {
+                DiagnosticLog.Info(_paths, $"删除失败报告失败（下次启动会再试）：{file}", error);
+            }
             if (text is null)
                 continue;
             try

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.IO;
 using System.Windows;
 using WeChatBridge.Windows.Core;
@@ -32,7 +33,58 @@ public partial class SettingsWindow : Window
 
         var version = typeof(SettingsWindow).Assembly.GetName().Version;
         VersionText.Text = $"版本 {version?.ToString(3) ?? "1.0.8"} · {L10n.Text(Edition.DisplayName)}";
+        LogPathText.Text = reception.Paths.Logs;
+        LogHintText.Text = L10n.Text("日志记录了程序运行时的每一步与全部错误。反馈问题时请附上导出的压缩包，其中不含聊天内容。");
         RefreshSourceSummary();
+    }
+
+    /// <summary>
+    /// Exports the diagnostic log next to itself and tells the user where it
+    /// went. The bundle is the thing a user can actually hand over — the log
+    /// file on its own is buried in a folder they never knew existed.
+    /// </summary>
+    private void ExportLog_Click(object sender, RoutedEventArgs e)
+    {
+        var bundle = DiagnosticExportService.Export(_reception.Paths, null, out var error);
+        if (bundle is null)
+        {
+            MessageBox.Show(
+                this,
+                L10n.Format($"导出诊断日志失败：{error}"),
+                L10n.Text("律档通"),
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+            DiagnosticSink.Error($"导出诊断日志失败：{error}");
+            return;
+        }
+
+        DiagnosticSink.Info($"已导出诊断日志：{bundle}");
+        var answer = MessageBox.Show(
+            this,
+            L10n.Format($"诊断日志已导出到：\n{bundle}\n\n是否打开所在文件夹？"),
+            L10n.Text("律档通"),
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Information);
+        if (answer == MessageBoxResult.Yes)
+            RevealInExplorer(bundle);
+    }
+
+    private void OpenLogFolder_Click(object sender, RoutedEventArgs e) =>
+        RevealInExplorer(_reception.Paths.Logs);
+
+    private static void RevealInExplorer(string path)
+    {
+        try
+        {
+            if (Directory.Exists(path))
+                Process.Start(new ProcessStartInfo("explorer.exe", $"\"{path}\"") { UseShellExecute = true });
+            else if (File.Exists(path))
+                Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{path}\"") { UseShellExecute = true });
+        }
+        catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException)
+        {
+            DiagnosticSink.Warn("打开日志目录失败。", error);
+        }
     }
 
     private void Browse_Click(object sender, RoutedEventArgs e)

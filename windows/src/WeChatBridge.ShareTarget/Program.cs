@@ -67,6 +67,9 @@ internal static class Program
             return;
         }
         var paths = new InboxPaths();
+        // The helper is a separate process with its own failures, and it
+        // shares the inbox's log with the main app — one file, one timeline.
+        DiagnosticSink.Attach(paths);
 
         // Dev/self-test hook: `WeChatBridge.ShareTarget.exe --picker-preview`
         // opens the entry panel with sample rows so the design can be
@@ -229,7 +232,13 @@ internal static class Program
                 await writer.WriteLineAsync(JsonSerializer.Serialize(
                     new StubShareReply(false, error.Message), StubForwarder.JsonOptions));
             }
-            catch { }
+            catch (Exception replyError)
+            {
+                // The reply goes back to whoever asked for the share. If it
+                // cannot be written, that caller is left waiting — and the
+                // only trace of why is here.
+                InboxLogger.Write(paths, "写入分享失败回复失败。", replyError);
+            }
         }
         finally
         {
@@ -384,7 +393,14 @@ internal static class Program
             await receiptChoice;
             var (intent, initialOutcome) = ResolveForward(action, answer);
             string? chatName = null;
-            try { chatName = (await titleSnapshot.WaitAsync(TimeSpan.FromSeconds(3)))?.Name; } catch { }
+            try { chatName = (await titleSnapshot.WaitAsync(TimeSpan.FromSeconds(3)))?.Name; }
+            catch (Exception error)
+            {
+                // The chat name is a label on the archive. Losing it is not
+                // fatal, but the batch then shows up as a file name, and the
+                // reason it could not be read is worth keeping.
+                InboxLogger.Write(paths, "读取聊天名称失败，记录将使用文件名。", error);
+            }
             var committed = await InboxWriter.CommitAsync(
                 paths, staged, intent, initialOutcome, chatName: chatName);
             Trace(paths, $"share.committed batch={committed.BatchId:N}");

@@ -82,9 +82,21 @@ public sealed partial class MainViewModel
         return _pendingForward = Run();
         async Task Run()
         {
+            // A failed predecessor must not cancel this share: each batch is
+            // delivered on its own. The predecessor's own failure is logged
+            // where it happened.
             try { await predecessor; } catch { }
             try { await PerformForwardCore(batch, action, target, freshShare, prefetch); }
-            catch (Exception error) { Record(BatchOutcomeKind.Failed, batch.Id, error.Message); ShowToast(error.Message, warning: true); Reload(); }
+            catch (Exception error)
+            {
+                // The share did not go through. The toast tells the user; the
+                // log says why — the two are different audiences.
+                InboxLogger.Write(_paths,
+                    $"转发失败：批次={batch.Id:N} 动作={action.RawValue()} 目标={target?.DisplayName ?? "(无)"}", error);
+                Record(BatchOutcomeKind.Failed, batch.Id, error.Message);
+                ShowToast(error.Message, warning: true);
+                Reload();
+            }
         }
     }
 
@@ -106,7 +118,11 @@ public sealed partial class MainViewModel
             _collectionWindow.Show();
             if (activate) _collectionWindow.Activate();
         }
-        catch (Exception error) { ShowToast(error.Message, warning: true); }
+        catch (Exception error)
+        {
+            InboxLogger.Write(_paths, "打开收集窗口失败。", error);
+            ShowToast(error.Message, warning: true);
+        }
     }
 
     public bool RenameCollection(Guid id, string name)
@@ -118,7 +134,12 @@ public sealed partial class MainViewModel
             Reload();
             return true;
         }
-        catch (Exception error) { ShowToast(error.Message, warning: true); return false; }
+        catch (Exception error)
+        {
+            InboxLogger.Write(_paths, $"重命名收集失败：{id:N}", error);
+            ShowToast(error.Message, warning: true);
+            return false;
+        }
     }
 
     public void ShowCollectionDelivery(Guid id)

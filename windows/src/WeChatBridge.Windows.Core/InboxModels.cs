@@ -441,24 +441,22 @@ public static class InboxWriter
 
 public sealed class InboxValidationException(string message) : Exception(message);
 
+/// <summary>
+/// The original logging entry point, kept so that the fifty-odd existing call
+/// sites do not all have to change at once. It forwards to
+/// <see cref="DiagnosticLog"/>; new code should call that directly and pick a
+/// level.
+/// </summary>
 public static class InboxLogger
 {
-    private static readonly object Gate = new();
-
-    public static void Write(InboxPaths paths, string message, Exception? error = null)
-    {
-        try
-        {
-            paths.EnsureCreated();
-            var line = $"{DateTimeOffset.UtcNow:O} {message}" + (error is null ? string.Empty : $" | {error}");
-            lock (Gate)
-            {
-                File.AppendAllText(Path.Combine(paths.Logs, "windows.log"), line + Environment.NewLine);
-            }
-        }
-        catch
-        {
-            // Logging must not break the share path.
-        }
-    }
+    /// <summary>
+    /// Records an event. A message with an exception is an error; a message
+    /// without one is progress.
+    /// </summary>
+    public static void Write(InboxPaths paths, string message, Exception? error = null) =>
+        DiagnosticLog.Write(
+            paths,
+            error is null ? LogLevel.Info : LogLevel.Error,
+            message,
+            error);
 }

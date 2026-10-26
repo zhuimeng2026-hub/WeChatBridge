@@ -19,12 +19,33 @@ namespace WeChatBridge.Windows.Services;
 /// </summary>
 public static class WeChatUiTitleReader
 {
+    /// <summary>
+    /// Records why a title could not be read.
+    /// <para>
+    /// A missing group name is a support question ("the chat is called 微信
+    /// instead of its name"), and the answer lives in here: which reader was
+    /// tried, whether the WeChat window was found, and what the automation
+    /// tree said when it was not.
+    /// </para>
+    /// </summary>
+    private static void Log(LogLevel level, string message, Exception? error = null) =>
+        DiagnosticSink.Write(level, message, error);
+
     public static async Task<GroupTitleParser.Title?> ReadWithFallbackAsync()
     {
         var title = await Task.Run(() => TryRead() ?? new WeChatWindowTitleReader().TryRead());
         if (title is not null) return title;
-        try { return await WeChatOcrTitleReader.TryReadAsync(); }
-        catch { return null; }
+        try
+        {
+            return await WeChatOcrTitleReader.TryReadAsync();
+        }
+        catch (Exception error)
+        {
+            // The OCR fallback is the last reader. When it fails too, the chat
+            // name stays empty and the archive is filed under a generic name.
+            Log(LogLevel.Warn, "所有群名读取方式均失败，聊天记录将使用默认名称。", error);
+            return null;
+        }
     }
     /// <summary>Weixin.exe is WeChat 4.x; WeChat.exe is the 3.x line.</summary>
     private static readonly string[] WeChatProcessNames = ["weixin", "wechat"];
@@ -39,8 +60,9 @@ public static class WeChatUiTitleReader
         {
             return Read();
         }
-        catch
+        catch (Exception error)
         {
+            Log(LogLevel.Warn, "通过 UI Automation 读取微信群名失败。", error);
             return null;
         }
     }
@@ -74,7 +96,16 @@ public static class WeChatUiTitleReader
     {
         var window = FindMainWindow();
         if (window is null)
+        {
+            // The most common reason this happens is a WeChat version whose
+            // main window no longer reports the class name we look for, or a
+            // process we cannot inspect. Recording what we did see turns "the
+            // group name is wrong" into a solvable question.
+            Log(LogLevel.Warn,
+                "未找到微信主窗口（mmui::MainWindow）。"
+                + $"已见进程: {SeenWeChatProcesses()}");
             return [];
+        }
         try
         {
             var texts = window.FindAll(
@@ -89,17 +120,64 @@ public static class WeChatUiTitleReader
                     if (!string.IsNullOrEmpty(name))
                         names.Add(name);
                 }
-                catch
+                catch (Exception error)
                 {
                     // An element vanishing mid-read loses its slot, not the scan.
+                    Log(LogLevel.Info, "读取 UI Automation 文本元素时该元素已失效。", error);
                 }
             }
             return names;
         }
-        catch
+        catch (Exception error)
         {
+            Log(LogLevel.Warn, "枚举微信窗口的文本元素失败。", error);
             return [];
         }
+    }
+
+    /// <summary>
+    /// The WeChat processes that were running, with their window class names.
+    /// When the class check fails, the class name that was actually found is
+    /// the clue: a WeChat build that renamed its main window shows up here.
+    /// </summary>
+    private static string SeenWeChatProcesses()
+    {
+        var seen = new List<string>();
+        foreach (var name in WeChatProcessNames)
+        {
+            Process[] processes;
+            try
+            {
+                processes = Process.GetProcessesByName(name);
+            }
+            catch (Exception error)
+            {
+                seen.Add($"{name}: 无法枚举 ({error.GetType().Name})");
+                continue;
+            }
+            foreach (var process in processes)
+            {
+                using (process)
+                {
+                    var hwnd = process.MainWindowHandle;
+                    if (hwnd == 0)
+                    {
+                        seen.Add($"{name}: 无主窗口");
+                        continue;
+                    }
+                    try
+                    {
+                        var element = AutomationElement.FromHandle(hwnd);
+                        seen.Add($"{name}: class={element.Current.ClassName}");
+                    }
+                    catch (Exception error)
+                    {
+                        seen.Add($"{name}: 无法读取窗口类名 ({error.GetType().Name})");
+                    }
+                }
+            }
+        }
+        return seen.Count == 0 ? "(无微信进程)" : string.Join("; ", seen);
     }
 
     /// <summary>
@@ -117,8 +195,9 @@ public static class WeChatUiTitleReader
             {
                 processes = Process.GetProcessesByName(name);
             }
-            catch
+            catch (Exception error)
             {
+                Log(LogLevel.Info, $"枚举 {name} 进程失败。", error);
                 continue;
             }
             foreach (var process in processes)
@@ -134,9 +213,10 @@ public static class WeChatUiTitleReader
                         if (element.Current.ClassName is "mmui::MainWindow")
                             return element;
                     }
-                    catch
+                    catch (Exception error)
                     {
                         // Not a UIA-backed window — try the next process.
+                        Log(LogLevel.Info, "该微信进程的主窗口不支持 UI Automation。", error);
                     }
                 }
             }

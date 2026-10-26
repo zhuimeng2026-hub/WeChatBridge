@@ -7,6 +7,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using WeChatBridge.Windows.Core;
 using Microsoft.Win32;
+using WeChatBridge.Windows.Services;
 
 namespace WeChatBridge.Windows.Panes;
 
@@ -46,7 +47,12 @@ public partial class HistoryPane : UserControl
         if (Model is not { CanImport: true } model) return;
         string text = "";
         try { if (Clipboard.ContainsText()) text = Clipboard.GetText(); }
-        catch (System.Runtime.InteropServices.ExternalException) { }
+        catch (System.Runtime.InteropServices.ExternalException error)
+        {
+            // Another application is holding the clipboard. Not fatal — the
+            // user can paste into the import window instead.
+            DiagnosticSink.Info("读取剪贴板失败，导入窗口将为空。", error);
+        }
         var editor = new TextImportWindow(text) { Owner = Window.GetWindow(this) };
         if (editor.ShowDialog() == true)
             await model.ImportLocalTextAsync(editor.ChatText, editor.ChatName);
@@ -132,7 +138,11 @@ public partial class HistoryPane : UserControl
             item.Click += (_, _) =>
             {
                 try { action(); model.Reload(); }
-                catch (Exception error) { model.ShowToast(error.Message, warning: true); }
+                catch (Exception error)
+                {
+                    DiagnosticSink.Warn($"记录页操作失败：{title}", error);
+                    model.ShowToast(error.Message, warning: true);
+                }
             };
             menu.Items.Add(item);
         }
@@ -287,7 +297,11 @@ public partial class HistoryPane : UserControl
             undo.Click += (_, _) =>
             {
                 try { Model.Collections.Undo(); Model.Reload(); }
-                catch (Exception error) { Model.ShowToast(error.Message, warning: true); }
+                catch (Exception error)
+                {
+                    DiagnosticSink.Warn("撤销收集删除失败。", error);
+                    Model.ShowToast(error.Message, warning: true);
+                }
             };
             menu.Items.Add(undo);
         }

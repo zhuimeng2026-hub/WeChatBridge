@@ -57,6 +57,9 @@ public partial class App : Application
         base.OnStartup(e);
         var background = e.Args.Any(a => string.Equals(a, "--background", StringComparison.OrdinalIgnoreCase));
         _paths = new InboxPaths();
+        // Attached before anything else so that every later failure — including
+        // the ones in startup itself — has somewhere to go.
+        DiagnosticSink.Attach(_paths);
         // A portable build's Inbox lives on a removable drive, which can be
         // read-only, full, or mid-rename. Directory.CreateDirectory throws for
         // all three, and letting it escape OnStartup means no window and no
@@ -108,6 +111,12 @@ public partial class App : Application
         _reception = new ReceptionService(settingsStore, _paths);
         settingsStore.Save(_reception.Settings);
         _reception.NotificationRequested += message => _model?.ShowToast(message);
+
+        // The environment snapshot comes before anything else can fail, so a
+        // later error line can be read against the machine it happened on.
+        // The user's machine is unknown to us; this is what makes the log
+        // worth more than "it did not work".
+        DiagnosticsService.WriteSnapshot(_paths, _reception.Settings);
 
         var model = new MainViewModel(_paths);
         _model = model;
@@ -181,18 +190,18 @@ public partial class App : Application
     {
         DispatcherUnhandledException += (_, e) =>
         {
-            InboxLogger.Write(_paths ?? new InboxPaths(), "FATAL 未处理的 UI 异常", e.Exception);
+            DiagnosticLog.Error(_paths ?? new InboxPaths(), "FATAL 未处理的 UI 异常", e.Exception);
             e.Handled = true;
         };
         AppDomain.CurrentDomain.UnhandledException += (_, e) =>
         {
             var error = e.ExceptionObject as Exception;
-            InboxLogger.Write(_paths ?? new InboxPaths(),
+            DiagnosticLog.Error(_paths ?? new InboxPaths(),
                 $"FATAL 未处理的线程异常（IsTerminating={e.IsTerminating}）", error);
         };
         TaskScheduler.UnobservedTaskException += (_, e) =>
         {
-            InboxLogger.Write(_paths ?? new InboxPaths(), "未观测的 Task 异常", e.Exception);
+            DiagnosticLog.Error(_paths ?? new InboxPaths(), "未观测的 Task 异常", e.Exception);
             e.SetObserved();
         };
     }

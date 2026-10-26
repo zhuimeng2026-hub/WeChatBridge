@@ -3,6 +3,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using WeChatBridge.Windows.Core;
 using WeChatBridge.Windows.Components;
+using WeChatBridge.Windows.Services;
 
 namespace WeChatBridge.Windows;
 
@@ -90,7 +91,11 @@ public partial class CollectionDeliveryWindow : Window
                     Summary.Text = CollectionSummary.Format(metadata, ByteText.Format(batches.Sum(b => b.ByteCount)));
             });
         }
-        catch (Exception error) { if (!Dispatcher.HasShutdownStarted) _ = Dispatcher.BeginInvoke(() => { if (IsVisible) Error.Text = error.Message; }); }
+        catch (Exception error)
+        {
+            DiagnosticSink.Warn("读取收集摘要失败。", error);
+            if (!Dispatcher.HasShutdownStarted) _ = Dispatcher.BeginInvoke(() => { if (IsVisible) Error.Text = error.Message; });
+        }
     }
 
     internal Task<Selection?> ChooseAsync(Window owner)

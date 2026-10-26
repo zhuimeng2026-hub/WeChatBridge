@@ -214,6 +214,12 @@ public sealed class ReceptionService : INotifyPropertyChanged, IDisposable
 
     public AppSettings Settings => _settings;
 
+    /// <summary>
+    /// Where the diagnostic log lives. The settings window offers it to the
+    /// user so that a support question can be answered with evidence.
+    /// </summary>
+    public InboxPaths Paths => _paths;
+
     public WorkBuddySourceProbeResult SourceProbe => _source;
 
     public string SourcePath => _source.ResolvedPath;
@@ -823,7 +829,11 @@ public sealed class ReceptionService : INotifyPropertyChanged, IDisposable
         {
             var result = await Task.Run(() => KnowledgeDelivery.DeliverResult(
                 [staged], setup.Value.Vault, setup.Value.Subfolder, chatName: null, sceneName: null,
-                cancellationToken: cancellationToken), cancellationToken).ConfigureAwait(false);
+                cancellationToken: cancellationToken,
+                // Degradations are written to the log with the reason; the job
+                // record only carries the summary the user sees.
+                diagnose: (message, error) => InboxLogger.Write(_paths, message, error)),
+                cancellationToken).ConfigureAwait(false);
 
             var note = result.Notes.FirstOrDefault();
             var archive = result.Archives.FirstOrDefault();
