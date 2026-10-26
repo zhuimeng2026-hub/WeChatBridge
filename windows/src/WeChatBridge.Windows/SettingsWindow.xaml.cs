@@ -34,7 +34,7 @@ public partial class SettingsWindow : Window
         var version = typeof(SettingsWindow).Assembly.GetName().Version;
         VersionText.Text = $"版本 {version?.ToString(3) ?? "1.0.8"} · {L10n.Text(Edition.DisplayName)}";
         LogPathText.Text = reception.Paths.Logs;
-        LogHintText.Text = L10n.Text("日志记录了程序运行时的每一步与全部错误。反馈问题时请附上导出的压缩包，其中不含聊天内容。");
+        LogHintText.Text = L10n.Text("日志记录程序运行状态和错误，可能包含本机路径与异常上下文。分享前请检查导出的压缩包。");
         RefreshSourceSummary();
     }
 

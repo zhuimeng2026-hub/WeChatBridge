@@ -1151,7 +1151,7 @@
   "诊断日志": "Diagnostic Log",
   "导出诊断日志": "Export Diagnostic Log",
   "打开日志目录": "Open Log Folder",
-  "日志记录了程序运行时的每一步与全部错误。反馈问题时请附上导出的压缩包，其中不含聊天内容。": "The log records every step the app took and every error it hit. Please attach the exported bundle when reporting a problem; it contains no chat content.",
+  "日志记录程序运行状态和错误，可能包含本机路径与异常上下文。分享前请检查导出的压缩包。": "The log records app status and errors, and may include local paths and exception context. Review the exported bundle before sharing it.",
   "导出诊断日志失败：{0}": "Could not export the diagnostic log: {0}",
   "诊断日志已导出到：\n{0}\n\n是否打开所在文件夹？": "The diagnostic log was exported to:\n{0}\n\nOpen that folder?"
 }

@@ -1,175 +1,204 @@
+using System.Security.Cryptography;
 using System.Text;
 
 namespace WeChatBridge.Windows.Core;
 
 /// <summary>How serious a log line is.</summary>
-public enum LogLevel
+public enum LogLevel { Info, Warn, Error }
+
+/// <summary>One file in a coordinated diagnostic-log snapshot.</summary>
+public sealed record DiagnosticLogSnapshotFile(string Name, byte[]? Content, string? Error, bool Truncated = false)
 {
-    /// <summary>Normal progress. Something happened; nothing is wrong.</summary>
-    Info,
-
-    /// <summary>
-    /// Something recoverable went wrong — a step was skipped, a fallback was
-    /// taken. The user may not notice, but a support question may hinge on it.
-    /// </summary>
-    Warn,
-
-    /// <summary>A feature did not do what it was asked to do.</summary>
-    Error,
+    public bool IsMissing => Content is null && Error is null;
 }
 
 /// <summary>
-/// The diagnostic log: the record of what the product was doing when something
-/// went wrong.
-/// <para>
-/// This exists because the product runs on machines nobody has seen. A user
-/// reports "it did not work"; the only way to find out why is a log that says
-/// what was attempted, what the environment looked like, and what came back.
-/// Without it, every question becomes a guess.
-/// </para>
-/// <para>
-/// Three properties matter more than richness:
-/// </para>
-/// <list type="bullet">
-/// <item>
-/// <b>It never breaks the product.</b> A log that cannot be written must not
-/// take the feature down with it. Writes are best-effort and failures are
-/// swallowed here, not propagated.
-/// </item>
-/// <item>
-/// <b>It never grows without bound.</b> The log rolls over, so a machine that
-/// runs for months keeps its recent history and does not fill the disk.
-/// </item>
-/// <item>
-/// <b>It is readable without tools.</b> One line per event, timestamped, with
-/// a level marker — so the first thing to try is opening the file in
-/// Notepad.
-/// </item>
-/// </list>
+/// Bounded, best-effort diagnostic logging shared by the main app and ShareTarget.
+/// Writes, rollover and snapshots coordinate through a named mutex derived from
+/// the normalized log path, so independent processes see one serialized stream.
 /// </summary>
 public static class DiagnosticLog
 {
-    /// <summary>The file the log is written to, inside the inbox's Logs folder.</summary>
     public const string FileName = "windows.log";
-
-    /// <summary>How large the log may grow before it rolls over.</summary>
+    /// <summary>Maximum UTF-8 bytes per complete event, including its LF terminator.</summary>
+    public const int MaxEventBytes = 64 * 1024;
     private const long MaxBytes = 4 * 1024 * 1024;
-
-    /// <summary>How many rolled-over copies to keep.</summary>
+    private const int MaxSnapshotFileBytes = 4 * 1024 * 1024;
     private const int KeepGenerations = 3;
+    private const int MutexWaitMilliseconds = 2000;
+    private static readonly UTF8Encoding Utf8 = new(false);
 
-    private static readonly object Gate = new();
-
-    /// <summary>
-    /// Records an event. The exception is written in full — type, message and
-    /// stack trace — because "something went wrong" without a stack is rarely
-    /// enough to locate the problem.
-    /// </summary>
     public static void Write(InboxPaths paths, LogLevel level, string message, Exception? error = null)
     {
         try
         {
-            paths.EnsureCreated();
+            Directory.CreateDirectory(paths.Logs);
+            var file = Path.GetFullPath(Path.Combine(paths.Logs, FileName));
             var line = Format(level, message, error);
-            lock (Gate)
+            var bytes = Utf8.GetBytes(line + "\n");
+            using var mutex = CreateMutex(file);
+            if (!TryEnter(mutex)) return;
+            try
             {
-                var file = Path.Combine(paths.Logs, FileName);
-                Roll(file);
-                File.AppendAllText(file, line + Environment.NewLine, new UTF8Encoding(false));
+                var length = File.Exists(file) ? new FileInfo(file).Length : 0;
+                if (length + bytes.Length > MaxBytes)
+                {
+                    // If rollover fails, skip this event instead of exceeding
+                    // the cap or truncating retained evidence.
+                    if (!Roll(file)) return;
+                }
+                // Append through one handle while holding the path mutex. The
+                // predicted bound prevents a failed rollover growing forever.
+                using var stream = new FileStream(file, FileMode.Append, FileAccess.Write, FileShare.Read);
+                stream.Write(bytes);
             }
+            finally { mutex.ReleaseMutex(); }
         }
-        catch
+        catch { /* Logging must never take down the feature that logged. */ }
+    }
+
+    public static void Info(InboxPaths paths, string message) => Write(paths, LogLevel.Info, message);
+    public static void Info(InboxPaths paths, string message, Exception? error) => Write(paths, LogLevel.Info, message, error);
+    public static void Warn(InboxPaths paths, string message, Exception? error = null) => Write(paths, LogLevel.Warn, message, error);
+    public static void Error(InboxPaths paths, string message, Exception? error = null) => Write(paths, LogLevel.Error, message, error);
+
+    /// <summary>
+    /// Copies the supported log set while holding the same mutex as writes and
+    /// rollover. Compression should happen after this method returns.
+    /// Missing files have neither content nor error; unreadable files carry an
+    /// error string so callers can report the omission.
+    /// </summary>
+    public static IReadOnlyList<DiagnosticLogSnapshotFile> CreateSnapshot(InboxPaths paths)
+    {
+        var files = Enumerable.Range(0, KeepGenerations + 1)
+            .Select(i => i == 0 ? FileName : $"{FileName}.{i}").ToArray();
+        try
         {
-            // Logging must not break the feature that logged. There is nowhere
-            // left to report this to, and a second failure inside the failure
-            // handler is worse than the missing line.
+            Directory.CreateDirectory(paths.Logs);
+            var primary = Path.GetFullPath(Path.Combine(paths.Logs, FileName));
+            using var mutex = CreateMutex(primary);
+            if (!TryEnter(mutex))
+                return files.Select(name => new DiagnosticLogSnapshotFile(name, null, "等待日志写入锁超时。")).ToArray();
+            try
+            {
+                return files.Select(name =>
+                {
+                    try
+                    {
+                        var path = Path.Combine(paths.Logs, name);
+                        return ReadSnapshotFile(path, name);
+                    }
+                    catch (Exception failure) when (failure is IOException or UnauthorizedAccessException or NotSupportedException)
+                    {
+                        return new DiagnosticLogSnapshotFile(name, null, failure.Message);
+                    }
+                }).ToArray();
+            }
+            finally { mutex.ReleaseMutex(); }
+        }
+        catch (Exception failure) when (failure is IOException or UnauthorizedAccessException or NotSupportedException or ArgumentException)
+        {
+            return files.Select(name => new DiagnosticLogSnapshotFile(name, null, failure.Message)).ToArray();
         }
     }
 
-    /// <summary>Records a normal-progress event.</summary>
-    public static void Info(InboxPaths paths, string message) => Write(paths, LogLevel.Info, message);
+    private static DiagnosticLogSnapshotFile ReadSnapshotFile(string path, string name)
+    {
+        FileStream stream;
+        try { stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite); }
+        catch (FileNotFoundException) { return new DiagnosticLogSnapshotFile(name, null, null); }
+        catch (DirectoryNotFoundException) { return new DiagnosticLogSnapshotFile(name, null, null); }
+        using (stream)
+        {
+            if (stream.Length <= MaxSnapshotFileBytes)
+            {
+                var content = new byte[(int)stream.Length];
+                stream.ReadExactly(content);
+                return new DiagnosticLogSnapshotFile(name, content, null);
+            }
 
-    /// <summary>Records a normal-progress event with a cause attached.</summary>
-    public static void Info(InboxPaths paths, string message, Exception? error) =>
-        Write(paths, LogLevel.Info, message, error);
+            // Old installations may have oversized files beyond today's writer
+            // cap. Preserve only the newest bounded tail and start at a line edge.
+            stream.Seek(-MaxSnapshotFileBytes, SeekOrigin.End);
+            var tail = new byte[MaxSnapshotFileBytes];
+            stream.ReadExactly(tail);
+            var firstLine = Array.IndexOf(tail, (byte)'\n');
+            var start = firstLine >= 0 ? firstLine + 1 : FirstUtf8Boundary(tail);
+            return new DiagnosticLogSnapshotFile(name, tail.AsSpan(start).ToArray(), null, Truncated: true);
+        }
+    }
 
-    /// <summary>Records a recoverable problem.</summary>
-    public static void Warn(InboxPaths paths, string message, Exception? error = null) =>
-        Write(paths, LogLevel.Warn, message, error);
+    private static int FirstUtf8Boundary(byte[] bytes)
+    {
+        // When a legacy oversized event has no line break, the bounded tail
+        // may begin in the middle of a multibyte UTF-8 character. Drop only
+        // leading continuation bytes; the remainder begins at a code-point
+        // boundary and retains almost the entire newest tail.
+        var offset = 0;
+        while (offset < bytes.Length && (bytes[offset] & 0xC0) == 0x80)
+            offset++;
+        return offset;
+    }
 
-    /// <summary>Records a failure.</summary>
-    public static void Error(InboxPaths paths, string message, Exception? error = null) =>
-        Write(paths, LogLevel.Error, message, error);
+    private static Mutex CreateMutex(string path)
+    {
+        // Windows paths are case-insensitive: canonicalize casing before hashing
+        // so all processes addressing the same root choose the same mutex name.
+        var normalized = OperatingSystem.IsWindows() ? path.ToUpperInvariant() : path;
+        var digest = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(normalized)));
+        var name = $"WeChatBridge.DiagnosticLog.{digest}";
+        return new Mutex(false, OperatingSystem.IsWindows() ? $"Local\\{name}" : name);
+    }
 
-    /// <summary>
-    /// One line per event. The stack trace is folded onto the same line so
-    /// that a line number in the file still identifies one event — a
-    /// multi-line stack would otherwise break every tool that reads the file
-    /// line by line, including <c>grep</c> and Notepad.
-    /// </summary>
+    private static bool TryEnter(Mutex mutex)
+    {
+        try { return mutex.WaitOne(MutexWaitMilliseconds); }
+        catch (AbandonedMutexException) { return true; }
+    }
+
     private static string Format(LogLevel level, string message, Exception? error)
     {
-        var builder = new StringBuilder();
-        // ISO 8601 with an offset, as the previous format used: it sorts
-        // correctly and stays unambiguous across daylight-saving changes.
-        builder.Append(DateTimeOffset.UtcNow.ToString("O"));
-        builder.Append(" [").Append(level.ToString().ToUpperInvariant()).Append(']');
-        builder.Append(' ').Append(Sanitize(message));
+        var line = $"{DateTimeOffset.UtcNow:O} [{level.ToString().ToUpperInvariant()}] pid={Environment.ProcessId} {Sanitize(message)}";
         if (error is not null)
-        {
-            builder.Append(" || ").Append(Sanitize(error.GetType().FullName ?? error.GetType().Name));
-            builder.Append(": ").Append(Sanitize(error.Message));
-            var stack = error.StackTrace;
-            if (!string.IsNullOrWhiteSpace(stack))
-            {
-                builder.Append(" || stack=").Append(Sanitize(stack));
-            }
-        }
-        return builder.ToString();
+            line += " || " + Sanitize(error.ToString()); // Includes inner and aggregate causes.
+        return TruncateUtf8(line, MaxEventBytes - 1); // The writer appends one LF byte.
     }
 
-    /// <summary>
-    /// Flattens a value onto one line: newlines would break the one-line-per-
-    /// event rule, and carriage returns would corrupt the file in Notepad.
-    /// </summary>
     private static string Sanitize(string? value) =>
-        (value ?? "")
-        .Replace("\r\n", " ⏎ ")
-        .Replace("\n", " ⏎ ")
-        .Replace("\r", " ⏎ ");
+        (value ?? "").Replace("\r\n", " ⏎ ").Replace("\n", " ⏎ ").Replace("\r", " ⏎ ");
 
-    /// <summary>
-    /// Rolls the log over when it grows past the limit. The previous
-    /// generations are shifted along, so the newest history is always the one
-    /// kept.
-    /// </summary>
-    private static void Roll(string file)
+    private static string TruncateUtf8(string value, int maxBytes)
+    {
+        if (Utf8.GetByteCount(value) <= maxBytes) return value;
+        const string marker = " …[truncated]";
+        var budget = maxBytes - Utf8.GetByteCount(marker);
+        var builder = new StringBuilder();
+        var used = 0;
+        foreach (var rune in value.EnumerateRunes())
+        {
+            if (used + rune.Utf8SequenceLength > budget) break;
+            builder.Append(rune.ToString());
+            used += rune.Utf8SequenceLength;
+        }
+        return builder.Append(marker).ToString();
+    }
+
+    private static bool Roll(string file)
     {
         try
         {
-            var info = new FileInfo(file);
-            if (!info.Exists || info.Length < MaxBytes)
-                return;
-
-            // Delete the oldest generation first, then shift the rest down.
-            var oldest = $"{file}.{KeepGenerations}";
-            if (File.Exists(oldest))
-                File.Delete(oldest);
-            for (var generation = KeepGenerations - 1; generation >= 1; generation--)
+            for (var generation = KeepGenerations; generation >= 1; generation--)
             {
-                var from = $"{file}.{generation}";
-                if (!File.Exists(from))
-                    continue;
-                var to = $"{file}.{generation + 1}";
-                File.Move(from, to, overwrite: true);
+                var source = generation == 1 ? file : $"{file}.{generation - 1}";
+                var target = $"{file}.{generation}";
+                if (!File.Exists(source)) continue;
+                File.Move(source, target, overwrite: true);
             }
-            File.Move(file, $"{file}.1", overwrite: true);
+            return true;
         }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException
-            or NotSupportedException or ArgumentException)
+        catch (Exception failure) when (failure is IOException or UnauthorizedAccessException or NotSupportedException or ArgumentException)
         {
-            // A log that cannot be rolled is still a usable log. Keep writing
-            // to it rather than losing the event entirely.
+            return false;
         }
     }
 }

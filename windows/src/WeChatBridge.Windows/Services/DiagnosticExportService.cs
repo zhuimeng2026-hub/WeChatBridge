@@ -13,11 +13,9 @@ namespace WeChatBridge.Windows.Services;
 /// a machine they do not know is asking them to do the diagnosis.
 /// </para>
 /// <para>
-/// What goes in: the log and its rolled-over generations, plus a plain-text
-/// summary of the environment. What stays out: chat content, note bodies,
-/// licences, tokens and anything else that is the user's data rather than the
-/// product's behaviour. A diagnostic bundle someone is willing to send is
-/// worth more than a complete one they are not.
+/// What goes in: the allowlisted log files and a plain-text environment
+/// summary. Log lines may contain local paths and exception context, so the
+/// summary asks the user to inspect the bundle before sharing it.
 /// </para>
 /// </summary>
 internal static class DiagnosticExportService
@@ -38,31 +36,45 @@ internal static class DiagnosticExportService
         error = null;
         try
         {
-            paths.EnsureCreated();
+            Directory.CreateDirectory(paths.Logs);
             var target = string.IsNullOrWhiteSpace(destinationDirectory)
                 ? paths.Logs
                 : destinationDirectory;
             Directory.CreateDirectory(target);
 
-            var stamp = DateTime.Now.ToString("yyyyMMdd-HHmmss");
-            var bundle = Path.Combine(target, $"{BundlePrefix}-{stamp}.zip");
+            var stamp = DateTime.Now.ToString("yyyyMMdd-HHmmss-fff");
+            var bundle = Path.Combine(target, $"{BundlePrefix}-{stamp}-{Guid.NewGuid():N}.zip");
 
-            using (var archive = ZipFile.Open(bundle, ZipArchiveMode.Create))
+            var completed = false;
+            var created = false;
+            try
             {
-                // The log and its rolled-over generations, newest first.
-                foreach (var file in Directory
-                    .EnumerateFiles(paths.Logs, DiagnosticLog.FileName + "*")
-                    .OrderByDescending(f => f))
+                var snapshot = DiagnosticLog.CreateSnapshot(paths);
+                using (var output = new FileStream(bundle, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None))
                 {
-                    Add(archive, file, Path.GetFileName(file));
+                    created = true;
+                    using var archive = new ZipArchive(output, ZipArchiveMode.Create);
+                    foreach (var file in snapshot)
+                    {
+                        if (file.Content is not null)
+                            AddBytes(archive, file.Name, file.Content);
+                        else if (file.Error is not null)
+                            AddText(archive, $"日志读取说明/{file.Name}.txt", $"未能读取 {file.Name}：{file.Error}");
+                        else
+                            AddText(archive, $"日志读取说明/{file.Name}.txt", $"未找到 {file.Name}。导出时该日志文件不存在。");
+                    }
+                    AddText(archive, "环境摘要.txt", BuildSummary(paths, snapshot.Any(file => file.Truncated)));
                 }
-
-                // A readable summary, so whoever reads the bundle does not have
-                // to know the log format to start.
-                AddText(archive, "环境摘要.txt", BuildSummary(paths));
+                completed = true;
+                return bundle;
             }
-
-            return bundle;
+            finally
+            {
+                if (!completed && created)
+                    try { File.Delete(bundle); }
+                    catch (IOException) { }
+                    catch (UnauthorizedAccessException) { }
+            }
         }
         catch (Exception failure) when (failure is IOException or UnauthorizedAccessException
             or NotSupportedException or InvalidOperationException)
@@ -76,7 +88,7 @@ internal static class DiagnosticExportService
     /// The environment, in the form the user would have to describe it if
     /// asked what their machine looks like.
     /// </summary>
-    private static string BuildSummary(InboxPaths paths)
+    private static string BuildSummary(InboxPaths paths, bool logWasTruncated)
     {
         var builder = new StringBuilder();
         builder.AppendLine("律档通 诊断信息");
@@ -86,23 +98,17 @@ internal static class DiagnosticExportService
         builder.AppendLine();
         builder.AppendLine("说明：");
         builder.AppendLine("- windows.log 是程序运行日志，包含发生错误时的完整异常与调用堆栈。");
-        builder.AppendLine("- 本压缩包不包含聊天内容、笔记正文、账号或许可证信息。");
+        builder.AppendLine("- 日志用于记录运行状态和错误，可能包含本机路径及异常上下文；分享前请检查压缩包内容。");
+        if (logWasTruncated)
+            builder.AppendLine("- 至少一个日志文件超过 4 MiB；压缩包仅保留了该文件的末尾部分。");
         return builder.ToString();
     }
 
-    private static void Add(ZipArchive archive, string file, string entryName)
+    private static void AddBytes(ZipArchive archive, string entryName, byte[] content)
     {
-        try
-        {
-            var entry = archive.CreateEntry(entryName, CompressionLevel.Optimal);
-            using var source = File.OpenRead(file);
-            using var target = entry.Open();
-            source.CopyTo(target);
-        }
-        catch (Exception failure) when (failure is IOException or UnauthorizedAccessException)
-        {
-            // One unreadable file must not cost the user the whole bundle.
-        }
+        var entry = archive.CreateEntry(entryName, CompressionLevel.Optimal);
+        using var target = entry.Open();
+        target.Write(content);
     }
 
     private static void AddText(ZipArchive archive, string entryName, string content)

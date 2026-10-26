@@ -87,7 +87,7 @@ public sealed class DiagnosticLogTests : IDisposable
         Assert.Contains("具体原因", line);
         // The stack is what locates the problem; without it the line only
         // says what went wrong, not where.
-        Assert.Contains("stack=", line);
+        Assert.Contains("at ", line);
         Assert.Contains("DiagnosticLogTests", line);
     }
 
@@ -150,6 +150,91 @@ public sealed class DiagnosticLogTests : IDisposable
         var oldest = File.Exists(LogFile + ".3") ? new FileInfo(LogFile + ".3") : null;
         if (oldest is not null)
             Assert.True(newest.LastWriteTimeUtc >= oldest.LastWriteTimeUtc);
+    }
+
+    [Fact]
+    public void Rolling_preserves_every_event_within_the_retained_capacity()
+    {
+        const int eventCount = 1600;
+        var payload = new string('z', 3000);
+        for (var i = 0; i < eventCount; i++)
+            DiagnosticLog.Info(_paths, $"event-{i:D4}-" + payload);
+
+        var retained = Enumerable.Range(0, 4)
+            .Select(i => i == 0 ? LogFile : LogFile + $".{i}")
+            .Where(File.Exists)
+            .SelectMany(File.ReadAllLines)
+            .ToArray();
+        Assert.True(File.Exists(LogFile + ".1"), "The test payload must force at least one rollover.");
+        var retainedIds = retained.SelectMany(line => System.Text.RegularExpressions.Regex.Matches(line, @"event-\d{4}")
+            .Select(match => match.Value)).ToHashSet();
+        Assert.Equal(eventCount, retainedIds.Count);
+    }
+
+    [Fact]
+    public void Inner_and_aggregate_exception_causes_are_recorded()
+    {
+        var nested = new InvalidOperationException("外层原因", new IOException("内层磁盘原因"));
+        var aggregate = new AggregateException("聚合失败", nested, new ArgumentException("第二个原因"));
+        DiagnosticLog.Error(_paths, "导出失败", aggregate);
+
+        var line = Assert.Single(Lines());
+        Assert.Contains("内层磁盘原因", line);
+        Assert.Contains("第二个原因", line);
+        Assert.Contains("AggregateException", line);
+    }
+
+    [Fact]
+    public void Oversized_unicode_event_is_truncated_within_the_utf8_byte_limit()
+    {
+        DiagnosticLog.Error(_paths, new string('中', DiagnosticLog.MaxEventBytes * 2), new Exception(new string('错', 1000)));
+
+        var line = Assert.Single(Lines());
+        Assert.Contains("[truncated]", line);
+        Assert.True(System.Text.Encoding.UTF8.GetByteCount(line) <= DiagnosticLog.MaxEventBytes);
+        Assert.True(new FileInfo(LogFile).Length <= DiagnosticLog.MaxEventBytes);
+    }
+
+    [Fact]
+    public void Snapshot_of_a_legacy_oversized_generation_is_bounded_and_marked()
+    {
+        var path = LogFile + ".3";
+        File.WriteAllText(path, string.Concat(Enumerable.Repeat("中\n", 1024 * 1024)) + "末尾事件", System.Text.Encoding.UTF8);
+
+        var snapshot = DiagnosticLog.CreateSnapshot(_paths).Single(file => file.Name == "windows.log.3");
+
+        Assert.True(snapshot.Truncated);
+        Assert.True(snapshot.Content!.Length <= 4 * 1024 * 1024);
+        Assert.EndsWith("末尾事件", new System.Text.UTF8Encoding(false, true).GetString(snapshot.Content));
+    }
+
+    [Fact]
+    public void Snapshot_of_oversized_unbroken_unicode_line_starts_at_a_utf8_boundary()
+    {
+        var path = LogFile + ".2";
+        var content = string.Concat(Enumerable.Repeat("中😀", 800_000)) + "末尾标记";
+        File.WriteAllText(path, content, new System.Text.UTF8Encoding(false));
+
+        var snapshot = DiagnosticLog.CreateSnapshot(_paths).Single(file => file.Name == "windows.log.2");
+
+        Assert.True(snapshot.Truncated);
+        Assert.True(snapshot.Content!.Length <= 4 * 1024 * 1024);
+        var text = new System.Text.UTF8Encoding(false, true).GetString(snapshot.Content);
+        Assert.Contains("中", text);
+        Assert.Contains("😀", text);
+        Assert.EndsWith("末尾标记", text);
+    }
+
+    [Fact]
+    public void Diagnostic_creation_makes_only_the_logs_directory()
+    {
+        var minimalRoot = Path.Combine(_root, "minimal");
+        DiagnosticLog.Info(new InboxPaths(minimalRoot), "only logs");
+
+        Assert.True(Directory.Exists(Path.Combine(minimalRoot, "Logs")));
+        Assert.False(Directory.Exists(Path.Combine(minimalRoot, "Staging")));
+        Assert.False(Directory.Exists(Path.Combine(minimalRoot, "Ready")));
+        Assert.False(Directory.Exists(Path.Combine(minimalRoot, "Failed")));
     }
 
     [Fact]
