@@ -233,7 +233,7 @@ public sealed class KnowledgeDeliveryTests
     public void MergeTracksAnotherArchiveEvenWhenAllMessagesAndAttachmentsRepeat()
     {
         using var fixture = new TempInbox();
-        const string transcript = "·甲\\n2026年9月20日 09:10\\n同一条消息\\n";
+        const string transcript = "·甲\n2026年9月20日 09:10\n同一条消息\n";
         var first = Zip(fixture, "first.zip", [("聊天记录.txt", transcript)]);
         var second = Zip(fixture, "second.zip", [("聊天记录.txt", transcript)]);
         var destination = Path.Combine(fixture.Root, "vault");
@@ -251,7 +251,7 @@ public sealed class KnowledgeDeliveryTests
     public void MergeKeepsOneAttachmentInventoryHeadingAcrossRepeatedImports()
     {
         using var fixture = new TempInbox();
-        const string transcript = "·甲\\n2026年9月20日 09:10\\n同一条消息\\n";
+        const string transcript = "·甲\n2026年9月20日 09:10\n同一条消息\n";
         var first = Zip(fixture, "first.zip", [("聊天记录.txt", transcript), ("one.jpg", "one")]);
         var second = Zip(fixture, "second.zip", [("聊天记录.txt", transcript), ("two.jpg", "two")]);
         var third = Zip(fixture, "third.zip", [("聊天记录.txt", transcript), ("three.jpg", "three")]);
