@@ -236,7 +236,7 @@ public static class ObsidianNote
             .Where(path => !normalized.Contains(AttachmentLink(path), StringComparison.Ordinal))
             .ToList();
         var newArchive = !normalized.Contains(AttachmentLink(archiveName), StringComparison.Ordinal);
-        if (fresh.Count == 0 && newAttachments.Count == 0 && string.IsNullOrEmpty(extractionIssue))
+        if (fresh.Count == 0 && newAttachments.Count == 0 && !newArchive && string.IsNullOrEmpty(extractionIssue))
             return MergeOutcome.NothingNew;
 
         var frontLines = normalized[4..closing].Split('\n').ToList();
@@ -257,7 +257,16 @@ public static class ObsidianNote
 
         var merged = new StringBuilder(normalized.Length + 256);
         merged.Append("---\n").AppendJoin('\n', frontLines).Append("\n---");
-        merged.Append(normalized[(closing + 4)..].TrimEnd('\n'));
+        var body = normalized[(closing + 4)..].TrimEnd('\n');
+        // Keep a single attachment inventory across incremental deliveries.
+        const string inventoryEnd = "<!-- wechatbridge:attachment-inventory:end -->";
+        var hasInventory = body.Contains(inventoryEnd, StringComparison.Ordinal);
+        if (newAttachments.Count > 0 && hasInventory)
+        {
+            var newLines = string.Join("", newAttachments.Select(p => "- " + AttachmentLink(p) + "\n"));
+            body = body.Replace(inventoryEnd, newLines + inventoryEnd, StringComparison.Ordinal);
+        }
+        merged.Append(body);
         merged.Append('\n');
         if (!normalized.Contains("\n## 聊天记录\n", StringComparison.Ordinal))
             merged.Append("\n## 聊天记录\n");
@@ -277,7 +286,7 @@ public static class ObsidianNote
             foreach (var attachment in ReferencedAttachments(record.Text, attachments))
                 merged.Append('\n').Append(AttachmentLink(attachment)).Append('\n');
         }
-        if (newAttachments.Count > 0)
+        if (newAttachments.Count > 0 && !hasInventory)
         {
             merged.Append("\n<!-- wechatbridge:attachment-inventory:start -->\n## 附件清单\n");
             foreach (var attachment in newAttachments)
