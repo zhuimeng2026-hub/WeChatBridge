@@ -171,6 +171,10 @@ public sealed class ReceptionService : INotifyPropertyChanged, IDisposable
     private bool _destinationOk;
     private string? _destinationDetail;
     private bool _disposed;
+    // Transition guards so the recheck timer (every few seconds) does not flood
+    // the log: we only write a line when health first becomes (or stops being) an error.
+    private WorkBuddySourceState _lastLoggedSource = WorkBuddySourceState.Checking;
+    private bool? _lastLoggedDestinationOk;
 
     private string _statusTitle = "正在检查接收条件";
     private string _statusDetail = "";
@@ -917,6 +921,7 @@ public sealed class ReceptionService : INotifyPropertyChanged, IDisposable
             }
         }
 
+        RecordHealthLogging();
         OnPropertyChanged(nameof(IsPaused));
         OnPropertyChanged(nameof(HasVault));
         OnPropertyChanged(nameof(VaultDisplay));
@@ -937,6 +942,44 @@ public sealed class ReceptionService : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(StatusAction));
         OnPropertyChanged(nameof(HasStatusAction));
     }
+
+    /// <summary>
+    /// Mirror source/destination health into the log, but only on a transition
+    /// into (or out of) an error state. The recheck timer and recompute fire
+    /// constantly, so logging every pass would bury real failures under noise.
+    /// </summary>
+    private void RecordHealthLogging()
+    {
+        if (IsSourceError(_source.State))
+        {
+            if (_lastLoggedSource != _source.State)
+            {
+                InboxLogger.Write(_paths,
+                    $"来源目录异常（{_source.State}）：{_source.ResolvedPath} | {_source.Detail ?? "无详情"}");
+            }
+        }
+        else if (IsSourceError(_lastLoggedSource))
+        {
+            InboxLogger.Write(_paths, $"来源目录已恢复：{_source.State}（{_source.ResolvedPath}）");
+        }
+        _lastLoggedSource = _source.State;
+
+        // A missing vault is "not configured yet", not a write failure — only
+        // log an actual write probe failure once the user has chosen a vault.
+        if (_settings.IsVaultConfigured && !_destinationOk)
+        {
+            if (_lastLoggedDestinationOk != false)
+                InboxLogger.Write(_paths, $"知识库不可写：{_destinationDetail ?? "未知原因"}");
+        }
+        else if (_lastLoggedDestinationOk == false && _destinationOk)
+        {
+            InboxLogger.Write(_paths, "知识库写入已恢复。");
+        }
+        _lastLoggedDestinationOk = _destinationOk;
+    }
+
+    private static bool IsSourceError(WorkBuddySourceState state) =>
+        state is WorkBuddySourceState.AccessDenied or WorkBuddySourceState.WatchUnavailable;
 
     // MARK: - Ledger
 

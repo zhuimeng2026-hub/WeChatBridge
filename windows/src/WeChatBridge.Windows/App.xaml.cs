@@ -1,5 +1,6 @@
 using System.IO;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using WeChatBridge.Windows.Core;
 using WeChatBridge.Windows.Onboarding;
@@ -9,7 +10,11 @@ namespace WeChatBridge.Windows;
 
 public partial class App : Application
 {
-    public App() => L10n.Language = new AppSettingsStore().Load().Language;
+    public App()
+    {
+        L10n.Language = new AppSettingsStore().Load().Language;
+        WireErrorLogging();
+    }
 
     // Every machine-wide name gets the layout suffix. A portable copy and an
     // installed copy on the same machine would otherwise silently evict each
@@ -158,6 +163,38 @@ public partial class App : Application
     {
         if (_paths is not null)
             InboxLogger.Write(_paths, message);
+    }
+
+    /// <summary>
+    /// Catch errors that would otherwise vanish: a UI-thread fault that tears the
+    /// window down, a background-thread exception that kills the process, or an
+    /// unobserved Task that fails silently. Every one is written to the Inbox log
+    /// so "运行时出错" is recorded even when the user never sees a dialog.
+    /// <para>
+    /// UI-thread exceptions are marked handled so a single transient glitch (a
+    /// binding or click fault) does not drop the whole resident session — the log
+    /// keeps the evidence. A fatal non-UI fault cannot be undone; we log it and
+    /// let the runtime end the process.
+    /// </para>
+    /// </summary>
+    private void WireErrorLogging()
+    {
+        DispatcherUnhandledException += (_, e) =>
+        {
+            InboxLogger.Write(_paths ?? new InboxPaths(), "FATAL 未处理的 UI 异常", e.Exception);
+            e.Handled = true;
+        };
+        AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+        {
+            var error = e.ExceptionObject as Exception;
+            InboxLogger.Write(_paths ?? new InboxPaths(),
+                $"FATAL 未处理的线程异常（IsTerminating={e.IsTerminating}）", error);
+        };
+        TaskScheduler.UnobservedTaskException += (_, e) =>
+        {
+            InboxLogger.Write(_paths ?? new InboxPaths(), "未观测的 Task 异常", e.Exception);
+            e.SetObserved();
+        };
     }
 
     /// <summary>
