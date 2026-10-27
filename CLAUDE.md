@@ -586,15 +586,18 @@ Windows 端新增「知识工作台」面板（阅读优先 / 案件工作区 / 
   **这些分支对应的看板从此是历史记录，不再是活的进度源**——
   现在还活着的只有 `main` 上的看板，其中 M1 桌面版 beta 就绪度那块是最新的一块
   （2026-10-24 已随分支合并进主干；知识工作台那块是上一块）。
-  远端分支清单：`git branch -r | grep origin/`（**origin 上的远端分支：五条**
+  远端分支清单：`git branch -r | grep origin/`（**origin 上的远端分支：七条**
   ——`main` 与 `feat/m1-desktop-beta-readiness`（2026-10-24 起 M1 桌面版
   beta 就绪度这一块的工作分支，**已快进合进 main**，但分支留着——
   看板上还挂着未完成项；看板在 `docs/progress/feat/m1-desktop-beta-readiness.md`）；
   另外三条是 2026-10-25 之后新增的：**`codex/attachment-categories`**（tip 已在 main 里，
   内容无差异）、**`codex/desktop-archive-design`**（**比 main 多 11 个提交**）、
   **`fix/windows-archive-merge-brand-20261027`**（**比 main 多 7 个提交**，2026-10-27 的 tip 是
-  `test(windows): correct escaped fixture transcript newlines`）。
-  **后两条有 main 里没有的工作**，所以推镜像时不能只推 `--all`（`--all` 只认本地分支）。
+  `test(windows): correct escaped fixture transcript newlines`）；
+  最后两条是 2026-10-27 新增的：**`feat/windows-forward-limit-hint`**（Windows 端 100 条上限提示，
+  看板 `docs/progress/feat/windows-forward-limit-hint.md`）、**`feat/sqlite-migration`**。
+  **除 `main`、`feat/m1-desktop-beta-readiness` 与 `codex/attachment-categories` 外都有 main 里没有的工作**，
+  所以推镜像时不能只推 `--all`（`--all` 只认本地分支）。
   知识工作台那条分支 2026-10-24 合进 main 之后打了 `archive/feat-obsidian-workbench-variants`
   tag 就删掉了；`upstream` 的十二条 = `upstream/main` 本体加十一条
   上游 PR 分支，全是上游 PR 合并后的残留，**推不动也不该推**——

@@ -72,6 +72,16 @@ public partial class CollectionWindow : Window
                 SummaryText.Text = CollectionSummary.Format(metadata, ByteText.Format(batches.Sum(b => b.ByteCount)));
                 LastRange.Text = metadata.LastOrDefault() is { First: { } first, Last: { } last }
                     ? $"{first.Date.LocalDateTime:MM-dd HH:mm} — {last.Date.LocalDateTime:MM-dd HH:mm}" : L10n.Text("原始文件已保存");
+                // The newest batch is where the user would carry on from, so it
+                // is the one that gets the note when it sits on WeChat's cap.
+                var newest = metadata.LastOrDefault();
+                var hits = WeChatForwardLimit.HitsLimit(newest?.Count);
+                ForwardLimitPanel.Visibility = hits ? Visibility.Visible : Visibility.Collapsed;
+                if (hits)
+                {
+                    ForwardLimitNotice.Text = WeChatForwardLimit.Notice;
+                    ForwardLimitAdvice.Text = WeChatForwardLimit.Advice;
+                }
             });
         }
         catch (Exception error)
