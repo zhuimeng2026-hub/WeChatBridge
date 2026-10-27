@@ -484,6 +484,8 @@
   "分批收集 · %@": "Batch collection · %@",
   "分批收集 · {0}": "Batch collection · {0}",
   "分批收集到律档通": "Collect in WeChatBridge",
+  "正好 {0} 条，微信一次最多转 {1} 条，后面可能还有。": "Exactly {0} messages — WeChat forwards at most {1} at a time. There may be more.",
+  "复制这一批最后一句的文字，回微信搜索定位，从下一条接着多选（一次最多 {0} 条，重叠几条也没关系），再分享到「分批收集到律档通」。": "Copy the last line of this batch, search for it in WeChat, then select the next messages after it (at most {0} at a time; overlapping a few is fine) and share them to “Collect to WeChatBridge” again.",
   "复制 %d 个文件": "Copy %d files",
   "复制 {0} 个文件": "Copy {0} files",
   "复制关键词": "Copy keyword",

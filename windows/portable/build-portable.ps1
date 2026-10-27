@@ -214,7 +214,7 @@ Write-Output "Edition: $Edition ($EditionToken)"
 Write-Output "Portable payload: $payload"
 if ($SkipZip) { exit 0 }
 
-$zip = Join-Path ([IO.Path]::GetDirectoryName($OutputDirectory)) "WeChatBridge-$EditionToken-$Version-Windows-Portable.zip"
+$zip = Join-Path ([IO.Path]::GetDirectoryName($OutputDirectory)) "律档通-$EditionToken-$Version-Windows-Portable.zip"
 if (Test-Path $zip) { Remove-Item -LiteralPath $zip -Force }
 # Stage just what ships, so the ZIP has no build-only leftovers.
 $staging = Join-Path $env:TEMP "WeChatBridge-portable-$EditionToken-$Version"

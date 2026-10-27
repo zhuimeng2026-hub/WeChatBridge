@@ -102,6 +102,14 @@
                         </StackPanel>
                         <StackPanel x:Name="LatestReference">
                             <TextBlock Text="{Binding Range}" FontSize="10.5" Foreground="{DynamicResource InkSecondaryColor}" TextWrapping="Wrap" Margin="0,0,0,10"/>
+                            <!-- WeChat stops a selection at 100 messages; a batch on that edge usually goes on. -->
+                            <Border x:Name="ForwardLimitPanel" Visibility="Collapsed" Margin="0,0,0,10" Padding="12,10" CornerRadius="10"
+                                    Background="{DynamicResource WarnFillColor}">
+                                <StackPanel>
+                                    <TextBlock x:Name="ForwardLimitNotice" FontSize="12" FontWeight="SemiBold" TextWrapping="Wrap" Foreground="{DynamicResource WarnInkColor}"/>
+                                    <TextBlock x:Name="ForwardLimitAdvice" Margin="0,4,0,0" FontSize="11.5" TextWrapping="Wrap" Foreground="{DynamicResource WarnInkColor}"/>
+                                </StackPanel>
+                            </Border>
                             <ItemsControl ItemsSource="{Binding BoundaryReferences}" ItemTemplate="{StaticResource ReferenceTemplate}">
 
                             </ItemsControl>

@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     # Optional cross-check, not the source of truth: leave it out and the value
     # is read from Directory.Build.props below. Passing it is only useful to
@@ -156,7 +156,7 @@ $trustMsi = Join-Path $DistDirectory "WeChatBridge-$EditionToken-$Version-Certif
 if ($LASTEXITCODE -ne 0) { throw 'Certificate trust prerequisite build failed.' }
 & signtool sign /fd SHA256 /sha1 $SigningThumbprint /s My $trustMsi
 if ($LASTEXITCODE -ne 0) { throw 'Certificate trust prerequisite signing failed.' }
-$msi = Join-Path $DistDirectory "WeChatBridge-$EditionToken-$Version-Windows.msi"
+$msi = Join-Path $DistDirectory "律档通-$EditionToken-$Version-Windows.msi"
 # MsiPackageName feeds Package/@Name (Programs and Features), EditionToken the
 # edition registry value and the artifact file names. UpgradeCode deliberately
 # stays shared: the two editions are mutually exclusive on one machine, so the
@@ -167,7 +167,7 @@ if ($LASTEXITCODE -ne 0) { throw 'MSI build failed.' }
 & signtool sign /fd SHA256 /sha1 $SigningThumbprint /s My $msi
 if ($LASTEXITCODE -ne 0) { throw 'MSI signing failed.' }
 & (Join-Path $msiDirectory 'build-bundle.ps1') -Arch x64 -Edition $Edition -Version $Version -DistDir $DistDirectory -SelfContained -CertificateTrustMsiPath $trustMsi -WixExtensionDirectory $WixExtensionDirectory
-$setup = Join-Path $DistDirectory "WeChatBridge-$EditionToken-$Version-Windows-Setup.exe"
+$setup = Join-Path $DistDirectory "律档通-$EditionToken-$Version-Windows-Setup.exe"
 # Burn needs both its cached engine and the full self-contained bundle signed.
 $signingDirectory = Join-Path $DistDirectory 'signing'
 New-Item -ItemType Directory -Path $signingDirectory -Force | Out-Null

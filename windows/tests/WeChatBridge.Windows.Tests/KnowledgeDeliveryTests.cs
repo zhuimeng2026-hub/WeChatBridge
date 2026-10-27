@@ -230,6 +230,46 @@ public sealed class KnowledgeDeliveryTests
     }
 
     [Fact]
+    public void MergeTracksAnotherArchiveEvenWhenAllMessagesAndAttachmentsRepeat()
+    {
+        using var fixture = new TempInbox();
+        const string transcript = "·甲\n2026年9月20日 09:10\n同一条消息\n";
+        var first = Zip(fixture, "first.zip", [("聊天记录.txt", transcript)]);
+        var second = Zip(fixture, "second.zip", [("聊天记录.txt", transcript)]);
+        var destination = Path.Combine(fixture.Root, "vault");
+        Directory.CreateDirectory(destination);
+
+        var notePath = KnowledgeDelivery.Deliver([first], destination, "项目", "群", null).Single();
+        KnowledgeDelivery.Deliver([second], destination, "项目", "群", null);
+        var note = File.ReadAllText(notePath);
+        Assert.Contains("[[附件/原始归档/first.zip]]", note);
+        Assert.Contains("[[附件/原始归档/second.zip]]", note);
+        Assert.Equal(1, note.Split("同一条消息").Length - 1);
+    }
+
+    [Fact]
+    public void MergeKeepsOneAttachmentInventoryHeadingAcrossRepeatedImports()
+    {
+        using var fixture = new TempInbox();
+        const string transcript = "·甲\n2026年9月20日 09:10\n同一条消息\n";
+        var first = Zip(fixture, "first.zip", [("聊天记录.txt", transcript), ("one.jpg", "one")]);
+        var second = Zip(fixture, "second.zip", [("聊天记录.txt", transcript), ("two.jpg", "two")]);
+        var third = Zip(fixture, "third.zip", [("聊天记录.txt", transcript), ("three.jpg", "three")]);
+        var destination = Path.Combine(fixture.Root, "vault");
+        Directory.CreateDirectory(destination);
+
+        var notePath = KnowledgeDelivery.Deliver([first], destination, "项目", "群", null).Single();
+        KnowledgeDelivery.Deliver([second], destination, "项目", "群", null);
+        KnowledgeDelivery.Deliver([third], destination, "项目", "群", null);
+        var note = File.ReadAllText(notePath);
+        Assert.Equal(1, note.Split("## 附件清单").Length - 1);
+        Assert.Contains("[[附件/图片/one.jpg]]", note);
+        Assert.Contains("[[附件/图片/two.jpg]]", note);
+        Assert.Contains("[[附件/图片/three.jpg]]", note);
+        Assert.Equal(1, note.Split("同一条消息").Length - 1);
+    }
+
+    [Fact]
     public void CancellationPropagates()
     {
         using var fixture = new TempInbox();

@@ -1,4 +1,4 @@
-# Build the Burn bootstrapper Setup.exe (runtime check + on-demand download + MSI).
+﻿# Build the Burn bootstrapper Setup.exe (runtime check + on-demand download + MSI).
 # Requires: WiX 6, Util + BootstrapperApplications extension dlls, built MSIs.
 #
 #   .\build-bundle.ps1 -Arch x64 -Edition Perpetual -Version 1.0.8
@@ -96,11 +96,11 @@ $Runtime = @{
 }[$Arch]
 
 if ($Arch -eq 'x64') {
-  $msi = Join-Path $DistDir "WeChatBridge-$EditionToken-$Version-Windows.msi"
-  $out = Join-Path $DistDir "WeChatBridge-$EditionToken-$Version-Windows-Setup.exe"
+  $msi = Join-Path $DistDir "律档通-$EditionToken-$Version-Windows.msi"
+  $out = Join-Path $DistDir "律档通-$EditionToken-$Version-Windows-Setup.exe"
 } else {
-  $msi = Join-Path $DistDir "WeChatBridge-$EditionToken-$Version-Windows-arm64.msi"
-  $out = Join-Path $DistDir "WeChatBridge-$EditionToken-$Version-Windows-arm64-Setup.exe"
+  $msi = Join-Path $DistDir "律档通-$EditionToken-$Version-Windows-arm64.msi"
+  $out = Join-Path $DistDir "律档通-$EditionToken-$Version-Windows-arm64-Setup.exe"
 }
 $icon = Join-Path $DistDir "payload\$Arch\Assets\AppIcon.ico"
 if (-not $CertificateTrustMsiPath) {

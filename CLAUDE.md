@@ -524,6 +524,61 @@ Windows 端新增「知识工作台」面板（阅读优先 / 案件工作区 / 
   （反向为 0）。领先多少个提交随每次推送增长，所以**这里不写死数字**——
   写死的数字在下一笔提交之后就过期了，而过期的数字比没有数字更糟。
   要现值自己跑：`git rev-list --left-right --count main...upstream/main`。
+- **`cnb` 是 CNB 上的私有镜像（2026-10-27 建立）。工作面在 CNB，CI 在 GitHub fork——
+  写入方向是**双向**的，不要当成「origin 优先、cnb 跟随」的单向规则。**
+  `git remote -v` 里第三个：`https://cnb.cool/mengxa.com/WeChatBridge.git`。
+  **走 HTTPS + 明文 token**（凭据在 `~/.git-credentials`，mode 600），
+  不像 GitHub 那两条走 SSH（`github-zhuimeng-hub`）——CNB 的 SSH 与 GitHub 的不通用。
+  2026-10-27 首次推上去的是 **7 个分支 + 12 个标签**，`main` = `1bb1e8f`。
+  - **谁在哪儿干活：** NPC agent（如 CodeBuddy）在 **CNB** 上提交、合并、开评审 issue 与 PR；
+    **CI 跑在 GitHub fork** 上（`ci.yml` 只认 push 到 `main` / `feat/windows-port`，或 PR 到 `main`）。
+    所以 CNB 上产生的提交**必须显式推回 `origin`**，否则 fork 与 CI 看不到它——
+    2026-10-28 实测：NPC 把「100 条上限提示」合进 CNB main（`9986270`）时，fork 的 main 还停在
+    `0e26897`，靠 `git push origin cnb/main:refs/heads/main` 快进过去
+    （`0e26897..9986270`，**没有强推**）才对齐，并顺带触发了 CI。
+    反方向（origin → cnb）由同步脚本做。
+  - **推之前先看谁是谁的后代，别强推。** CNB main 是 origin/main 的后代时就快进推；
+    两边分叉了先 `git fetch cnb main` 比差异、确认方向再推，**不要 `--force`**——
+    推错方向会把对方的提交丢掉。
+  - **CNB 的分支库只认它自己登记过的分支。** 用 git 推上去的新分支**不进** CNB 的分支库
+    （`GET /{repo}/-/git/branches` 里查不到），于是 `POST /{repo}/-/pulls` 会报
+    `invalid commit revision refs/heads/<分支>`——而镜像建立时就有的分支（`main` 等）能正常解析，
+    所以这个报错看着像「分支不存在」，实际是「CNB 还没登记它」。
+    要先用 CNB 自己的接口登记：
+    ```bash
+    POST https://api.cnb.cool/mengxa.com/WeChatBridge/-/git/branches
+    {"name": "<分支>", "start_point": "<提交哈希>"}
+    ```
+    登记完 PR 才建得起来（`POST /{repo}/-/pulls`，字段 `head`/`base`/`title`/`body`）。
+    2026-10-28 实测：登记后 `POST /-/pulls` 立刻成功（PR #3）。
+  - **CNB 的 token 是按仓库授权的，不是用户级。** 拿 A 仓库的 token 去访问 B 仓库，
+    CNB 同样回 `Repository Not Found. / 仓库不存在。`——**不是 401，也不是 403**。
+    所以这条消息**分不清**「仓库不存在」与「token 够不着这个仓库」，别直接当成「仓库没建」。
+    判据是：换上**这个仓库自己的** token 后，`git ls-remote cnb` 从「Not Found」
+    变成 **exit 0 且零输出**——那是「仓库存在、但是个空仓库」。
+  - **可见性用匿名 `info/refs` 判，不要用 `ls-remote` 的失败来判断**：
+    `curl -s -o /dev/null -w '%{http_code}' https://cnb.cool/<org>/<repo>.git/info/refs?service=git-upload-pack`
+    公开回 `HTTP 200`，私有回 `HTTP 401`（2026-10-27 实测本仓库回 401）。
+    而 `ls-remote` 匿名时 CNB 直接要用户名（`could not read Username`），看不到 401。
+  - **`git push cnb --all --tags` 推不全。** `--all` 只推**本地**分支；
+    `origin` 上有、本地没有的分支必须显式写 refspec 从 `refs/remotes/origin/*` 推。
+    完整镜像的写法（2026-10-27 实测 20 条 ref 一次推成）：
+    ```bash
+    git push cnb \
+      'refs/remotes/origin/<分支>:refs/heads/<分支>' \
+      'refs/heads/<本地独有分支>:refs/heads/<本地独有分支>' \
+      'refs/tags/*:refs/tags/*'
+    ```
+  - **往 cnb 推之前先 `git fetch origin --tags --prune`。** 不 fetch 就推，
+    推上去的 `main` 会是**本地那个落后的 main**——2026-10-27 实测本地 main 落后 origin/main
+    二十多个提交（origin 上已经把产品改名成「律档通」），推完两端对不上。
+  - **仓库里那把 EC 私钥是测试向量专用的，不是生产签发私钥。**
+    `shared/License/license-test-vectors.json` 与 `server/cmd/license-vectors/main.go`
+    里各有一份 PEM 字面量，用来生成 canonical 签名向量；生产私钥在服务器的
+    `/etc/wechatbridge/license-ec.pk8.pem`，**不在仓库里**。
+    它的 SPKI 与客户端内嵌的生产公钥**不是同一把**（实测：`…DQgAEJQIGWuHgDEI7QLKq0TsTQGbPV+1ptD4…`
+    vs `…DQgAEwbLEFzGEcMyOsGB3UvyCdWq66T0lG…`），所以它造不出客户端认可的许可证。
+    整个仓库里**没有** `-----BEGIN` 开头的真实 PEM 块。
 - **macOS 的自动更新是**故意关掉**的，不是「feed 坏了」。** `Resources/Info.plist` 里
   `SUEnableAutomaticChecks` 是 `false`，而且**根本没有 `SUFeedURL` 这个键**。
   `Scripts/check-release-config.sh` 第 8 节会在「自动检查关着却存在 `SUFeedURL`」时
@@ -553,10 +608,21 @@ Windows 端新增「知识工作台」面板（阅读优先 / 案件工作区 / 
   **这些分支对应的看板从此是历史记录，不再是活的进度源**——
   现在还活着的只有 `main` 上的看板，其中 M1 桌面版 beta 就绪度那块是最新的一块
   （2026-10-24 已随分支合并进主干；知识工作台那块是上一块）。
-  远端分支清单：`git branch -r | grep origin/`（**origin 上的远端分支：二条**
-  ——`main` 与 `feat/m1-desktop-beta-readiness`（2026-10-24 起 M1 桌面版
-  beta 就绪度这一块的工作分支，**已快进合进 main**，但分支留着——
-  看板上还挂着未完成项；看板在 `docs/progress/feat/m1-desktop-beta-readiness.md`）。
+  远端分支清单：`git branch -r | grep origin/`（**origin 上的远端分支：四条**
+  ——`main`，加上三条**都还有 main 里没有的工作**的分支：**`codex/desktop-archive-design`**
+  （**比 main 多 11 个提交**）、**`feat/sqlite-migration`**（**比 main 多 8 个提交**）、
+  **`fix/windows-archive-merge-brand-20261027`**（**比 main 多 7 个提交**，2026-10-27 的 tip 是
+  `test(windows): correct escaped fixture transcript newlines`）。
+  **推镜像时不能只推 `--all`**（`--all` 只认本地分支）。
+  已并入 main 的分支**删之前先打归档 tag**（`archive/<分支名>`，斜杠换成横杠），tag 留在仓库里，
+  分支删掉——这样「哪条分支的成果还在」由 tag 记着，而不是由一条已经没用的分支记着。
+  2026-10-28 清掉了三条已并入 main 的分支，各自留了 tag：
+  `archive/codex-attachment-categories`、`archive/feat-m1-desktop-beta-readiness`、
+  `archive/feat-windows-forward-limit-hint`（Windows 端 100 条上限提示，代码随 NPC 的
+  `bda534a` 合进 main，看板留在 `docs/progress/feat/windows-forward-limit-hint.md`）。
+  M1 桌面版 beta 就绪度那条分支原本特意留着（看板还挂着未完成项），
+  它的成果同样已经在 main 里，看板也留在 `docs/progress/feat/m1-desktop-beta-readiness.md`——
+  接着做那些未完成项时从 main 开新分支即可，不需要留一条已合干的旧分支。
   知识工作台那条分支 2026-10-24 合进 main 之后打了 `archive/feat-obsidian-workbench-variants`
   tag 就删掉了；`upstream` 的十二条 = `upstream/main` 本体加十一条
   上游 PR 分支，全是上游 PR 合并后的残留，**推不动也不该推**——

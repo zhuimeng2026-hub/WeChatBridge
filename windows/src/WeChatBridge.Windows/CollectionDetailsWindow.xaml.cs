@@ -173,6 +173,8 @@ public partial class CollectionDetailsWindow : Window
                     rows[i].Boundaries = L10n.Format($"消息数：{info.Count?.ToString() ?? L10n.Text("未知")}\n\n首条：{Describe(info.First)}\n\n末条：{Describe(info.Last)}");
                     rows[i].SetMetadata(info);
                 }
+                // The counts only arrive now, so the note waits for them.
+                UpdateForwardLimit();
                 if (!_hasLoadedMetadata) { _hasLoadedMetadata = true; BatchScroll.ScrollToTop(); }
                 if (group is not null) SummaryText.Text = CollectionSummary.Format(metadata, ByteText.Format(rows.Sum(r => r.Batch.ByteCount)));
                 LastRange.Text = rows.LastOrDefault()?.Metadata?.First is not null
@@ -282,7 +284,24 @@ public partial class CollectionDetailsWindow : Window
         LatestChat.Text = row?.ChatName is { Length: > 0 } name ? name : L10n.Text("未命名聊天");
         LatestBatch.Text = row?.Title ?? "";
         RenameButton.IsEnabled = row is not null;
+        UpdateForwardLimit();
     }
+
+    /// <summary>
+    /// WeChat stops a selection at 100 messages. A batch that lands exactly
+    /// there most likely goes on, so the user is told how to carry on — the
+    /// boundary line is already on screen and can be copied from it.
+    /// </summary>
+    private void UpdateForwardLimit()
+    {
+        var row = LatestReference.DataContext as CollectionBatchRow;
+        var hits = WeChatForwardLimit.HitsLimit(row?.Metadata?.Count);
+        ForwardLimitPanel.Visibility = hits ? Visibility.Visible : Visibility.Collapsed;
+        if (!hits) return;
+        ForwardLimitNotice.Text = WeChatForwardLimit.Notice;
+        ForwardLimitAdvice.Text = WeChatForwardLimit.Advice;
+    }
+
     private void Rename_Click(object sender, RoutedEventArgs e)
     {
         if (LatestReference.DataContext is not CollectionBatchRow row) return;
