@@ -15,18 +15,22 @@ Owner: Claude（按用户指派，在本机实现并推送；Windows 环境的�
 | W-5 设计文档 + `batch-collection.md` 的例外条目 | ✅ | `docs/design/windows-forward-limit-hint.zh-CN.md` |
 | W-QA Windows 编译与测试（Perpetual + Subscription） | ⏳ | 本机无 .NET SDK，按用户要求不在此安装；交给 Windows 环境 |
 | W-QA2 UI 冒烟覆盖 100 条批次 | ⬜ | 现有夹具只有 6 条，需新增第三个批次并同步「约 6 条」等断言 |
-| Remote push | ✅ | `7643c9e` → `origin/feat/windows-forward-limit-hint`（fork `zhuimeng2026-hub`） |
-| PR 与 CI | ⏳ | 本机存的 GitHub token 只有 push 权限，建不了 PR；需开 PR 才会跑 CI（`ci.yml` 只认 push 到 main / `feat/windows-port`，或 PR 到 main） |
-| CNB 镜像与评审 issue | ✅ | issue #1：https://cnb.cool/mengxa.com/WeChatBridge/-/issues/1 ；镜像分支 `feat/windows-forward-limit-hint` = `8a38d65`，与 origin 一致 |
-| CNB PR（评审载体） | ✅ | PR #3：https://cnb.cool/mengxa.com/WeChatBridge/-/pulls/3 （head `feat/windows-forward-limit-hint` → base `main`，4 个提交）；状态 conflict，见下 |
+| Remote push | ✅ | 代码提交已由 NPC 以 `bda534a` 合进 main；本分支已变基到 `9986270`，只剩一笔看板补充 |
+| PR 与 CI | ✅ | CNB 上 PR #3；GitHub 侧 CI 由把 `9986270` 推到 fork main 触发（run 40591180916）。基线本来就红，见下 |
+| CNB 镜像与评审 issue | ✅ | issue #1：https://cnb.cool/mengxa.com/WeChatBridge/-/issues/1 ；镜像分支与 origin 同步 |
+| CNB PR（评审载体） | ✅ | PR #3：https://cnb.cool/mengxa.com/WeChatBridge/-/pulls/3 ；变基后不再冲突，差异只剩这份看板；**代码评审对象是已落地的 `bda534a`** |
 
 ## CNB 上的状态（2026-10-28）
 
 - **评审 issue #1 已开**，CodeBuddy NPC 接到后自行实现并合进了 **CNB main**：`bda534a feat(windows): 补齐 100 条上限提示`，
   之后的 `9986270` 记了分支数。两版**代码文件逐字相同**（`git diff bda534a 7643c9e -- windows/src/` 为空），
   NPC 版另加 3 个测试用例（正好 100 仍提示的取舍说明、超上限不算在上限、空批不算），并更新了 CLAUDE.md 与看板。
-- **PR #3 因此显示 conflict**——是重复实现，不是分歧。评审对着 PR #3 的 diff 即可（等价于评审已落地的 `bda534a`）。
-  已在 issue #1 里说明。
+- **本分支已变基到 `9986270`**（冲突一律取 NPC 的版本）：我的代码提交因与 `bda534a` 等价而被丢弃，
+  现在这个分支相对 main 只多一份看板补充，不再重复实现、也不会回退 NPC 的内容。
+  **代码评审对象是已落地的 `bda534a`**（PR #3 里已不再重复它）。
+- **CNB main 与 GitHub fork 的 main 已对齐**：CNB main = `9986270`，fork 的 main 已快进到同一提交
+  （`0e26897..9986270`，无强推）。CLAUDE.md 写的仍是「origin 优先、cnb 跟随」，
+  这次是反着同步了一次，值得回头把规则与现实对齐。
 - **CNB 的坑：用 git 推上去的新分支不会进 CNB 的分支库。** `POST /{repo}/-/pulls` 会报
   `invalid commit revision refs/heads/<分支>`（`main` 等镜像建立时就有的分支能解析）。
   要先用 CNB 自己的接口把分支登记出来：
@@ -35,9 +39,11 @@ Owner: Claude（按用户指派，在本机实现并推送；Windows 环境的�
   {"name": "<分支>", "start_point": "<提交哈希>"}
   ```
   登记完 PR 才建得起来（`POST /{repo}/-/pulls`，`head`/`base`/`title`/`body`）。
-- CNB main 的 tip 是 `9986270`，与 GitHub fork 的 `origin/main`（`0e26897`）**已分叉**：
-  NPC 的实现只在 CNB main 上，fork 的 main 还没有。CLAUDE.md 写的是「origin 优先、cnb 跟随」，
-  这个方向要有人统一。
+- **CI 基线本来就是红的，与本功能无关**（run 40455462172，跑的是没有该功能的 `0e26897`）：
+  三个 job 全红，失败在 `LayoutWiringTests.EveryPowerShellScriptWithChineseStringsShipsWithAByteOrderMark`
+  （`build-installer.ps1`、`msi/build-bundle.ps1` 有注释外的中文却无 BOM）与两个
+  `ObsidianNoteTests`（期望 `NothingNew` 实得 `Merged`）。**编译本身是干净的**：0 warning / 0 error，
+  Core 测试 600/603 通过，AppTests 84/84 全绿。要 CI 全绿得先修那 3 个既有失败。
 
 ## 变基到改名后的主干（2026-10-27）
 
