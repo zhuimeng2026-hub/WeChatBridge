@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     # Optional cross-check, not the source of truth: leave it out and the value
     # is read from Directory.Build.props below. Passing it is only useful to

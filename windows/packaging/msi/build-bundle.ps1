@@ -1,4 +1,4 @@
-# Build the Burn bootstrapper Setup.exe (runtime check + on-demand download + MSI).
+﻿# Build the Burn bootstrapper Setup.exe (runtime check + on-demand download + MSI).
 # Requires: WiX 6, Util + BootstrapperApplications extension dlls, built MSIs.
 #
 #   .\build-bundle.ps1 -Arch x64 -Edition Perpetual -Version 1.0.8

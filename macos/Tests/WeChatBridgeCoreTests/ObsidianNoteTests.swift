@@ -99,8 +99,12 @@ final class ObsidianNoteTests: XCTestCase {
             timeZone: TimeZone(secondsFromGMT: 0)!
         )
 
-        XCTAssertTrue(note.contains("![[附件/微信图片_202609202355_11.jpg]]"))
-        XCTAssertFalse(note.contains("![[附件/微信图片_202609202355_1.jpg]]"))
+        // The chat record links the longer name only: the shorter one is a
+        // substring of it and must not steal the hit. The attachment
+        // inventory below may still list both — they are both in the archive.
+        let chat = note.components(separatedBy: "<!-- wechatbridge-attachments:start -->")[0]
+        XCTAssertTrue(chat.contains("![[附件/微信图片_202609202355_11.jpg]]"))
+        XCTAssertFalse(chat.contains("![[附件/微信图片_202609202355_1.jpg]]"))
     }
 
     func testNestedAttachmentKeysPreserveDistinctFilesAndOnlyUniqueLeafMentionsLink() throws {

@@ -150,12 +150,19 @@ public sealed class ObsidianNoteTests
         Assert.Contains("第三条", merged);
     }
 
+    /// <summary>
+    /// The same chat shared again, from the same archive: the messages are
+    /// known and the archive is already recorded, so there is nothing new.
+    /// A <em>different</em> archive is new content — the note records where
+    /// each copy came from (see the archive-provenance tests in
+    /// KnowledgeDeliveryTests).
+    /// </summary>
     [Fact]
     public void MergeReportsNothingNewWhenEverythingIsAlreadyThere()
     {
         var transcript = Txt("·甲\n2026年9月20日 09:10\n第一条\n");
         var outcome = ObsidianNote.TryMerge(
-            Rendered(transcript), transcript, null, "b.zip", "群", null,
+            Rendered(transcript), transcript, null, "a.zip", "群", null,
             DateTimeOffset.UnixEpoch, out var merged, Utc);
 
         Assert.Equal(ObsidianNote.MergeOutcome.NothingNew, outcome);
@@ -233,16 +240,19 @@ public sealed class ObsidianNoteTests
         // The marker is part of the note the user reads.
         Assert.Contains("> 追加归档：[[附件/b.zip]]", merged!);
 
-        // The third share of the same chat has nothing new to add: 甲's body
-        // carries the marker, and the marker is not part of the message.
+        // The third share of the same chat adds no message: 甲's body carries
+        // the marker, and the marker is not part of the message. The new
+        // archive is still provenance, so the merge happens and the note
+        // records where this copy came from.
         outcome = ObsidianNote.TryMerge(
             merged!, second, null, "c.zip", "群", null,
             new DateTimeOffset(2026, 9, 22, 0, 0, 0, TimeSpan.Zero), out var again, Utc);
 
-        Assert.Equal(ObsidianNote.MergeOutcome.NothingNew, outcome);
-        Assert.Null(again);
-        Assert.Single(System.Text.RegularExpressions.Regex.Matches(merged!, "第一条"));
-        Assert.Single(System.Text.RegularExpressions.Regex.Matches(merged!, "第二条"));
+        Assert.Equal(ObsidianNote.MergeOutcome.Merged, outcome);
+        Assert.NotNull(again);
+        Assert.Contains("> 追加归档：[[附件/c.zip]]", again!);
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(again!, "第一条"));
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(again!, "第二条"));
     }
 
     /// <summary>

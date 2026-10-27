@@ -125,9 +125,15 @@ public sealed class LayoutWiringTests
         // BOM-less test only guarded FirstRun.ps1, so nothing caught it.
         //
         // Comments are excluded on purpose. A Chinese comment in a BOM-less
-        // file is only a cosmetic problem, and the three files that have one
-        // (build-installer.ps1, msi/build-bundle.ps1, msi/Register-ShareTarget.ps1)
-        // are left as they are rather than carrying a fix nobody asked for.
+        // file is only a cosmetic problem, so msi/Register-ShareTarget.ps1 —
+        // whose Chinese is only in comments — is left as it is rather than
+        // carrying a fix nobody asked for.
+        //
+        // build-installer.ps1 and msi/build-bundle.ps1 used to be in that
+        // group. They stopped being comment-only on 2026-10-27, when the
+        // product name 「律档通」 went into the *output file names* — a string
+        // PowerShell has to read correctly, or the packages get named in
+        // mojibake. Both carry a BOM since then.
         var offenders = new List<string>();
         foreach (var script in PowerShellScripts())
         {
