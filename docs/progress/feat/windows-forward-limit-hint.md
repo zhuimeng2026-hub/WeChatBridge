@@ -18,6 +18,26 @@ Owner: Claude（按用户指派，在本机实现并推送；Windows 环境的�
 | Remote push | ✅ | `7643c9e` → `origin/feat/windows-forward-limit-hint`（fork `zhuimeng2026-hub`） |
 | PR 与 CI | ⏳ | 本机存的 GitHub token 只有 push 权限，建不了 PR；需开 PR 才会跑 CI（`ci.yml` 只认 push 到 main / `feat/windows-port`，或 PR 到 main） |
 | CNB 镜像与评审 issue | ✅ | issue #1：https://cnb.cool/mengxa.com/WeChatBridge/-/issues/1 ；镜像分支 `feat/windows-forward-limit-hint` = `8a38d65`，与 origin 一致 |
+| CNB PR（评审载体） | ✅ | PR #3：https://cnb.cool/mengxa.com/WeChatBridge/-/pulls/3 （head `feat/windows-forward-limit-hint` → base `main`，4 个提交）；状态 conflict，见下 |
+
+## CNB 上的状态（2026-10-28）
+
+- **评审 issue #1 已开**，CodeBuddy NPC 接到后自行实现并合进了 **CNB main**：`bda534a feat(windows): 补齐 100 条上限提示`，
+  之后的 `9986270` 记了分支数。两版**代码文件逐字相同**（`git diff bda534a 7643c9e -- windows/src/` 为空），
+  NPC 版另加 3 个测试用例（正好 100 仍提示的取舍说明、超上限不算在上限、空批不算），并更新了 CLAUDE.md 与看板。
+- **PR #3 因此显示 conflict**——是重复实现，不是分歧。评审对着 PR #3 的 diff 即可（等价于评审已落地的 `bda534a`）。
+  已在 issue #1 里说明。
+- **CNB 的坑：用 git 推上去的新分支不会进 CNB 的分支库。** `POST /{repo}/-/pulls` 会报
+  `invalid commit revision refs/heads/<分支>`（`main` 等镜像建立时就有的分支能解析）。
+  要先用 CNB 自己的接口把分支登记出来：
+  ```bash
+  POST https://api.cnb.cool/mengxa.com/WeChatBridge/-/git/branches
+  {"name": "<分支>", "start_point": "<提交哈希>"}
+  ```
+  登记完 PR 才建得起来（`POST /{repo}/-/pulls`，`head`/`base`/`title`/`body`）。
+- CNB main 的 tip 是 `9986270`，与 GitHub fork 的 `origin/main`（`0e26897`）**已分叉**：
+  NPC 的实现只在 CNB main 上，fork 的 main 还没有。CLAUDE.md 写的是「origin 优先、cnb 跟随」，
+  这个方向要有人统一。
 
 ## 变基到改名后的主干（2026-10-27）
 
