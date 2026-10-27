@@ -31,8 +31,8 @@ Owner: Claude（按用户指派，在本机实现并推送；Windows 环境的�
 - PR #3 的冲突最早是 NPC 把 `main` 合进源分支解掉的（取并集，`main` 多的 3 个用例与文档行都留着）；
   改成变基后那次解冲突不再需要，本分支相对 `main` 已无冲突。
 - **CNB main 与 GitHub fork 的 main 已对齐**：CNB main = `9986270`，fork 的 main 已快进到同一提交
-  （`0e26897..9986270`，无强推）。CLAUDE.md 写的仍是「origin 优先、cnb 跟随」，
-  这次是反着同步了一次，值得回头把规则与现实对齐。
+  （`0e26897..9986270`，无强推）。CLAUDE.md 那条「origin 优先、cnb 跟随」的单向规则已按实情改写
+  （工作面在 CNB、CI 在 fork，写入方向是双向的），并补上 CNB 分支登记那个坑。
 - **CNB 的坑：用 git 推上去的新分支不会进 CNB 的分支库。** `POST /{repo}/-/pulls` 会报
   `invalid commit revision refs/heads/<分支>`（`main` 等镜像建立时就有的分支能解析）。
   要先用 CNB 自己的接口把分支登记出来：

@@ -524,11 +524,33 @@ Windows 端新增「知识工作台」面板（阅读优先 / 案件工作区 / 
   （反向为 0）。领先多少个提交随每次推送增长，所以**这里不写死数字**——
   写死的数字在下一笔提交之后就过期了，而过期的数字比没有数字更糟。
   要现值自己跑：`git rev-list --left-right --count main...upstream/main`。
-- **`cnb` 是 CNB 上的私有镜像（2026-10-27 建立），不是权威，写的顺序永远是 origin 优先、cnb 跟随。**
+- **`cnb` 是 CNB 上的私有镜像（2026-10-27 建立）。工作面在 CNB，CI 在 GitHub fork——
+  写入方向是**双向**的，不要当成「origin 优先、cnb 跟随」的单向规则。**
   `git remote -v` 里第三个：`https://cnb.cool/mengxa.com/WeChatBridge.git`。
   **走 HTTPS + 明文 token**（凭据在 `~/.git-credentials`，mode 600），
   不像 GitHub 那两条走 SSH（`github-zhuimeng-hub`）——CNB 的 SSH 与 GitHub 的不通用。
   2026-10-27 首次推上去的是 **7 个分支 + 12 个标签**，`main` = `1bb1e8f`。
+  - **谁在哪儿干活：** NPC agent（如 CodeBuddy）在 **CNB** 上提交、合并、开评审 issue 与 PR；
+    **CI 跑在 GitHub fork** 上（`ci.yml` 只认 push 到 `main` / `feat/windows-port`，或 PR 到 `main`）。
+    所以 CNB 上产生的提交**必须显式推回 `origin`**，否则 fork 与 CI 看不到它——
+    2026-10-28 实测：NPC 把「100 条上限提示」合进 CNB main（`9986270`）时，fork 的 main 还停在
+    `0e26897`，靠 `git push origin cnb/main:refs/heads/main` 快进过去
+    （`0e26897..9986270`，**没有强推**）才对齐，并顺带触发了 CI。
+    反方向（origin → cnb）由同步脚本做。
+  - **推之前先看谁是谁的后代，别强推。** CNB main 是 origin/main 的后代时就快进推；
+    两边分叉了先 `git fetch cnb main` 比差异、确认方向再推，**不要 `--force`**——
+    推错方向会把对方的提交丢掉。
+  - **CNB 的分支库只认它自己登记过的分支。** 用 git 推上去的新分支**不进** CNB 的分支库
+    （`GET /{repo}/-/git/branches` 里查不到），于是 `POST /{repo}/-/pulls` 会报
+    `invalid commit revision refs/heads/<分支>`——而镜像建立时就有的分支（`main` 等）能正常解析，
+    所以这个报错看着像「分支不存在」，实际是「CNB 还没登记它」。
+    要先用 CNB 自己的接口登记：
+    ```bash
+    POST https://api.cnb.cool/mengxa.com/WeChatBridge/-/git/branches
+    {"name": "<分支>", "start_point": "<提交哈希>"}
+    ```
+    登记完 PR 才建得起来（`POST /{repo}/-/pulls`，字段 `head`/`base`/`title`/`body`）。
+    2026-10-28 实测：登记后 `POST /-/pulls` 立刻成功（PR #3）。
   - **CNB 的 token 是按仓库授权的，不是用户级。** 拿 A 仓库的 token 去访问 B 仓库，
     CNB 同样回 `Repository Not Found. / 仓库不存在。`——**不是 401，也不是 403**。
     所以这条消息**分不清**「仓库不存在」与「token 够不着这个仓库」，别直接当成「仓库没建」。
@@ -547,7 +569,7 @@ Windows 端新增「知识工作台」面板（阅读优先 / 案件工作区 / 
       'refs/heads/<本地独有分支>:refs/heads/<本地独有分支>' \
       'refs/tags/*:refs/tags/*'
     ```
-  - **推之前先 `git fetch origin --tags --prune`。** 不 fetch 就推，
+  - **往 cnb 推之前先 `git fetch origin --tags --prune`。** 不 fetch 就推，
     推上去的 `main` 会是**本地那个落后的 main**——2026-10-27 实测本地 main 落后 origin/main
     二十多个提交（origin 上已经把产品改名成「律档通」），推完两端对不上。
   - **仓库里那把 EC 私钥是测试向量专用的，不是生产签发私钥。**
@@ -586,7 +608,7 @@ Windows 端新增「知识工作台」面板（阅读优先 / 案件工作区 / 
   **这些分支对应的看板从此是历史记录，不再是活的进度源**——
   现在还活着的只有 `main` 上的看板，其中 M1 桌面版 beta 就绪度那块是最新的一块
   （2026-10-24 已随分支合并进主干；知识工作台那块是上一块）。
-  远端分支清单：`git branch -r | grep origin/`（**origin 上的远端分支：六条**
+  远端分支清单：`git branch -r | grep origin/`（**origin 上的远端分支：七条**
   ——`main` 与 `feat/m1-desktop-beta-readiness`（2026-10-24 起 M1 桌面版
   beta 就绪度这一块的工作分支，**已快进合进 main**，但分支留着——
   看板上还挂着未完成项；看板在 `docs/progress/feat/m1-desktop-beta-readiness.md`）；
@@ -597,8 +619,9 @@ Windows 端新增「知识工作台」面板（阅读优先 / 案件工作区 / 
   还有 2026-10-27 新增的 **`feat/sqlite-migration`**（**比 main 多 8 个提交**）。
   **除 `main`、`feat/m1-desktop-beta-readiness` 与 `codex/attachment-categories` 外都有 main 里没有的工作**，
   所以推镜像时不能只推 `--all`（`--all` 只认本地分支）。
-  `feat/windows-forward-limit-hint`（Windows 端 100 条上限提示）已于 2026-10-27 合进 main 并删掉分支，
-  看板留在 `docs/progress/feat/windows-forward-limit-hint.md`。
+  `feat/windows-forward-limit-hint`（Windows 端 100 条上限提示）的代码已于 2026-10-28 随 NPC 的
+  `bda534a` 合进 main；**分支还留着**，但已变基到 main，只多一笔看板补充（CNB PR #3 的评审载体），
+  看板在 `docs/progress/feat/windows-forward-limit-hint.md`。
   知识工作台那条分支 2026-10-24 合进 main 之后打了 `archive/feat-obsidian-workbench-variants`
   tag 就删掉了；`upstream` 的十二条 = `upstream/main` 本体加十一条
   上游 PR 分支，全是上游 PR 合并后的残留，**推不动也不该推**——
