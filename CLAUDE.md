@@ -608,20 +608,21 @@ Windows 端新增「知识工作台」面板（阅读优先 / 案件工作区 / 
   **这些分支对应的看板从此是历史记录，不再是活的进度源**——
   现在还活着的只有 `main` 上的看板，其中 M1 桌面版 beta 就绪度那块是最新的一块
   （2026-10-24 已随分支合并进主干；知识工作台那块是上一块）。
-  远端分支清单：`git branch -r | grep origin/`（**origin 上的远端分支：七条**
-  ——`main` 与 `feat/m1-desktop-beta-readiness`（2026-10-24 起 M1 桌面版
-  beta 就绪度这一块的工作分支，**已快进合进 main**，但分支留着——
-  看板上还挂着未完成项；看板在 `docs/progress/feat/m1-desktop-beta-readiness.md`）；
-  另外三条是 2026-10-25 之后新增的：**`codex/attachment-categories`**（tip 已在 main 里，
-  内容无差异）、**`codex/desktop-archive-design`**（**比 main 多 11 个提交**）、
+  远端分支清单：`git branch -r | grep origin/`（**origin 上的远端分支：四条**
+  ——`main`，加上三条**都还有 main 里没有的工作**的分支：**`codex/desktop-archive-design`**
+  （**比 main 多 11 个提交**）、**`feat/sqlite-migration`**（**比 main 多 8 个提交**）、
   **`fix/windows-archive-merge-brand-20261027`**（**比 main 多 7 个提交**，2026-10-27 的 tip 是
-  `test(windows): correct escaped fixture transcript newlines`）；
-  还有 2026-10-27 新增的 **`feat/sqlite-migration`**（**比 main 多 8 个提交**）。
-  **除 `main`、`feat/m1-desktop-beta-readiness` 与 `codex/attachment-categories` 外都有 main 里没有的工作**，
-  所以推镜像时不能只推 `--all`（`--all` 只认本地分支）。
-  `feat/windows-forward-limit-hint`（Windows 端 100 条上限提示）的代码已于 2026-10-28 随 NPC 的
-  `bda534a` 合进 main；**分支还留着**，但已变基到 main，只多一笔看板补充（CNB PR #3 的评审载体），
-  看板在 `docs/progress/feat/windows-forward-limit-hint.md`。
+  `test(windows): correct escaped fixture transcript newlines`）。
+  **推镜像时不能只推 `--all`**（`--all` 只认本地分支）。
+  已并入 main 的分支**删之前先打归档 tag**（`archive/<分支名>`，斜杠换成横杠），tag 留在仓库里，
+  分支删掉——这样「哪条分支的成果还在」由 tag 记着，而不是由一条已经没用的分支记着。
+  2026-10-28 清掉了三条已并入 main 的分支，各自留了 tag：
+  `archive/codex-attachment-categories`、`archive/feat-m1-desktop-beta-readiness`、
+  `archive/feat-windows-forward-limit-hint`（Windows 端 100 条上限提示，代码随 NPC 的
+  `bda534a` 合进 main，看板留在 `docs/progress/feat/windows-forward-limit-hint.md`）。
+  M1 桌面版 beta 就绪度那条分支原本特意留着（看板还挂着未完成项），
+  它的成果同样已经在 main 里，看板也留在 `docs/progress/feat/m1-desktop-beta-readiness.md`——
+  接着做那些未完成项时从 main 开新分支即可，不需要留一条已合干的旧分支。
   知识工作台那条分支 2026-10-24 合进 main 之后打了 `archive/feat-obsidian-workbench-variants`
   tag 就删掉了；`upstream` 的十二条 = `upstream/main` 本体加十一条
   上游 PR 分支，全是上游 PR 合并后的残留，**推不动也不该推**——

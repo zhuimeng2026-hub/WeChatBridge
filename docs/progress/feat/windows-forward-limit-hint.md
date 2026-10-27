@@ -13,26 +13,28 @@ Owner: Claude（按用户指派，在本机实现并推送；Windows 环境的�
 | W-3 英文表补两条译文（key 含占位符，校验下标集合） | ✅ | `Core/Localization/en.json` |
 | W-4 Core 测试：100 命中 / 99·101 不命中 / null 不命中 / 真实 100 条 ZIP / 译文存在 | ✅ | `WeChatForwardLimitTests.cs` |
 | W-5 设计文档 + `batch-collection.md` 的例外条目 | ✅ | `docs/design/windows-forward-limit-hint.zh-CN.md` |
-| W-QA Windows 编译与测试（Perpetual + Subscription） | ⏳ | 本机无 .NET SDK，按用户要求不在此安装；交给 Windows 环境 |
+| W-QA Windows 编译与测试（Perpetual + Subscription） | ✅ | CI run 40594730563：macOS / Windows Perpetual / Windows Subscription 三 job 全绿；Windows Core 617/617、AppTests 84/84 |
 | W-QA2 UI 冒烟覆盖 100 条批次 | ⬜ | 现有夹具只有 6 条，需新增第三个批次并同步「约 6 条」等断言 |
-| Remote push | ✅ | 代码提交已由 NPC 以 `bda534a` 合进 main；本分支已变基到 `9986270`，只剩一笔看板补充 |
-| PR 与 CI | ✅ | CNB 上 PR #3；GitHub 侧 CI 由把 `9986270` 推到 fork main 触发（run 40591180916）。基线本来就红，见下 |
-| CNB 镜像与评审 issue | ✅ | issue #1：https://cnb.cool/mengxa.com/WeChatBridge/-/issues/1 ；镜像分支与 origin 同步 |
-| CNB PR（评审载体） | ✅ | PR #3：https://cnb.cool/mengxa.com/WeChatBridge/-/pulls/3 ；变基后不再冲突，差异只剩这份看板；**代码评审对象是已落地的 `bda534a`** |
+| 顺带修掉 CI 的三个既有失败 | ✅ | 两个 `ObsidianNoteTests`（归档来源的新契约）、两个 ps1 补 UTF-8 BOM、macOS 附件清单让一条断言越界 |
+| Remote push | ✅ | 代码由 NPC 以 `bda534a` 合进 main；本分支随后变基到 main，只剩看板补充，**已删**（留 tag `archive/feat-windows-forward-limit-hint`） |
+| PR 与 CI | ✅ | CNB PR #3 已合并；GitHub 侧 run 40594730563 全绿 |
+| CNB 镜像与评审 issue | ✅ | issue #1 已关闭（completed）：https://cnb.cool/mengxa.com/WeChatBridge/-/issues/1 |
+| CNB PR（评审载体） | ✅ | PR #3 已合并：https://cnb.cool/mengxa.com/WeChatBridge/-/pulls/3 ；**代码评审对象是已落地的 `bda534a`** |
 
-## CNB 上的状态（2026-10-28）
+## CNB 上的状态（2026-10-28，完结）
 
-- **评审 issue #1 已开**，CodeBuddy NPC 接到后自行实现并合进了 **CNB main**：`bda534a feat(windows): 补齐 100 条上限提示`，
-  之后的 `9986270` 记了分支数。两版**代码文件逐字相同**（`git diff bda534a 7643c9e -- windows/src/` 为空），
+- **评审 issue #1 已关闭**（completed）：https://cnb.cool/mengxa.com/WeChatBridge/-/issues/1
+- **代码由 NPC 的 `bda534a` 合进 main**，与我的实现**逐字相同**（`git diff bda534a 7643c9e -- windows/src/` 为空）；
   NPC 版另加 3 个测试用例（正好 100 仍提示的取舍说明、超上限不算在上限、空批不算），并更新了 CLAUDE.md 与看板。
-- **本分支已变基到 `9986270`**（冲突一律取 NPC 的版本）：我的代码提交因与 `bda534a` 等价而被丢弃，
-  现在这个分支相对 main 只多一份看板补充，不再重复实现、也不会回退 NPC 的内容。
-  **代码评审对象是已落地的 `bda534a`**（PR #3 里已不再重复它）。
-- PR #3 的冲突最早是 NPC 把 `main` 合进源分支解掉的（取并集，`main` 多的 3 个用例与文档行都留着）；
-  改成变基后那次解冲突不再需要，本分支相对 `main` 已无冲突。
-- **CNB main 与 GitHub fork 的 main 已对齐**：CNB main = `9986270`，fork 的 main 已快进到同一提交
-  （`0e26897..9986270`，无强推）。CLAUDE.md 那条「origin 优先、cnb 跟随」的单向规则已按实情改写
-  （工作面在 CNB、CI 在 fork，写入方向是双向的），并补上 CNB 分支登记那个坑。
+- **PR #3 已合并**：最早是 NPC 把 `main` 合进源分支解冲突（取并集），我随后把分支变基到 `main`
+  （冲突一律取 NPC 的版本），代码提交因与 `bda534a` 等价而被丢弃，只剩看板补充。PR 合入后分支已删，
+  留 tag `archive/feat-windows-forward-limit-hint`。
+- **CNB main 与 GitHub fork 的 main 同为 `619b073`**。CLAUDE.md 那条「origin 优先、cnb 跟随」的单向规则
+  已按实情改写（工作面在 CNB、CI 在 fork，写入方向是双向的）。
+- **CI 已全绿**：run 40594730563 三个 job 全过（macOS / Windows Perpetual / Windows Subscription），
+  Windows Core 617/617、AppTests 84/84。此前从 10-25 起连续的三个既有失败（两个 `ObsidianNoteTests`
+  的归档来源契约、两个 ps1 漏 UTF-8 BOM、macOS 附件清单让一条断言越界）一并修掉——**没有改任何生产逻辑**，
+  只改了测试断言与两个打包脚本的 BOM。
 - **CNB 的坑：用 git 推上去的新分支不会进 CNB 的分支库。** `POST /{repo}/-/pulls` 会报
   `invalid commit revision refs/heads/<分支>`（`main` 等镜像建立时就有的分支能解析）。
   要先用 CNB 自己的接口把分支登记出来：
@@ -41,11 +43,6 @@ Owner: Claude（按用户指派，在本机实现并推送；Windows 环境的�
   {"name": "<分支>", "start_point": "<提交哈希>"}
   ```
   登记完 PR 才建得起来（`POST /{repo}/-/pulls`，`head`/`base`/`title`/`body`）。
-- **CI 基线本来就是红的，与本功能无关**（run 40455462172，跑的是没有该功能的 `0e26897`）：
-  三个 job 全红，失败在 `LayoutWiringTests.EveryPowerShellScriptWithChineseStringsShipsWithAByteOrderMark`
-  （`build-installer.ps1`、`msi/build-bundle.ps1` 有注释外的中文却无 BOM）与两个
-  `ObsidianNoteTests`（期望 `NothingNew` 实得 `Merged`）。**编译本身是干净的**：0 warning / 0 error，
-  Core 测试 600/603 通过，AppTests 84/84 全绿。要 CI 全绿得先修那 3 个既有失败。
 
 ## 变基到改名后的主干（2026-10-27）
 
