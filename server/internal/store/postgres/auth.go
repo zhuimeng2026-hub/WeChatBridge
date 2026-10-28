@@ -322,10 +322,7 @@ func (s *Store) UpsertAccountByOpenID(ctx context.Context, openID, unionID, nick
 	return upsertAccount(ctx, s.db, openID, unionID, nickname, avatar, "", time.Now().UTC())
 }
 
-const getAccountSQL = `
-	SELECT ` + accountColumns + `
-	FROM accounts
-	WHERE id = $1`
+const getAccountSQL = "SELECT " + accountColumns + " FROM accounts WHERE id = $1"
 
 // GetAccount reads one account by primary key.
 func (s *Store) GetAccount(ctx context.Context, id store.ID) (store.Account, error) {
@@ -369,13 +366,10 @@ const sessionColumns = `
 // and against the one generation before it. The second arm is what lets a
 // replay reach the caller's revocation path instead of looking like an
 // unknown token.
-const sessionMatchSQL = `
-	SELECT ` + sessionColumns + `
-	FROM accounts
-	WHERE refresh_token_hash = $1 OR prev_refresh_token_hash = $1`
+const sessionMatchSQL = "SELECT " + sessionColumns +
+	" FROM accounts WHERE refresh_token_hash = $1 OR prev_refresh_token_hash = $1"
 
-const sessionMatchForUpdateSQL = sessionMatchSQL + `
-	FOR UPDATE`
+const sessionMatchForUpdateSQL = sessionMatchSQL + " FOR UPDATE"
 
 // rotateReplaceSQL is the conditional swap. The `refresh_token_hash = $1`
 // guard is redundant while the row is locked and deliberately not removed:
