@@ -4,6 +4,8 @@
 
 ## 1. 可行性结论与边界
 
+**补充修正：WorkBuddy 还实现了独立的 URL + WM_COPYDATA 专用通道，并非只依赖下述系统枚举 API。** 本机缺少 TransferTargetWatcher 只能确认当前标准枚举路径有系统阻碍，不能推导出所有 Windows 10 接入都不可能或必须升级系统。实际参数和对律档通的限制见 [WorkBuddy 参数核查](../exploration/workbuddy-windows-wechat-share-parameters.zh-CN.md)。
+
 **当前机器无法靠修改本项目的 ShareTarget 注册实现目标：本机是 Windows 10 22H2（19045.6466），缺少微信当前枚举助手使用的 TransferTargetWatcher API。** 在具备该 API 的系统上，Windows `windows.shareTarget` 是现有接入路径，但仍需要实际微信菜单及接收验收，不能把系统升级视为充分保证。详见第 7 节的新证据与操作顺序。
 
 Windows ShareTarget 契约用于注册独立分享目标，微信生成用户选中的聊天归档后，系统激活本项目的 ShareTarget 助手。此路径无需修改 WorkBuddy，也无需将聊天先发送给 WorkBuddy。这不是微信聊天数据库读取接口，只能接收用户主动分享的内容。
@@ -220,6 +222,8 @@ powershell.exe -NoProfile -Command '[pscustomobject]@{ TransferTargetWatcher=[Wi
 本项目继续保留原 Windows 10 的运行及分享接收能力；不把包的 MinVersion 全局抬高，不认定所有历史微信版本都只支持 Windows 11。问题限定为当前微信 4.2.0.7 / WinWeixinShare 2007 / 当前主机的目标枚举路径。
 
 ### 7.3 实际落地顺序
+
+本节针对现有 Windows ShareTarget 系统枚举路径。另有 WorkBuddy 专用 URL/消息通道，其是否允许第三方登记尚未确认，不能把 Windows 11 说成唯一可行路线。
 
 1. **当前 Windows 10：**运行诊断记录上述 API 缺失，停止反复注册。保留已注册的「律档通」和旧产物作为回退；不能宣称已经完成微信菜单接入。
 2. **具备条件的 Windows 11 24H2 或更新机器：**确认已安装包含 TransferTarget 支持的累积更新，且上述能力探针返回 true。不要只看“Windows 11”名称或安装了新 SDK；SDK 不会替系统补齐运行时 API。
