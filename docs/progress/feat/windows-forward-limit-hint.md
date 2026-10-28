@@ -14,7 +14,7 @@ Owner: Claude（按用户指派，在本机实现并推送；Windows 环境的�
 | W-4 Core 测试：100 命中 / 99·101 不命中 / null 不命中 / 真实 100 条 ZIP / 译文存在 | ✅ | `WeChatForwardLimitTests.cs` |
 | W-5 设计文档 + `batch-collection.md` 的例外条目 | ✅ | `docs/design/windows-forward-limit-hint.zh-CN.md` |
 | W-QA Windows 编译与测试（Perpetual + Subscription） | ✅ | CI run 40594730563：macOS / Windows Perpetual / Windows Subscription 三 job 全绿；Windows Core 617/617、AppTests 84/84 |
-| W-QA2 UI 冒烟覆盖 100 条批次 | ⬜ | 现有夹具只有 6 条，需新增第三个批次并同步「约 6 条」等断言 |
+| W-QA2 UI 冒烟覆盖 100 条批次 | ✅ | `UiSmokeTests.cs`：第三个批次夹具正好 100 条（`Transcript(100)`），断言浮条提示条可见、文案逐字相符、批次详情切到 100 条批出现同一条、切回 3 条批时收起 |
 | 顺带修掉 CI 的三个既有失败 | ✅ | 两个 `ObsidianNoteTests`（归档来源的新契约）、两个 ps1 补 UTF-8 BOM、macOS 附件清单让一条断言越界 |
 | Remote push | ✅ | 代码由 NPC 以 `bda534a` 合进 main；本分支随后变基到 main，只剩看板补充，**已删**（留 tag `archive/feat-windows-forward-limit-hint`） |
 | PR 与 CI | ✅ | CNB PR #3 已合并；GitHub 侧 run 40594730563 全绿 |
@@ -125,6 +125,27 @@ Owner: Claude（按用户指派，在本机实现并推送；Windows 环境的�
 
 PR 链接（点开即建，并触发 CI）：
 https://github.com/zhuimeng2026-hub/WeChatBridge/pull/new/feat/windows-forward-limit-hint
+
+## W-QA2：UI 冒烟覆盖 100 条批次（2026-10-28）
+
+此前 AppTests 的收集夹具只有两个 3 条批次，提示条那条路径只有 Core 单测兜着，UI 层没人碰过——
+评审时列的第 4 点（「提示条出现后是否影响既有 UI 冒烟断言」）正是这个缺口。
+
+改法：
+
+- 夹具增加第三个批次，恰好 100 条（`Transcript(WeChatForwardLimit.Maximum)`，与 Core 测试同一种报文格式），
+  收集摘要的断言随之从「约 6 条」改成「约 106 条」（3 + 3 + 100）。
+- 浮条：断言 `ForwardLimitPanel` 可见、`ForwardLimitNotice` / `ForwardLimitAdvice` 与 Core 文案逐字相符。
+- 批次详情：断言三个标签页；打开时停在 100 条那批 → 提示条可见；切到 3 条批 → 收起；切回 100 条批 → 再次出现。
+  探测完把选中项切回第二批，后面那段改名流程仍落在原来的批次上。
+- `References.Count` 的断言由 3 改成 4：100 条批的「前 2 条 + 后 2 条」不再重叠（6 条批时有重叠所以是 3）。
+
+**高度断言需要放宽，这是实测出来的，不是猜的**：提示条把紧凑浮条撑高了——原本上限 380，
+实测变成 **386（中文）/ 442（英文）**，英文的「怎么接着收」那句更长、多折了一行。
+两条 `InRange` 的上限从 380 提到 460，并注明这两个实测值；上限的作用是拦住「浮条撑满屏幕」，
+不是钉死像素高度。
+
+实测：Perpetual 全量 633 + 132 全绿（`dotnet test -c Release -p:WeChatBridgeEdition=Perpetual`）。
 
 ## 已知取舍
 

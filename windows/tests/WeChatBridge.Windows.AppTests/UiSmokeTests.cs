@@ -1,4 +1,5 @@
 using System.IO;
+using System.Text;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -48,6 +49,17 @@ public sealed class UiSmokeTests
                     [new InboxSourceFile(source, "next-part.zip", "application/zip", 0, 0)]).GetAwaiter().GetResult();
                 reader.RecordChatName(secondBatch.BatchId, "示例群聊");
                 model.Collections.Append(reader.LoadBatches().Single(b => b.Id == secondBatch.BatchId), null);
+                // A third batch that lands exactly on WeChat's cap. Collecting is how a
+                // chat longer than 100 messages arrives at all, so the note that says
+                // "there is probably more" has to survive the real window, not just Core.
+                var cappedSource = fixture.WriteSource("cap.zip", "");
+                using (var zip = new System.IO.Compression.ZipArchive(File.OpenWrite(cappedSource), System.IO.Compression.ZipArchiveMode.Create))
+                using (var writer = new StreamWriter(zip.CreateEntry("聊天记录.txt").Open()))
+                    writer.Write(Transcript(WeChatForwardLimit.Maximum));
+                var cappedBatch = InboxWriter.CommitAsync(fixture.Paths,
+                    [new InboxSourceFile(cappedSource, "cap.zip", "application/zip", 0, 0)]).GetAwaiter().GetResult();
+                reader.RecordChatName(cappedBatch.BatchId, "示例群聊");
+                model.Collections.Append(reader.LoadBatches().Single(b => b.Id == cappedBatch.BatchId), null);
                 model.Reload();
                 var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
                 SynchronizationContext.SetSynchronizationContext(new System.Windows.Threading.DispatcherSynchronizationContext(app.Dispatcher));
@@ -259,12 +271,22 @@ public sealed class UiSmokeTests
                         receipt.Finish(true);
                     }
                     model.RefreshImportProgress();
-                    WaitFor(() => ((TextBlock)window.FindName("SummaryText")).Text.Contains(L10n.Format($"约 {6} 条")));
+                    WaitFor(() => ((TextBlock)window.FindName("SummaryText")).Text.Contains(L10n.Format($"约 {WeChatForwardLimit.Maximum + 6} 条")));
+                    // The newest batch is the capped one, so the capsule must say so —
+                    // and it only appears after the metadata pass, never before.
+                    var capsuleNote = (Border)window.FindName("ForwardLimitPanel");
+                    Assert.Equal(Visibility.Visible, capsuleNote.Visibility);
+                    Assert.Equal(WeChatForwardLimit.Notice, ((TextBlock)window.FindName("ForwardLimitNotice")).Text);
+                    Assert.Equal(WeChatForwardLimit.Advice, ((TextBlock)window.FindName("ForwardLimitAdvice")).Text);
                     var content = (FrameworkElement)window.Content;
                     content.Resources.MergedDictionaries.Add(window.Resources);
                     window.Content = null;
                     var compactHeight = Render(content, "collection", language, previewDirectory, width: 400);
-                    Assert.InRange(compactHeight, 180, 380);
+                    // The cap note sits above the message line and wraps: 386 in Chinese,
+                    // 442 in English where the advice sentence runs longer. The ceiling is
+                    // here to catch the capsule growing into the screen, not to pin a pixel
+                    // height, so it leaves the note its lines and still fails a runaway.
+                    Assert.InRange(compactHeight, 180, 460);
                     Render(content, "collection-320", language, previewDirectory, width: 320);
                     window.Content = content;
                     ((Button)window.FindName("ManageButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
@@ -272,16 +294,32 @@ public sealed class UiSmokeTests
                     WaitFor(() => ((CollectionDetailsWindow.CollectionBatchRow?)((FrameworkElement)details.FindName("LatestReference")).DataContext)?.Metadata is not null);
                     Assert.True(details.IsVisible);
                     Assert.Equal(WindowStyle.None, details.WindowStyle);
-                    Assert.InRange(RenderDetached(window, "collection-inspecting", language, previewDirectory, 400), 180, 380);
+                    // Same ceiling as the capsule above: the cap note is inside it, and the
+                    // English advice pushes this render higher than the Chinese one.
+                    Assert.InRange(RenderDetached(window, "collection-inspecting", language, previewDirectory, 400), 180, 460);
                     var reference = (FrameworkElement)details.FindName("LatestReference");
                     Assert.Equal(2, ((CollectionDetailsWindow.CollectionBatchRow)reference.DataContext).BoundaryReferences.Count);
-                    Assert.Equal(3, ((CollectionDetailsWindow.CollectionBatchRow)reference.DataContext).References.Count);
+                    // Two from the head, two from the tail, no overlap at 100 records.
+                    Assert.Equal(4, ((CollectionDetailsWindow.CollectionBatchRow)reference.DataContext).References.Count);
                     var tabs = Descendants<Button>((ItemsControl)details.FindName("ReferenceTabs")).ToList();
+                    Assert.Equal(3, tabs.Count);
+                    // Opening on the capped batch means the note is already up.
+                    var detailsNote = (Border)details.FindName("ForwardLimitPanel");
+                    Assert.Equal(Visibility.Visible, detailsNote.Visibility);
                     tabs[0].RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                     Assert.Equal(batch.BatchId, ((CollectionDetailsWindow.CollectionBatchRow)reference.DataContext).Batch.Id);
+                    // A 3-message batch is nowhere near the cap, so the note goes away.
+                    Assert.Equal(Visibility.Collapsed, detailsNote.Visibility);
                     tabs[1].RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                     Assert.Equal(secondBatch.BatchId, ((CollectionDetailsWindow.CollectionBatchRow)reference.DataContext).Batch.Id);
+                    tabs[2].RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    Assert.Equal(cappedBatch.BatchId, ((CollectionDetailsWindow.CollectionBatchRow)reference.DataContext).Batch.Id);
+                    Assert.Equal(Visibility.Visible, detailsNote.Visibility);
+                    Assert.Equal(WeChatForwardLimit.Notice, ((TextBlock)details.FindName("ForwardLimitNotice")).Text);
                     RenderDetached(details, "collection-details", language, previewDirectory, 490);
+                    // The rename pass below is about the second batch, so put the
+                    // selection back where it was after probing the capped one.
+                    tabs[1].RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                     var previousName = reader.StateFor(secondBatch.BatchId)?.ChatName;
                     ((Button)details.FindName("RenameButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                     var noteEditor = (StackPanel)details.FindName("NameEditor");
@@ -400,6 +438,19 @@ public sealed class UiSmokeTests
         System.Windows.Threading.Dispatcher.PushFrame(frame);
         timer.Stop();
         Assert.True(ready(), "The collection metadata did not reach the UI.");
+    }
+
+    /// <summary>
+    /// A transcript with exactly <paramref name="count"/> records, in the shape
+    /// WeChat's exported 聊天记录.txt uses. The 100-message fixture needs it: the
+    /// capsule and the batch details only speak up on a batch sitting at the cap.
+    /// </summary>
+    private static string Transcript(int count)
+    {
+        var text = new StringBuilder();
+        for (var i = 0; i < count; i++)
+            text.Append($"·发言人\n2026年9月20日 09:{i % 60:00}\n第 {i} 条\n\n");
+        return text.ToString();
     }
 
     private static double Render(FrameworkElement content, string name, string language, string? directory, double width = 710)
