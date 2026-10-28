@@ -106,6 +106,8 @@ WM_COPYDATA 是长期存在的 Win32 进程间消息机制，不要求新的 Tra
 
 ## 5. 对律档通的意义
 
+后续已继续追踪微信应用目录调用链，详见 [微信私有应用目录登记规则核查](wechat-private-app-catalog-registration.zh-CN.md)。当前版本所查的私有应用候选分支从内置目录取项，再做可用性过滤，未发现扫描 Windows 注册信息新增任意应用的逻辑。
+
 1. 律档通现有 ShareTarget 对应上述第一条通道，尚未实现第二条 WorkBuddy 专用交互。
 2. 接收 URL、Protobuf 和 WM_COPYDATA 的技术能力可独立评估，但**实现接收协议与进入微信应用列表是两件事**。
 3. 关键未解问题是：微信的自有应用目录是否允许登记律档通的 app_key、安装标识、Scheme 和接收入口。仅在 Windows 注册 `lvdangtong:` 不会自动证明微信菜单会增加它。
