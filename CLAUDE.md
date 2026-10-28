@@ -614,16 +614,23 @@ Windows 端新增「知识工作台」面板（阅读优先 / 案件工作区 / 
   **`feat/sqlite-migration`**（**比 main 多 8 个提交**：服务端 store 从 postgres 换成 SQLite）、
   **`codex/lvdangtong-wechat-share`**（**比 main 多 4 个提交**：微信分享注册）。
   **推镜像时不能只推 `--all`**（`--all` 只认本地分支）。
-  - **动 `main` 之前先把远端的提交并进来。** 两端都在动（CNB 上的 NPC、GitHub 上的会话），
-    本地 `main` 落后是常态。直接 `git push` 会被判非快进；更要命的是
-    `scripts/verify-doc-alignment.sh` 的 C1/C2 是拿**本地 `main`** 去比的——
-    本地落后时会把明明已经并入主干的归档 tag 报成「从未并入 main」（2026-10-28 踩到两次）。
-    正确顺序：
+  **两端要保持一致**：origin 上有的分支与 tag，CNB 上也要有——CNB 是镜像，不是权威，
+  但不能各持一份（2026-10-28 核对时，origin 有 `codex/lvdangtong-wechat-share` 而 CNB 没有）。
+  - **动 `main` 之前先把远端的提交并进来——`git pull` 就行。** 两端都在动（CNB 上的 NPC、
+    GitHub 上的会话），本地 `main` 落后是常态；直接 `git push` 会被判非快进。
+    这台机器的全局配置是 `pull.rebase=false`，所以 **`git pull` 是 merge 语义**——
+    CNB 上那些 merge commit 不会被 rebase 改写父提交（**别加 `--rebase`**：那会让 SHA
+    与远端对不上，本来能快进推的提交变成非快进）。
+    唯一的例外是**领先的可能恰恰是 CNB**：本地 main 跟的是 `origin/main`，`git pull` 拉不到它。
+    所以一次把两端都并进来最省事：
     ```bash
     git fetch origin --tags --prune && git fetch cnb main
-    git merge cnb/main        # 或 origin/main，两端哪个领先并哪个
+    git merge origin/main cnb/main     # 谁领先并谁（已经并进去的会被跳过）
     # 然后再提交、推送、跑校验
     ```
+    不并的后果不只是 push 被拒：`scripts/verify-doc-alignment.sh` 的 C1/C2 是拿
+    **本地 `main`** 去比的——本地落后时会把明明已经并入主干的归档 tag 报成「从未并入 main」
+    （2026-10-28 踩到两次）。
   已并入 main 的分支**删之前先打归档 tag**（`archive/<分支名>`，斜杠换成横杠），tag 留在仓库里，
   分支删掉——这样「哪条分支的成果还在」由 tag 记着，而不是由一条已经没用的分支记着。
   2026-10-28 清掉了五条，各自留了 tag：
