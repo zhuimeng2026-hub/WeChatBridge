@@ -610,16 +610,19 @@ Windows 端新增「知识工作台」面板（阅读优先 / 案件工作区 / 
   （2026-10-24 已随分支合并进主干；知识工作台那块是上一块）。
   远端分支清单：`git branch -r | grep origin/`（**origin 上的远端分支：四条**
   ——`main`，加上三条**都还有 main 里没有的工作**的分支：**`codex/desktop-archive-design`**
-  （**比 main 多 11 个提交**）、**`feat/sqlite-migration`**（**比 main 多 8 个提交**）、
-  **`fix/windows-archive-merge-brand-20261027`**（**比 main 多 7 个提交**，2026-10-27 的 tip 是
-  `test(windows): correct escaped fixture transcript newlines`）。
+  （**比 main 多 11 个提交**：精简桌面端、WorkBuddy 自动检测、诊断日志、Obsidian 端到端测试）、
+  **`feat/sqlite-migration`**（**比 main 多 8 个提交**：服务端 store 从 postgres 换成 SQLite）、
+  **`codex/lvdangtong-wechat-share`**（**比 main 多 4 个提交**：微信分享注册）。
   **推镜像时不能只推 `--all`**（`--all` 只认本地分支）。
   已并入 main 的分支**删之前先打归档 tag**（`archive/<分支名>`，斜杠换成横杠），tag 留在仓库里，
   分支删掉——这样「哪条分支的成果还在」由 tag 记着，而不是由一条已经没用的分支记着。
-  2026-10-28 清掉了三条已并入 main 的分支，各自留了 tag：
+  2026-10-28 清掉了四条，各自留了 tag：
   `archive/codex-attachment-categories`、`archive/feat-m1-desktop-beta-readiness`、
   `archive/feat-windows-forward-limit-hint`（Windows 端 100 条上限提示，代码随 NPC 的
-  `bda534a` 合进 main，看板留在 `docs/progress/feat/windows-forward-limit-hint.md`）。
+  `bda534a` 合进 main，看板留在 `docs/progress/feat/windows-forward-limit-hint.md`）、
+  `archive/fix-windows-archive-merge-brand-20261027`（指向 `1bb1e8f`——那 7 笔被 squash 成了
+  主干的这一笔，两边碰过的文件内容逐字相同；**判「是否已并入」要比内容不要只比 SHA**，
+  `git cherry` 对 squash 后的主干提交不灵）。
   M1 桌面版 beta 就绪度那条分支原本特意留着（看板还挂着未完成项），
   它的成果同样已经在 main 里，看板也留在 `docs/progress/feat/m1-desktop-beta-readiness.md`——
   接着做那些未完成项时从 main 开新分支即可，不需要留一条已合干的旧分支。
