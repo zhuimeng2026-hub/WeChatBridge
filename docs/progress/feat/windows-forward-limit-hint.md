@@ -70,6 +70,12 @@ Owner: Claude（按用户指派，在本机实现并推送；Windows 环境的�
   {"name": "<分支>", "start_point": "<提交哈希>"}
   ```
   登记完 PR 才建得起来（`POST /{repo}/-/pulls`，`head`/`base`/`title`/`body`）。
+- **CNB 的 token 按仓库授权**（2026-10-28 实测）：本仓库要自己的 token，拿别的仓库的 token 来访问，
+  回的是「Repository Not Found. / 仓库不存在。」而不是 401/403——**别当成仓库没建**。
+  `~/.git-credentials` 里因此按**仓库路径**分条目：
+  `https://cnb:<token>@cnb.cool/mengxa.com/WeChatBridge.git`；只写泛域名 `cnb.cool` 的条目
+  **匹配不到带路径的请求**（`git credential-store get` 直接查不到）。
+  本仓库那条目前是占位符 `__FILL_IN_CNB_TOKEN__`，待补全；没补之前任何 CNB 访问都会报「仓库不存在」。
 
 ## 变基到改名后的主干（2026-10-27）
 

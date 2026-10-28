@@ -1,0 +1,47 @@
+## 归档记录：已并入 main 的分支清掉了，成果由 tag 记着
+
+按仓库惯例（`archive/<分支名>`，斜杠换横杠），删分支之前先打归档 tag，再删分支——
+这样「哪条分支的成果还在」由 tag 记着，而不是由一条已经没用的分支记着。
+
+| 归档 tag | 指向 | 那条分支是什么 |
+| --- | --- | --- |
+| `archive/codex-attachment-categories` | `29f1680` | `feat(archive): classify chat attachments`——附件分类 |
+| `archive/feat-m1-desktop-beta-readiness` | `2144a9b` | M1 桌面版 beta 就绪度（keeper 选举那条用例的记录） |
+| `archive/feat-windows-forward-limit-hint` | `619b073` | 本条 issue 的实现 + 顺带修掉的三个 CI 既有失败 |
+| `archive/fix-windows-archive-merge-brand-20261027` | `1bb1e8f` | 归档来源 + 律档通打包；那 7 笔被 squash 成了主干的这一笔 |
+
+**四个 tag 都已推到 origin 与 CNB 两端**（`zhuimeng2026-hub/WeChatBridge` 与 `mengxa.com/WeChatBridge`），
+并且**都是 main 的祖先**——成果确实在主干里，`scripts/verify-doc-alignment.sh` 的 C2 检查逐条判 PASS。
+
+**要恢复任何一条**：
+
+```bash
+git push origin archive/<tag>:refs/heads/<分支名>
+```
+
+## 一条要记住的判据：比内容，不要只比 SHA
+
+`fix/windows-archive-merge-brand-20261027` 的 7 个提交在 `git log` 里看着像没并入，
+其实被 squash 成了主干的 `1bb1e8f`——两边碰过的 5 个文件内容**逐字相同**
+（`git diff 1bb1e8f db3c1b6 -- <那些文件>` 为空），唯一差别是主干后来给两个 `.ps1` 补的 UTF-8 BOM。
+所以这个归档 tag 指向 `1bb1e8f`（主干里承载成果的那一笔）而不是分支 tip `db3c1b6`：
+仓库其它归档 tag 都指向 main 的祖先，C2 逐条判 PASS。分支 tip 那串 SHA 随分支删除不再可达，
+**成果一条没丢**。
+
+`git cherry` 对这种 squash 后的主干提交不灵（patch-id 对不上，会把 7 笔全标成"未并入"）；
+要看的是「分支碰过的那些文件在主干里是不是已经一样」。
+
+## 关于 `feat/m1-desktop-beta-readiness`
+
+它原本是特意留着的（看板还挂着未完成项）。但它的成果同样已经在 main 里，
+看板也留在 main 里（`docs/progress/feat/m1-desktop-beta-readiness.md`）——
+接着做那些未完成项时从 main 开新分支即可，不必留一条已经合干的旧分支；真要恢复也有 tag。
+
+## 清理后的分支状态
+
+两端都只剩三条在途分支，都还有 main 里没有的工作：
+`codex/desktop-archive-design`（多 11 笔：精简桌面端、WorkBuddy 自动检测、诊断日志、
+Obsidian 端到端测试）、`feat/sqlite-migration`（多 8 笔：服务端 store 从 postgres 换成 SQLite）、
+`codex/lvdangtong-wechat-share`（多 4 笔：微信分享注册）。
+
+main 当前为 `538fa85`（两端一致）。
