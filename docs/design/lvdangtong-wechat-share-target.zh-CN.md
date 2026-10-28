@@ -4,11 +4,13 @@
 
 ## 1. 可行性结论与边界
 
-技术接入路径可行：通过 Windows `windows.shareTarget` 契约注册独立分享目标，微信生成用户选中的聊天归档后，系统激活本项目的 ShareTarget 助手。无需修改 WorkBuddy，也无需将聊天先发送给 WorkBuddy。这不是微信聊天数据库读取接口，只能接收用户主动分享的内容。
+**当前机器无法靠修改本项目的 ShareTarget 注册实现目标：本机是 Windows 10 22H2（19045.6466），缺少微信当前枚举助手使用的 TransferTargetWatcher API。** 在具备该 API 的系统上，Windows `windows.shareTarget` 是现有接入路径，但仍需要实际微信菜单及接收验收，不能把系统升级视为充分保证。详见第 7 节的新证据与操作顺序。
+
+Windows ShareTarget 契约用于注册独立分享目标，微信生成用户选中的聊天归档后，系统激活本项目的 ShareTarget 助手。此路径无需修改 WorkBuddy，也无需将聊天先发送给 WorkBuddy。这不是微信聊天数据库读取接口，只能接收用户主动分享的内容。
 
 项目已经实现接收、ZIP 校验、原子落盘和唤醒主程序；远程主线 a62485b 已使用「律档通」显示名。旧主检出 feat/pg-client-integration 和本机已注册包仍使用旧名称，不能以它们代表最新产品。
 
-**尚不能确认微信 4.2.0.7 的菜单显示已经成功。** 旧记录在微信 4.1.15.13 有成功样本，也有另一机器反复不显示的失败样本。包状态 Ok、身份探针通过、Windows 分享面板可见，均不能替代微信菜单和真实文件接收验收。不得把本文当成腾讯对第三方入口兼容性的承诺。
+**微信 4.2.0.7 的本轮菜单验收已失败。** 用户在新包注册、退出重开微信后确认仍然只有 WorkBuddy，并提供了真实菜单截图。Windows ShareTarget 注册路径可用，不等于已经证明可以进入该微信版本的目标位置。旧记录在微信 4.1.15.13 有成功样本，也有另一机器反复不显示的失败样本。包状态 Ok、身份探针通过、Windows 分享面板可见，均不能替代微信菜单和真实文件接收验收。不得把本文当成腾讯对第三方入口兼容性的承诺。
 
 微软文档：
 
@@ -19,6 +21,7 @@
 
 | 项目 | 结果 |
 | --- | --- |
+| 操作系统（后续补查确认） | Windows 10 Pro 22H2，Build 19045.6466 |
 | 微信 | 4.2.0.7 |
 | WorkBuddy 分享包 | WorkBuddyShareTarget，5.9.3.0，Status=Ok |
 | 本项目分享包 | WeChatBridge.Windows.ShareTarget，1.0.8.0，Status=Ok |
@@ -149,9 +152,100 @@ git push -u zmuimeng HEAD:refs/heads/codex/lvdangtong-wechat-share
 | 新注册显示名 | 严格为「律档通」，没有零宽字符 |
 | 新注册状态与进程身份 | Status=Ok；PackageFullName 与 AUMID 匹配，!Share.Hub |
 | WorkBuddy 对照 | 包全名及完整注册清单与操作前一致 |
-| 微信 4.2.0.7 菜单显示 | 未验收；界面捕获超时，恢复时 GetCursorPos 返回拒绝访问 0x80070005；已请求用户正常重启微信检查 |
+| 微信 4.2.0.7 菜单显示 | 失败；用户确认退出重开后仍只有 WorkBuddy，并提供真实菜单截图 |
 | 微信真实聊天 ZIP 接收 | 未验收；不能用上述自动检查替代 |
 
 代码改动仅涉及 `windows/scripts/register-dev.ps1` 与 `build-and-run.ps1`。显示名及接收链路已在远程主线实现，本轮复用，不通过冒充 WorkBuddy 身份解决可见性。
 
-交付分支为 `codex/lvdangtong-wechat-share`，目标远程为本机 `zmuimeng`（GitHub 仓库 `zhuimeng2026-hub/WeChatBridge`）。微信 UI 验收未完成前，该分支应视为待验收实现，不能宣称已经修复微信 4.2.0.7 的第三方入口显示问题。
+交付分支为 `codex/lvdangtong-wechat-share`，目标远程为本机 `zmuimeng`（GitHub 仓库 `zhuimeng2026-hub/WeChatBridge`）。注册检查及操作文档已在提交 `4b70464` 推送。本分支没有修复用户反馈的微信菜单显示问题，不应作为该问题已解决的版本发布。
+
+## 6. 用户截图明确的两个入口层级
+
+用户于 2026-10-28 提供的截图中，「其他应用」展开后同时存在：
+
+```text
+其他应用
+├── 腾讯WorkBuddy  推广          ← 用户红箭头指向的项目
+└── 选择电脑中的应用 >
+    └── WorkBuddy               ← 另一层应用列表
+```
+
+这两处不能混为一个入口。Windows ShareTarget 契约是本项目接收系统分享的路径，不能据此断言第三方应用能添加、排序或替换微信自身的「推广」项目。截图能确认界面层级与标签，但不能证明微信内部的列表生成实现。
+
+WorkBuddy 官方更新日志 5.5.0（2026-09-01）记载支持通过 macOS 和 Windows 系统分享入口接收微信聊天记录：https://www.workbuddy.cn/docs/workbuddy/Changelog 。这只能支持系统分享能力存在，不能作为普通第三方可获得微信上层推广位置的证据。
+
+用户随后明确：下方「选择电脑中的应用」子菜单即可，并授权优先处理更容易的路径。因此本任务以该子菜单为目标，不要求与上层推广项并列。
+
+两个层级的技术边界：
+
+1. 上层「腾讯WorkBuddy 推广」是否为微信控制的内置／运营项目，是否存在公开第三方接入渠道；未找到渠道前不能承诺仅修改本项目可实现。
+2. 下层「选择电脑中的应用」如何枚举、过滤 Windows 接收应用；当前匹配分享格式、正确包身份和中性名称已实测不足，不能继续作为根因结论。
+3. 如果必须进入上层位置，先证明存在合法可用的接入机制，再做对应实现；不冒充 WorkBuddy，不修改或注入微信程序。
+
+原截图含私人联系人信息，仅用于本地核查，不复制进仓库。截图后再次尝试界面捕获仍超时；用户提供的截图和验收反馈是本轮界面事实依据。
+
+## 7. 系统版本阻碍：微信当前枚举助手依赖新 API
+
+### 7.1 可重复验证的事实
+
+1. 本机注册表 `HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion` 的 ProductName 为 Windows 10 Pro，DisplayVersion 为 22H2，CurrentBuild 为 19045，UBR 为 6466。不能继续拿旧文档的 Windows 11 测试环境代表当前机器。
+2. 微信插件目录 `WinWeixinShare\2007\extracted\shareSender.exe` 存在且腾讯数字签名有效。只读静态字符串包含 `Windows.ApplicationModel.DataTransfer.TransferTargetWatcher`、`TransferTarget` 和 `TransferTargetDiscoveryOptions`。
+3. 同一程序中的明确提示为：`TransferTarget is not supported on this system (requires Windows 11 Build 26100.7015+).`
+4. 在当前用户下用 Windows PowerShell 5.1 查询 WinRT 元数据：`TransferTargetWatcher` 不存在，旧 `DataTransferManager` 存在。
+5. 微信主程序静态字符串还包括 `RequestCachedShareTargets`、`sharesender_query_failed`、`system_targets_empty`、`system_targets_ready`、`_fallback_private_apps` 等。这些是系统枚举及回退机制的线索，不是对某次执行分支的运行日志证明；不能仅凭这些字符串断言唯一根因或 WorkBuddy 的确切回退规则。
+
+最小复查命令（只读，不启动分享、不读取聊天）：
+
+```powershell
+powershell.exe -NoProfile -Command '[pscustomobject]@{ TransferTargetWatcher=[Windows.Foundation.Metadata.ApiInformation,Windows.Foundation,ContentType=WindowsRuntime]::IsTypePresent("Windows.ApplicationModel.DataTransfer.TransferTargetWatcher"); LegacyDataTransferManager=[Windows.Foundation.Metadata.ApiInformation,Windows.Foundation,ContentType=WindowsRuntime]::IsTypePresent("Windows.ApplicationModel.DataTransfer.DataTransferManager") } | ConvertTo-Json -Compress'
+```
+
+本机返回：
+
+```json
+{"TransferTargetWatcher":false,"LegacyDataTransferManager":true}
+```
+
+对腾讯 `shareSender.exe` 做过一次无参数、有时限的启动探针；10 秒内未退出，已终止此次探针进程，没有取得可用于断言的退出结果，不能把它写成运行成功或明确返回系统不支持。
+
+微软官方依据：
+
+- [TransferTargetWatcher API](https://learn.microsoft.com/en-us/uwp/api/windows.applicationmodel.datatransfer.transfertargetwatcher?view=winrt-26100)：属于 Windows 11 24H2 / UniversalApiContract v19。
+- [微软 TransferTarget 示例](https://github.com/microsoft/Windows-classic-samples/blob/main/Samples/TransferTarget/VBAScript/README.md)：运行前提明确为 Windows 11 Build 26100.7015 或更高版本。
+
+### 7.2 对可行性的修正
+
+当前微信安装的枚举助手依赖的系统能力，在本机实际不存在。这是已确认的前置阻碍，不能通过重复签名、改中性名称、替换包名或加注册表项补齐。不应把旧式系统 Share Sheet 支持等同于新 TransferTargetWatcher 支持，也不应仅凭“另一台 Windows 11 机器成功”推断 Windows 10 可用。
+
+本项目继续保留原 Windows 10 的运行及分享接收能力；不把包的 MinVersion 全局抬高，不认定所有历史微信版本都只支持 Windows 11。问题限定为当前微信 4.2.0.7 / WinWeixinShare 2007 / 当前主机的目标枚举路径。
+
+### 7.3 实际落地顺序
+
+1. **当前 Windows 10：**运行诊断记录上述 API 缺失，停止反复注册。保留已注册的「律档通」和旧产物作为回退；不能宣称已经完成微信菜单接入。
+2. **具备条件的 Windows 11 24H2 或更新机器：**确认已安装包含 TransferTarget 支持的累积更新，且上述能力探针返回 true。不要只看“Windows 11”名称或安装了新 SDK；SDK 不会替系统补齐运行时 API。
+3. 在该机器执行第 4.3、4.4 节的构建和注册步骤。正常退出重开微信，进入「其他应用 → 选择电脑中的应用」，检查独立的「律档通」项目。
+4. 用自控测试记录验证真实 ZIP 接收，再记录系统完整 Build、微信版本、插件版本和验收结果。API 存在但仍不显示时继续定位，不能预先勾选成功。
+5. 不自动升级当前操作系统。若当前机器必须保持 Windows 10，且当前微信没有兼容的系统枚举路径，则仅修改本项目无法保证实现指定菜单入口。既有手动导入/WorkBuddy 收件箱监听属于不同路径，不能作为本需求已经完成的替代证明。
+
+### 7.4 已落实的诊断与验证
+
+由 `gpt-6-luna` 在现有 `windows/scripts/Collect-ShareDiagnostics.ps1` 新增独立的系统枚举 API 检查节，输出实际 Windows Build/UBR、TransferTargetWatcher、TransferTargetDiscoveryOptions 与旧 DataTransferManager 的可用性。没有新增第二条安装链，也没有自动修改系统或提高应用包的最低系统要求。
+
+本轮完整诊断命令：
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File windows\scripts\Collect-ShareDiagnostics.ps1 -AppRoot 'C:\WeChatBridge\.worktrees\lvdangtong-wechat-share\windows\artifacts\publish\win-x64' -OutputDirectory .artifacts
+```
+
+实际退出码 0，结果：
+
+```text
+WindowsBuild=19045.6466
+TransferTargetWatcherPresent=False
+TransferTargetDiscoveryOptionsPresent=False
+LegacyDataTransferManagerPresent=True
+```
+
+Windows PowerShell 5.1 语法及执行通过；现有 LayoutWiringTests 11 项通过，包含中文 PowerShell 文件的 UTF-8 BOM 检查。诊断 ZIP 保存在本地 `.artifacts/WeChatBridge-Diagnostics-20261028-095451.zip`，没有提交进 Git。它只检查安装/注册/程序/系统信息，不收集聊天内容。
+
+结论：注册检查已有实现，菜单问题在当前 Windows 10 主机尚未解决；后续应在具备新 API 的系统继续验收，不能把该诊断改动当作菜单显示修复。

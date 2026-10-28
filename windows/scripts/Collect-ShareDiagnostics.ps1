@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [string]$OutputDirectory = $PSScriptRoot,
     # The portable build installs to a removable drive, so the installed-app
@@ -36,6 +36,22 @@ Section 'System' {
     Record "Collected=$(Get-Date -Format o)"
     Record "Windows=$($os.ProductName) DisplayVersion=$($os.DisplayVersion) Build=$($os.CurrentBuild).$($os.UBR)"
     Record "PowerShell=$($PSVersionTable.PSVersion) CollectorElevated=$([ShareDiagnosticToken]::Elevated($PID))"
+}
+Section 'WeChat system share-target discovery API' {
+    $os = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion'
+    $api = [Windows.Foundation.Metadata.ApiInformation, Windows, ContentType=WindowsRuntime]
+    $watcherPresent = $api::IsTypePresent('Windows.ApplicationModel.DataTransfer.TransferTargetWatcher')
+    $optionsPresent = $api::IsTypePresent('Windows.ApplicationModel.DataTransfer.TransferTargetDiscoveryOptions')
+    $legacyPresent = $api::IsTypePresent('Windows.ApplicationModel.DataTransfer.DataTransferManager')
+    Record "WindowsBuild=$($os.CurrentBuild).$($os.UBR)"
+    Record "TransferTargetWatcherPresent=$watcherPresent"
+    Record "TransferTargetDiscoveryOptionsPresent=$optionsPresent"
+    Record "LegacyDataTransferManagerPresent=$legacyPresent"
+    if (-not $watcherPresent) {
+        Record 'Interpretation=当前 Windows 缺少微信当前系统目标枚举助手所需 API；分享包注册成功不代表微信菜单可见。'
+    } else {
+        Record 'Interpretation=TransferTargetWatcher API 存在；分享包注册成功仍不代表微信菜单可见。'
+    }
 }
 $appRoot = $AppRoot
 Section 'Installed files' {
