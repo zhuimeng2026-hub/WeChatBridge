@@ -70,15 +70,23 @@ Owner: Claude（按用户指派，在本机实现并推送；Windows 环境的�
   {"name": "<分支>", "start_point": "<提交哈希>"}
   ```
   登记完 PR 才建得起来（`POST /{repo}/-/pulls`，`head`/`base`/`title`/`body`）。
-- **CNB 的 token 按仓库授权**（2026-10-28 实测）：本仓库要自己的 token，拿别的仓库的 token 来访问，
-  回的是「Repository Not Found. / 仓库不存在。」而不是 401/403——**别当成仓库没建**。
+- **CNB 不支持 SSH**（官方明确：认证统一走 HTTPS + 令牌），令牌分三类：
+  **访问令牌 (PAT)** 关联用户、能调 api.cnb.cool；**部署令牌**只关联资源层级、能 git 推送但
+  **API 一律 401**（我们仓库那条 `ay0M…` 就是部署令牌）；**CI 临时令牌**只在流水线内。
+  私有仓库的访问令牌**默认无权限**，授权范围必须手动勾上仓库。
+- **CNB 的 token 按仓库授权**（2026-10-28 实测）：拿别的仓库的 token 来访问，回的是
+  「Repository Not Found. / 仓库不存在。」或「token 的 resource does not match」，
+  而不是 401/403——**别当成仓库没建**。
   `~/.git-credentials` 里因此按**仓库路径**分条目：
-  `https://cnb:<token>@cnb.cool/mengxa.com/WeChatBridge.git`。
-  光有这条还不够：**git 默认 `credential.useHttpPath=false`，路径压根不参与凭据匹配**，
+  - `https://cnb:<部署令牌>@cnb.cool/mengxa.com/WeChatBridge.git`——git 推送用
+  - `https://cnb-api:<访问令牌>@cnb.cool/mengxa.com/WeChatBridge.git`——调 api.cnb.cool 用
+    （建 issue、发评论、开 PR、登记分支），取它用 `cnb-api-token`（脚本在 /usr/local/bin）
+  - `https://cnb:<令牌>@cnb.cool/mengxa.com/Octop.git`——另一个仓库的
+  光有这些还不够：**git 默认 `credential.useHttpPath=false`，路径压根不参与凭据匹配**，
   查询会落到泛域名那条上去（拿到的是别的仓库的 token）。要让它按路径匹配，得开
-  `git config credential.useHttpPath true`——本 clone 已开（只开在这一个 clone，
-  全局没动，免得你别的 CNB 仓库够不着）。新 clone 这个项目时记得同样开一次。
-  本仓库那条目前是占位符 `__FILL_IN_CNB_TOKEN__`，待补全；没补之前 CNB 访问一律报「仓库不存在」。
+  `git config credential.useHttpPath true`——本 clone 与 Octop 的 clone 都已开
+  （只开在这两个 clone，全局没动）。新 clone 这个项目时记得同样开一次。
+  API 那条目前是占位符 `__FILL_IN_CNB_API_TOKEN__`，待补全；没补之前只能 git，推不动评论。
 
 ## 变基到改名后的主干（2026-10-27）
 
