@@ -1,0 +1,157 @@
+# 微信转发菜单增加「律档通」：评估、实施与验收
+
+日期：2026-10-28。目标平台：Windows。目标位置：微信选择消息后的转发弹窗 → 更多／转发到其他应用，与 WorkBuddy 并列。
+
+## 1. 可行性结论与边界
+
+技术接入路径可行：通过 Windows `windows.shareTarget` 契约注册独立分享目标，微信生成用户选中的聊天归档后，系统激活本项目的 ShareTarget 助手。无需修改 WorkBuddy，也无需将聊天先发送给 WorkBuddy。这不是微信聊天数据库读取接口，只能接收用户主动分享的内容。
+
+项目已经实现接收、ZIP 校验、原子落盘和唤醒主程序；远程主线 a62485b 已使用「律档通」显示名。旧主检出 feat/pg-client-integration 和本机已注册包仍使用旧名称，不能以它们代表最新产品。
+
+**尚不能确认微信 4.2.0.7 的菜单显示已经成功。** 旧记录在微信 4.1.15.13 有成功样本，也有另一机器反复不显示的失败样本。包状态 Ok、身份探针通过、Windows 分享面板可见，均不能替代微信菜单和真实文件接收验收。不得把本文当成腾讯对第三方入口兼容性的承诺。
+
+微软文档：
+
+- https://learn.microsoft.com/en-us/windows/apps/develop/windows-integration/integrate-sharesheet-receive
+- https://learn.microsoft.com/en-us/windows/apps/develop/windows-integration/receive-shared-data
+
+## 2. 2026-10-28 修改前检查
+
+| 项目 | 结果 |
+| --- | --- |
+| 微信 | 4.2.0.7 |
+| WorkBuddy 分享包 | WorkBuddyShareTarget，5.9.3.0，Status=Ok |
+| 本项目分享包 | WeChatBridge.Windows.ShareTarget，1.0.8.0，Status=Ok |
+| 本项目注册指向 | C:\WeChatBridge\windows\artifacts\publish\win-x64 |
+| 当前显示名 | 微信流（旧包实际含 U+2060） |
+| 接收助手身份探针 | ExitCode=0，AUMID 后缀为 !Share.Hub |
+| 分享包检查 | 格式、EXE 身份、内外 PRI、图标全部通过 |
+| 微信菜单与真实转发 | 用户反馈只有 WorkBuddy；本轮需要重新验收 |
+
+不要把 `%LOCALAPPDATA%\WeChatBridge\App` 中缺少助手认定为根因：系统当前指向上表中的开发发布目录，该目录中的助手存在。
+
+## 3. 实现原则
+
+1. 仅保留一个 `Application Id="Share.Hub"`，菜单显示名严格为「律档通」。不改 Package Name、Publisher、AUMID、数据目录或已有账户信息。
+2. 保留项目现有 `SupportsAnyFileType` 与 `StorageItems / Text / URI / Bitmap` 声明，接收端仍按实际能力校验负载。此配置来自本项目和本机 WorkBuddy 的兼容记录，不宣称为所有微信版本的规则。
+3. 使用现有 build-app.ps1、pack-msix.ps1 和 register-dev.ps1，不再新建第二条打包链。
+4. 开发注册在替换旧注册前检查分享包资产及助手内嵌身份，注册后检查 Status 和实际进程身份。只有这些检查通过才报告注册成功。
+5. 构建脚本必须区分「系统注册成功」与「微信菜单已验收」，不得输出未经验证的完成结论。
+6. 不修改、删除或冒充 WorkBuddyShareTarget；不注入微信进程，不复制其包身份。
+
+## 4. 实际操作步骤
+
+### 4.1 获取正确代码并隔离工作区
+
+本机 `origin` 是 freestylefly 上游，`zmuimeng` 才是 zhuimeng2026-hub/WeChatBridge。本机远程名称与 CLAUDE.md 中其他机器的名称不同，以 `git remote -v` 为准。
+
+```powershell
+Set-Location C:\WeChatBridge
+git status --short
+git remote -v
+git fetch zmuimeng --prune
+git worktree add .worktrees\lvdangtong-wechat-share -b codex/lvdangtong-wechat-share zmuimeng/main
+Set-Location C:\WeChatBridge\.worktrees\lvdangtong-wechat-share
+```
+
+如果工作区已存在，直接进入它，不重复执行 worktree add。不要切换、清空、暂存或提交主检出的未完成修改。
+
+### 4.2 先保存现有注册信息
+
+以下 Appx 命令必须使用 Windows PowerShell 5.1 (`powershell.exe`)，不能使用 PS7 的 Appx 模块。
+
+```powershell
+powershell.exe -NoProfile -Command 'Get-AppxPackage | Where-Object { $_.Name -in "WeChatBridge.Windows.ShareTarget", "WorkBuddyShareTarget" } | Select-Object Name,PackageFullName,PackageFamilyName,Status,InstallLocation | Format-List'
+```
+
+记录本项目原注册的 ExternalLocation、旧 MSIX 和 `resources.pri`。更换注册前保留这些文件。分享包升级只替换本项目的注册，不操作 WorkBuddy。
+
+本轮快照保存在隔离工作区的 `.artifacts/share-registration-before.json`，不提交 Git。原产物目录未覆盖，可直接用于回退。
+
+### 4.3 构建与测试
+
+需要 .NET 10 SDK、Windows SDK（makepri.exe、makeappx.exe、mt.exe、signtool.exe）及可用的项目签名证书。已有证书可复用，不要导出私钥或提交任何证书私密材料。
+
+```powershell
+dotnet restore windows\WeChatBridge.Windows.sln -p:WeChatBridgeEdition=Perpetual
+dotnet build windows\WeChatBridge.Windows.sln -c Release --no-restore -p:WeChatBridgeEdition=Perpetual
+dotnet test windows\WeChatBridge.Windows.sln -c Release --no-build -p:WeChatBridgeEdition=Perpetual
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\build-and-run.ps1 -Edition Perpetual -NoRun
+```
+
+新发布目录在当前隔离工作区的 `windows\artifacts\publish\win-x64`。构建输出不能覆盖旧的已注册产物，以便回退。买断版网络命名空间门禁必须通过；build-and-run.ps1 默认会执行它。
+
+### 4.4 注册「律档通」
+
+```powershell
+$publishRoot = Join-Path $PWD 'windows\artifacts\publish\win-x64'
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File windows\scripts\register-dev.ps1 -InstallRoot $publishRoot -Edition Perpetual
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File windows\scripts\Test-SharePackage.ps1 -InstallRoot $publishRoot
+& (Join-Path $publishRoot 'share-target\WeChatBridge.ShareTarget.exe') --registration-check
+powershell.exe -NoProfile -Command '$p=Get-AppxPackage -Name WeChatBridge.Windows.ShareTarget; $p | Select-Object Name,Version,Status; (Get-AppxPackageManifest -Package $p).Package.Applications.Application.VisualElements | Select-Object DisplayName'
+```
+
+也可在初次构建时使用 `build-and-run.ps1 -Edition Perpetual -Register -NoRun` 完成构建、门禁和注册。注册输出必须明确仍需微信验收。
+
+**外部目录是运行时依赖。** 本轮注册使用隔离工作区的发布目录；注册保持期间不要删除该工作区或其产物。今后迁移到正式安装目录时，要带齐主程序、分享助手、资源和匹配 MSIX，并重新注册 ExternalLocation。
+
+### 4.5 微信菜单与接收验收
+
+1. 先保存微信输入框草稿并结束正在进行的操作，再从微信托盘正常退出，重新打开微信。旧记录显示 WeChatAppEx 可能缓存枚举结果；不要在没有保存状态时强制杀进程。
+2. 在微信的转发弹窗进入「更多／转发到其他应用」，确认 WorkBuddy 仍在，同时出现独立的「律档通」。仅列出包或在资源管理器分享面板看到它不算通过。
+3. 用自己可控的测试聊天记录，选择少量不含隐私的消息，合并转发到「律档通」。不要把真实客户、案件或其他私人聊天用于公开验收。
+4. 确认接收窗口出现，`%LOCALAPPDATA%\WeChatBridge\Inbox\Ready` 新增完整批次，原始 ZIP 可读取，主程序能显示记录。
+5. 检查 WorkBuddy 入口仍然存在。验证时不选择 WorkBuddy，不将测试之外的聊天发给其他应用。
+6. 原始截图和聊天 ZIP 只保存在本地忽略目录，不提交 Git；文档只记录版本、时间、通过项和失败现象。
+
+### 4.6 不显示时的定位顺序
+
+1. 核对注册清单 DisplayName 是否确实为「律档通」、Application Id 是否为 Share.Hub。
+2. 运行 Test-SharePackage 和身份探针；检查当前注册 ExternalLocation 是否指向实际存在的新发布目录。
+3. 用资源管理器的系统分享面板作对照；若系统可见而微信不可见，记录为微信宿主枚举／缓存兼容性未通过，不继续盲改包名和身份。
+4. 采集诊断：
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File windows\scripts\Collect-ShareDiagnostics.ps1 -AppRoot $publishRoot -OutputDirectory .artifacts
+```
+
+5. 与 `docs/design/windows-share-packaging-fix.md` 的失败记录对照。不能仅凭 `windows/docs/SHARE_TARGET_ENUMERATION.zh-CN.md` 的单一根因说法，断言所有机器问题已解决。
+
+### 4.7 回退
+
+如果新注册不可用，用原签名 MSIX 和原 ExternalLocation 恢复本项目包。因为版本相同，必要时仅移除本项目包再重新注册。不要移除 WorkBuddy，不删除 Inbox、Config、账户或许可证文件。恢复后运行旧助手的身份探针，并由用户重新打开微信。
+
+### 4.8 提交与推送
+
+只暂存本任务的文档和源码；检查 staged diff 无诊断、聊天、签名材料和已有未完成修改。推送独立分支到本机的 zmuimeng 远程，避免把旧主检出分支或上游误推为主线。
+
+```powershell
+git diff --check
+git diff --cached --stat
+git commit -m 'fix(windows): [W-SHARE] verify share registration'
+git push -u zmuimeng HEAD:refs/heads/codex/lvdangtong-wechat-share
+```
+
+## 5. 本轮结果
+
+具体脚本改动由较低成本的 `gpt-6-luna` 子代理实现，主线程负责评估、复核、构建、签名注册及结果记录。
+
+| 验证 | 结果 |
+| --- | --- |
+| Perpetual restore / build / test | 0 警告、0 错误；核心 617 + 应用 84 项通过 |
+| Subscription restore / build / test | 0 警告、0 错误；核心 616 + 应用 84 项通过 |
+| Perpetual 自包含发布 | 主程序与分享助手均生成，版本 1.0.8 |
+| 网络命名空间门禁 | 通过（项目现有白名单） |
+| Windows PowerShell 5.1 语法解析 | 两份修改的脚本均通过；保留 UTF-8 BOM |
+| 真实打包负例 | 使用错误 EXE 身份的助手；预检拒绝，退出码 1，原项目注册和 WorkBuddy 注册保持不变 |
+| 预检失败的诊断文本 | 原 trap 的 bare throw 会隐藏为 ScriptHalted；改为 throw $_ 后保留具体错误 |
+| 正式本地注册流程 | 签名有效、资源与身份预检通过，注册退出码 0 |
+| 新注册显示名 | 严格为「律档通」，没有零宽字符 |
+| 新注册状态与进程身份 | Status=Ok；PackageFullName 与 AUMID 匹配，!Share.Hub |
+| WorkBuddy 对照 | 包全名及完整注册清单与操作前一致 |
+| 微信 4.2.0.7 菜单显示 | 未验收；界面捕获超时，恢复时 GetCursorPos 返回拒绝访问 0x80070005；已请求用户正常重启微信检查 |
+| 微信真实聊天 ZIP 接收 | 未验收；不能用上述自动检查替代 |
+
+代码改动仅涉及 `windows/scripts/register-dev.ps1` 与 `build-and-run.ps1`。显示名及接收链路已在远程主线实现，本轮复用，不通过冒充 WorkBuddy 身份解决可见性。
+
+交付分支为 `codex/lvdangtong-wechat-share`，目标远程为本机 `zmuimeng`（GitHub 仓库 `zhuimeng2026-hub/WeChatBridge`）。微信 UI 验收未完成前，该分支应视为待验收实现，不能宣称已经修复微信 4.2.0.7 的第三方入口显示问题。

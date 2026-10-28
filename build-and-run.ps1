@@ -200,11 +200,13 @@ Write-Host "  可执行文件 : $exe"
 Write-Host "  双击运行   : 上面这个 exe（自包含，本机不需要装 .NET）"
 Write-Host "  数据目录   : $dataRoot"
 if ($sharePackage) {
-    Write-Host "  分享入口   : 已注册（$sharePackage）"
-    Write-Host "                微信「转发到其他应用」里应该有「律档通」。取消注册："
+    Write-Host "  系统注册   : 已发现分享包（$sharePackage）"
+    Write-Host '  微信菜单   : 尚未人工验收；请在微信「转发到其他应用」中确认是否显示「律档通」。'
+    Write-Host "  取消注册   :"
     Write-Host "                powershell -ExecutionPolicy Bypass -File `"$unregisterScript`""
 } else {
-    Write-Host "  分享入口   : 未注册。微信「转发到其他应用」里不会有「律档通」，要加："
+    Write-Host '  系统注册   : 未发现分享包。'
+    Write-Host '  微信菜单   : 尚未验收；请先注册系统分享入口，再检查微信菜单。注册命令：'
     Write-Host "                powershell -ExecutionPolicy Bypass -File `".\build-and-run.ps1`" -Register"
 }
 Write-Host ''

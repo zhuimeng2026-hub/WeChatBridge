@@ -20,7 +20,7 @@ function Write-RegistrationLog([string]$message) {
 trap {
     $hresult = ('0x{0:X8}' -f ($_.Exception.HResult -band 0xffffffff))
     Write-RegistrationLog "失败 $hresult $($_.Exception.Message)"
-    throw
+    throw $_
 }
 
 $helper = Join-Path $installRoot 'share-target\WeChatBridge.ShareTarget.exe'
@@ -91,6 +91,12 @@ if ($signature.Status -ne 'Valid') {
     throw "The MSIX signature is not trusted ($($signature.Status): $($signature.StatusMessage)). Trust the development certificate in Cert:\CurrentUser\Root and retry."
 }
 
+# Validate the signed package, embedded helper identity, PRI and external assets
+# before removing any existing registration. A failed preflight must leave the
+# currently registered share target available for rollback.
+$packageCheckScript = Join-Path $PSScriptRoot 'Test-SharePackage.ps1'
+& $packageCheckScript -InstallRoot $installRoot
+
 Get-AppxPackage -ErrorAction SilentlyContinue |
     Where-Object { $_.Name -in 'WeChatBridge.Windows.ShareTarget', 'ChatBridge.Windows.ShareTarget' } |
     Remove-AppxPackage -ErrorAction SilentlyContinue
@@ -103,5 +109,37 @@ catch {
 }
 $registered = Get-AppxPackage -Name 'WeChatBridge.Windows.ShareTarget' -ErrorAction SilentlyContinue
 if (-not $registered) { throw 'Add-AppxPackage returned but the package is not registered.' }
+if ($registered.Status -ne 'Ok') { throw "Registered package is unhealthy: $($registered.Status)" }
+
+# A registration record alone does not prove that the external helper acquired
+# this package identity. Probe it in a hidden, side-effect-free process and match
+# both identities against the registration returned by Windows.
+$probe = New-Object Diagnostics.ProcessStartInfo
+$probe.FileName = $helper
+$probe.Arguments = '--registration-check'
+$probe.UseShellExecute = $false
+$probe.CreateNoWindow = $true
+$probe.RedirectStandardOutput = $true
+$probe.RedirectStandardError = $true
+$process = [Diagnostics.Process]::Start($probe)
+try {
+    $stdout = $process.StandardOutput.ReadToEndAsync()
+    $stderr = $process.StandardError.ReadToEndAsync()
+    if (-not $process.WaitForExit(15000)) {
+        $process.Kill()
+        throw 'Share identity check timed out.'
+    }
+    $output = $stdout.GetAwaiter().GetResult()
+    $errors = $stderr.GetAwaiter().GetResult()
+    Write-RegistrationLog "identityCheck exit=$($process.ExitCode) output=$output stderr=$errors"
+    if ($process.ExitCode -ne 0) { throw 'Share component did not acquire package identity.' }
+    $identity = $output | ConvertFrom-Json
+    if ($identity.PackageFullName -cne $registered.PackageFullName -or
+        $identity.ApplicationUserModelId -cne ($registered.PackageFamilyName + '!Share.Hub')) {
+        throw 'Share component acquired an unexpected package/application identity.'
+    }
+} finally { $process.Dispose() }
+
 Write-RegistrationLog "成功 $($registered.PackageFullName)"
-Write-Output "Registered: $($registered.PackageFullName)"
+Write-Output "System share-target registration verified: $($registered.PackageFullName) (Status=Ok; identity probe passed)."
+Write-Output '微信菜单显示仍需人工验收；系统注册状态不代表微信「转发到其他应用」中已显示「律档通」。'
