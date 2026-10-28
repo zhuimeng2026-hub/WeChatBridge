@@ -614,6 +614,16 @@ Windows 端新增「知识工作台」面板（阅读优先 / 案件工作区 / 
   **`feat/sqlite-migration`**（**比 main 多 8 个提交**：服务端 store 从 postgres 换成 SQLite）、
   **`codex/lvdangtong-wechat-share`**（**比 main 多 4 个提交**：微信分享注册）。
   **推镜像时不能只推 `--all`**（`--all` 只认本地分支）。
+  - **动 `main` 之前先把远端的提交并进来。** 两端都在动（CNB 上的 NPC、GitHub 上的会话），
+    本地 `main` 落后是常态。直接 `git push` 会被判非快进；更要命的是
+    `scripts/verify-doc-alignment.sh` 的 C1/C2 是拿**本地 `main`** 去比的——
+    本地落后时会把明明已经并入主干的归档 tag 报成「从未并入 main」（2026-10-28 踩到两次）。
+    正确顺序：
+    ```bash
+    git fetch origin --tags --prune && git fetch cnb main
+    git merge cnb/main        # 或 origin/main，两端哪个领先并哪个
+    # 然后再提交、推送、跑校验
+    ```
   已并入 main 的分支**删之前先打归档 tag**（`archive/<分支名>`，斜杠换成横杠），tag 留在仓库里，
   分支删掉——这样「哪条分支的成果还在」由 tag 记着，而不是由一条已经没用的分支记着。
   2026-10-28 清掉了五条，各自留了 tag：
