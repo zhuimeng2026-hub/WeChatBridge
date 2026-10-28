@@ -21,6 +21,33 @@ Owner: Claude（按用户指派，在本机实现并推送；Windows 环境的�
 | CNB 镜像与评审 issue | ✅ | issue #1 已关闭（completed）：https://cnb.cool/mengxa.com/WeChatBridge/-/issues/1 |
 | CNB PR（评审载体） | ✅ | PR #3 已合并：https://cnb.cool/mengxa.com/WeChatBridge/-/pulls/3 ；**代码评审对象是已落地的 `bda534a`** |
 
+## 归档 tag 与分支清理（2026-10-28）
+
+清理已并入 main 的分支，规矩是**删之前先打归档 tag**（`archive/<分支名>`，斜杠换横杠）——
+成果由 tag 记着，不由一条已经没用的分支记着。四个 tag 都已推到 origin 与 CNB 两端：
+
+| 归档 tag | 指向 | 那条分支是什么 |
+| --- | --- | --- |
+| `archive/codex-attachment-categories` | `29f1680` | 附件分类 |
+| `archive/feat-m1-desktop-beta-readiness` | `2144a9b` | M1 桌面版 beta 就绪度 |
+| `archive/feat-windows-forward-limit-hint` | `619b073` | 本条 issue 的实现 + 顺带修掉的三个 CI 既有失败 |
+| `archive/fix-windows-archive-merge-brand-20261027` | `1bb1e8f` | 归档来源 + 律档通打包；那 7 笔被 squash 成主干的这一笔 |
+
+恢复任何一条：`git push origin archive/<tag>:refs/heads/<分支名>`
+
+**判「是否已并入主干」要比内容，不要只比 SHA**：`fix/windows-archive-merge-brand-20261027` 的 7 个提交
+在 `git log` 里看着像没并入，但 `1bb1e8f` 是把同一批改动 squash 的一笔——两边碰过的 5 个文件内容**逐字相同**
+（`git diff 1bb1e8f db3c1b6 -- <那些文件>` 为空），唯一的差别是主干后来给两个 `.ps1` 补了 UTF-8 BOM。
+所以这个归档 tag 指向 `1bb1e8f`（主干里承载这份成果的那一笔），而不是分支 tip `db3c1b6`——
+与仓库其它归档 tag 一致（指向的都是 main 的祖先，`verify-doc-alignment.sh` 的 C2 逐条判 PASS）。
+分支 tip 那串 SHA 随分支删除而不再可达，**成果一条没丢**。
+`git cherry` 对这种 squash 后的主干提交不灵（patch-id 对不上），要看的是
+「分支碰过的那些文件在主干里是不是已经一样」。
+
+清理后两端都只剩三条在途分支，都还有 main 里没有的工作：
+`codex/desktop-archive-design`（多 11 笔）、`feat/sqlite-migration`（多 8 笔）、
+`codex/lvdangtong-wechat-share`（多 4 笔，2026-10-28 新起）。
+
 ## CNB 上的状态（2026-10-28，完结）
 
 - **评审 issue #1 已关闭**（completed）：https://cnb.cool/mengxa.com/WeChatBridge/-/issues/1
