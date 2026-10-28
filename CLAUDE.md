@@ -616,13 +616,15 @@ Windows 端新增「知识工作台」面板（阅读优先 / 案件工作区 / 
   **推镜像时不能只推 `--all`**（`--all` 只认本地分支）。
   已并入 main 的分支**删之前先打归档 tag**（`archive/<分支名>`，斜杠换成横杠），tag 留在仓库里，
   分支删掉——这样「哪条分支的成果还在」由 tag 记着，而不是由一条已经没用的分支记着。
-  2026-10-28 清掉了四条，各自留了 tag：
+  2026-10-28 清掉了五条，各自留了 tag：
   `archive/codex-attachment-categories`、`archive/feat-m1-desktop-beta-readiness`、
   `archive/feat-windows-forward-limit-hint`（Windows 端 100 条上限提示，代码随 NPC 的
   `bda534a` 合进 main，看板留在 `docs/progress/feat/windows-forward-limit-hint.md`）、
   `archive/fix-windows-archive-merge-brand-20261027`（指向 `1bb1e8f`——那 7 笔被 squash 成了
   主干的这一笔，两边碰过的文件内容逐字相同；**判「是否已并入」要比内容不要只比 SHA**，
-  `git cherry` 对 squash 后的主干提交不灵）。
+  `git cherry` 对 squash 后的主干提交不灵）、
+  `archive/auto-sql-const-fold-e041`（消除 store 里 SQL 常量与列清单的字符串拼接，
+  随 PR #5 合进 main）。
   M1 桌面版 beta 就绪度那条分支原本特意留着（看板还挂着未完成项），
   它的成果同样已经在 main 里，看板也留在 `docs/progress/feat/m1-desktop-beta-readiness.md`——
   接着做那些未完成项时从 main 开新分支即可，不需要留一条已合干的旧分支。
