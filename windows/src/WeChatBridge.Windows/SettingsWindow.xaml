@@ -45,26 +45,27 @@
                 <TextBlock x:Name="SubfolderError" Margin="0,4,0,0" FontSize="12" TextWrapping="Wrap"
                            Foreground="{StaticResource DangerColor}" Visibility="Collapsed" />
 
-                <CheckBox x:Name="LaunchBox" Margin="0,20,0,0" Content="{loc:Loc Key='开机启动'}"
-                          FontSize="12.5" Foreground="{StaticResource InkColor}" />
-                <CheckBox x:Name="NotifyBox" Margin="0,10,0,0" Content="{loc:Loc Key='归档完成通知'}"
-                          FontSize="12.5" Foreground="{StaticResource InkColor}" />
+                <!-- 开机启动与归档完成通知由通用设置页负责，这里不再重复。 -->
 
-                <!-- Source repair: only needed when detection is unhealthy. -->
-                <Separator Margin="0,20,0,0" />
-                <TextBlock Text="{loc:Loc Key='接收目录'}" Margin="0,16,0,6" FontSize="12.5"
-                           Foreground="{StaticResource InkSecondaryColor}" />
-                <TextBlock x:Name="SourcePathText" FontSize="12" TextWrapping="Wrap"
-                           Foreground="{StaticResource InkColor}" />
-                <TextBlock x:Name="SourceStateText" Margin="0,4,0,0" FontSize="11.5" TextWrapping="Wrap"
-                           Foreground="{StaticResource InkTertiaryColor}" />
-                <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
-                    <Button Content="{loc:Loc Key='重新检测'}" Style="{StaticResource SettingsButton}"
-                            Click="Recheck_Click" />
-                    <Button Content="{loc:Loc Key='手动指定目录'}" Margin="8,0,0,0"
-                            Style="{StaticResource SettingsButton}" Click="ManualSource_Click" />
-                    <Button Content="{loc:Loc Key='恢复自动检测'}" Margin="8,0,0,0"
-                            Style="{StaticResource SettingsButton}" Click="ResetSource_Click" />
+                <!-- Source repair: only needed when detection is unhealthy. The
+                     path itself is a WorkBuddy implementation detail, so it
+                     stays hidden until there is something wrong to repair. -->
+                <StackPanel x:Name="SourcePanel" Visibility="Collapsed">
+                    <Separator Margin="0,20,0,0" />
+                    <TextBlock Text="{loc:Loc Key='接收目录'}" Margin="0,16,0,6" FontSize="12.5"
+                               Foreground="{StaticResource InkSecondaryColor}" />
+                    <TextBlock x:Name="SourcePathText" FontSize="12" TextWrapping="Wrap"
+                               Foreground="{StaticResource InkColor}" />
+                    <TextBlock x:Name="SourceStateText" Margin="0,4,0,0" FontSize="11.5" TextWrapping="Wrap"
+                               Foreground="{StaticResource InkTertiaryColor}" />
+                    <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                        <Button Content="{loc:Loc Key='重新检测'}" Style="{StaticResource SettingsButton}"
+                                Click="Recheck_Click" />
+                        <Button Content="{loc:Loc Key='手动指定目录'}" Margin="8,0,0,0"
+                                Style="{StaticResource SettingsButton}" Click="ManualSource_Click" />
+                        <Button Content="{loc:Loc Key='恢复自动检测'}" Margin="8,0,0,0"
+                                Style="{StaticResource SettingsButton}" Click="ResetSource_Click" />
+                    </StackPanel>
                 </StackPanel>
 
                 <!-- Diagnostics: the log is the evidence, and the user has to

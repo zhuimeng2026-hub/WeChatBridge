@@ -298,6 +298,65 @@ public sealed class ObsidianVaultRegistryTests : IDisposable
         Assert.Equal(folder, vault["path"]!.GetValue<string>());
     }
 
+    // --- folder creation ----------------------------------------------------
+
+    [Fact]
+    public void EnsureVaultCreated_creates_a_folder_that_does_not_exist_yet()
+    {
+        var missing = Path.Combine(_root, "fresh-vault");
+
+        Assert.True(ObsidianVaultRegistry.EnsureVaultCreated(missing, out var detail));
+
+        Assert.Null(detail);
+        Assert.True(Directory.Exists(missing));
+    }
+
+    [Fact]
+    public void EnsureVaultCreated_creates_the_missing_levels_of_a_path()
+    {
+        var missing = Path.Combine(_root, "parent", "child");
+
+        Assert.True(ObsidianVaultRegistry.EnsureVaultCreated(missing, out _));
+
+        Assert.True(Directory.Exists(missing));
+    }
+
+    [Fact]
+    public void EnsureVaultCreated_leaves_an_existing_folder_alone()
+    {
+        var folder = NewFolder("existing");
+        var marker = Path.Combine(folder, "keep.txt");
+        File.WriteAllText(marker, "keep");
+
+        Assert.True(ObsidianVaultRegistry.EnsureVaultCreated(folder, out _));
+
+        Assert.True(File.Exists(marker));
+    }
+
+    [Fact]
+    public void EnsureVaultCreated_refuses_a_blank_path()
+    {
+        Assert.False(ObsidianVaultRegistry.EnsureVaultCreated("   ", out var detail));
+
+        Assert.NotNull(detail);
+    }
+
+    [Fact]
+    public void A_created_vault_is_initialised_and_writable()
+    {
+        // The whole point of the settings dialog: a path the user typed is
+        // turned into a vault that can actually be written to.
+        var missing = Path.Combine(_root, "typed-by-hand");
+
+        Assert.True(ObsidianVaultRegistry.EnsureVaultCreated(missing, out _));
+        Assert.True(ObsidianVaultRegistry.EnsureVaultInitialized(missing, out _));
+
+        Assert.True(Directory.Exists(Path.Combine(missing, ".obsidian")));
+        var (ok, detail) = DestinationProbe.Check(missing);
+        Assert.True(ok);
+        Assert.Null(detail);
+    }
+
     // --- vault initialisation ----------------------------------------------
 
     [Fact]

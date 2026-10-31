@@ -413,6 +413,37 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
 
     public event Action<bool>? WorkBuddyAutoImportChanged;
 
+    /// <summary>
+    /// 归档完成通知 — successful archives raise a toast; failures stay in the
+    /// list either way, so this switch only governs the good news.
+    /// <para>
+    /// It lives here rather than in the settings dialog: that dialog keeps
+    /// the destination and nothing else, and this is a preference about how
+    /// the app talks to the user, not about where notes land.
+    /// </para>
+    /// </summary>
+    public bool NotifyOnArchiveSuccess
+    {
+        get => _settings.NotifyOnArchiveSuccess;
+        set
+        {
+            if (value == _settings.NotifyOnArchiveSuccess) return;
+            _settings.NotifyOnArchiveSuccess = value;
+            SaveSettings();
+            OnPropertyChanged(nameof(NotifyOnArchiveSuccess));
+            // The reception service keeps its own copy of the preferences, so
+            // it has to be told that the file changed.
+            SettingsReloaded?.Invoke();
+        }
+    }
+
+    /// <summary>
+    /// Raised after the preferences were written to disk. The reception
+    /// service listens for it so a change made in the general pane takes
+    /// effect without a restart.
+    /// </summary>
+    public event Action? SettingsReloaded;
+
     public string? ObsidianVaultPath
     {
         get => _settings.ObsidianVaultPath;

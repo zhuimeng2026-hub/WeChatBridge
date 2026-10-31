@@ -120,6 +120,9 @@ public partial class App : Application
 
         var model = new MainViewModel(_paths);
         _model = model;
+        // The general pane and the reception service each hold their own copy
+        // of the preferences; this is what keeps the two in step.
+        model.SettingsReloaded += _reception.ReloadSettings;
         var window = new MainWindow(_reception);
         MainWindow = window;
         // The tray exists in every instance — it is the resident process's

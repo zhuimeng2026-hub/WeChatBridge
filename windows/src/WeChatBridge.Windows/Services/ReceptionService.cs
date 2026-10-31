@@ -334,6 +334,21 @@ public sealed class ReceptionService : INotifyPropertyChanged, IDisposable
         RebuildRows();
     }
 
+    /// <summary>
+    /// Re-read the preferences from disk and restart reception against them.
+    /// <para>
+    /// The general settings pane edits the same settings file this service
+    /// reads, but it holds its own copy of it. Without this reload, a change
+    /// made there — the archive notification switch, for one — would be saved
+    /// and then ignored by the code that is supposed to honour it.
+    /// </para>
+    /// </summary>
+    public void ReloadSettings()
+    {
+        _settings = _settingsStore.Load();
+        RecheckNow();
+    }
+
     /// <summary>Choose or change the vault from the first-use state.</summary>
     public void SetVault(string vaultPath, string subfolder)
     {

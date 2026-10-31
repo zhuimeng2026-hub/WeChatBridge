@@ -26,9 +26,6 @@ public partial class SettingsWindow : Window
         var settings = reception.Settings;
         VaultBox.Text = settings.ObsidianVaultPath ?? "";
         SubfolderBox.Text = settings.ObsidianSubfolder;
-        NotifyBox.IsChecked = settings.NotifyOnArchiveSuccess;
-        // Show what the registry actually says: a failed write must not look on.
-        LaunchBox.IsChecked = LaunchAtLogin.IsRegistered();
         _sourceOverride = settings.WorkBuddyDirectoryOverride;
 
         var version = typeof(SettingsWindow).Assembly.GetName().Version;
@@ -114,6 +111,13 @@ public partial class SettingsWindow : Window
             WorkBuddySourceState.WatchUnavailable => L10n.Text("目录暂时无法监听。"),
             _ => L10n.Text("正在检查。"),
         };
+        // The source path is a WorkBuddy implementation detail. It only earns
+        // screen space when there is something for the user to repair, which
+        // is exactly what the design calls "异常时显示的来源设置".
+        SourcePanel.Visibility = probe.State is WorkBuddySourceState.AccessDenied
+            or WorkBuddySourceState.WatchUnavailable
+            ? Visibility.Visible
+            : Visibility.Collapsed;
     }
 
     private void Recheck_Click(object sender, RoutedEventArgs e) => RefreshSourceSummary();
@@ -149,6 +153,23 @@ public partial class SettingsWindow : Window
             ShowError(VaultError, L10n.Text("请选择 Obsidian 知识库。"));
             return;
         }
+
+        var subfolder = SubfolderBox.Text.Trim();
+        if (!IsValidSubfolder(subfolder, out var reason))
+        {
+            ShowError(SubfolderError, reason);
+            return;
+        }
+
+        // The user typed this path on purpose — it is where their notes
+        // should live. A folder that is not there yet is a folder to
+        // create, not a broken setting.
+        if (!ObsidianVaultRegistry.EnsureVaultCreated(vault, out var createError))
+        {
+            ShowError(VaultError, L10n.Format($"无法创建知识库目录：{createError}"));
+            return;
+        }
+
         var (ok, detail) = DestinationProbe.Check(vault);
         if (!ok)
         {
@@ -164,22 +185,12 @@ public partial class SettingsWindow : Window
             return;
         }
 
-        var subfolder = SubfolderBox.Text.Trim();
-        if (!IsValidSubfolder(subfolder, out var reason))
-        {
-            ShowError(SubfolderError, reason);
-            return;
-        }
-
-        var launch = LaunchBox.IsChecked == true;
-        LaunchAtLogin.Apply(launch);
-
         var settings = _reception.Settings;
         settings.ObsidianVaultPath = vault;
         settings.ObsidianSubfolder = string.IsNullOrEmpty(subfolder) ? "微信聊天" : subfolder;
         settings.WorkBuddyDirectoryOverride = string.IsNullOrWhiteSpace(_sourceOverride) ? null : _sourceOverride;
-        settings.NotifyOnArchiveSuccess = NotifyBox.IsChecked == true;
-        settings.LaunchAtLogin = launch;
+        // 开机启动与归档完成通知由通用设置页负责，这里既不读也不写：
+        // 隐藏的控件带着旧值，写回去会把用户在那边改的设置抹掉。
         _reception.ApplySettings(settings);
 
         DialogResult = true;

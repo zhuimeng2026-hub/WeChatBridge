@@ -272,6 +272,40 @@ internal static class ObsidianVaultRegistry
     }
 
     /// <summary>
+    /// Creates the vault folder when it does not exist yet.
+    /// <para>
+    /// The user typed this path on purpose: it is where their notes should
+    /// live. A folder that is not there yet is a folder to create, not a
+    /// broken setting — so the vault is made here instead of being refused.
+    /// A drive that is not connected still fails, and the operating
+    /// system's own reason is passed back.
+    /// </para>
+    /// </summary>
+    /// <param name="vaultPath">The vault folder to create.</param>
+    /// <param name="detail">Why it failed, when it did.</param>
+    /// <returns>True when the folder exists afterwards.</returns>
+    public static bool EnsureVaultCreated(string vaultPath, out string? detail)
+    {
+        detail = null;
+        var normalized = Normalize(vaultPath);
+        if (Directory.Exists(normalized))
+            return true;
+        try
+        {
+            // Creates every missing level, so a path like D:\notes\vault
+            // works even when D:\notes does not exist either.
+            Directory.CreateDirectory(normalized);
+            return true;
+        }
+        catch (Exception write) when (write is IOException or UnauthorizedAccessException
+            or NotSupportedException or ArgumentException)
+        {
+            detail = write.Message;
+            return false;
+        }
+    }
+
+    /// <summary>
     /// Turns a plain folder into a usable Obsidian vault.
     /// <para>
     /// Obsidian treats any folder that contains a <c>.obsidian</c> directory as
