@@ -54,11 +54,11 @@ public sealed class CollectionLedgerFailureTests
                 // The problem is said out loud — once, not on every reload.
                 Assert.Contains(toasts, toast => toast.Contains("收集记录", StringComparison.Ordinal));
 
-                // The tray menu reads the ledger from inside the window
-                // procedure, where an exception escapes into the message loop.
-                var current = model.Collections.Ledger.Current;
-                Assert.Null(current);
-                Assert.NotEmpty(TrayMenu.Build(model.Batches, false, DateTimeOffset.Now, current));
+                // The minimal tray menu is three fixed commands and no longer
+                // reads the ledger, so a corrupt ledger cannot make right-click
+                // throw inside the window procedure either.
+                Assert.Null(model.Collections.Ledger.Current);
+                Assert.NotEmpty(TrayMenu.Build(windowVisible: false, paused: false));
 
                 // The unreadable file is still there, byte for byte.
                 Assert.Equal(Unreadable, File.ReadAllText(corrupt));

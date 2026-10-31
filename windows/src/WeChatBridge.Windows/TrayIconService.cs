@@ -6,6 +6,7 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using WeChatBridge.Windows.Core;
+using WeChatBridge.Windows.Services;
 
 namespace WeChatBridge.Windows;
 
@@ -17,19 +18,11 @@ namespace WeChatBridge.Windows;
 /// </summary>
 public static class TrayMenu
 {
-    /// <summary>Ten batches is about a screen of menu; past that, 全部记录… is the answer.</summary>
-    public const int RecentLimit = 10;
-
     public enum Command
     {
         None,
         ToggleWindow,
-        OpenHistory,
-        ClearHistory,
-        OpenInbox,
-        Collections,
-        Settings,
-        About,
+        TogglePause,
         Quit,
     }
 
@@ -41,76 +34,20 @@ public static class TrayMenu
         IReadOnlyList<Entry>? Children = null);
 
     /// <summary>
-    /// The whole menu, top to bottom. The window toggle leads because a tray
-    /// app's first job is to reach the window; the rest follows the macOS menu
-    /// (最近记录 ▸, actions, 退出). macOS keeps 检查更新… here; Windows has no
-    /// updater yet, so the slot is simply absent.
+    /// Three items, matching the minimal desktop: reach the window, pause or
+    /// resume reception, quit. A tray menu is not a second navigation surface,
+    /// so there is no recent-records submenu and no multi-target entry here.
     /// </summary>
-    public static IReadOnlyList<Entry> Build(
-        IReadOnlyList<ReadyBatch> batches,
-        bool windowVisible,
-        DateTimeOffset now,
-        BatchCollection? current = null)
+    public static IReadOnlyList<Entry> Build(bool windowVisible, bool paused)
     {
+        _ = windowVisible;
         return
         [
-            new Entry(windowVisible ? L10n.Text("隐藏主窗口") : L10n.Text("显示主窗口"), Action: Command.ToggleWindow),
-            ..(current is null ? Array.Empty<Entry>() : [new Entry(L10n.Format($"继续收集 · {current.BatchIDs.Count} 批"), Action: Command.Collections)]),
-            new Entry(L10n.Text("最近记录"), Children: BuildRecent(batches, now)),
-            new Entry(null),
-            new Entry(L10n.Text("打开 Inbox"), Action: Command.OpenInbox),
-            new Entry(L10n.Text("设置…"), Action: Command.Settings),
-            new Entry(L10n.Text("关于律档通…"), Action: Command.About),
+            new Entry(L10n.Text("打开窗口"), Action: Command.ToggleWindow),
+            new Entry(paused ? L10n.Text("继续接收") : L10n.Text("暂停接收"), Action: Command.TogglePause),
             new Entry(null),
             new Entry(L10n.Text("退出律档通"), Action: Command.Quit),
         ];
-    }
-
-    private static IReadOnlyList<Entry> BuildRecent(IReadOnlyList<ReadyBatch> batches, DateTimeOffset now)
-    {
-        if (batches.Count == 0)
-            return [new Entry(L10n.Text("暂无记录"), Enabled: false)];
-
-        var entries = batches.Take(RecentLimit)
-            .Select(batch => new Entry(RecentTitle(batch, now), Action: Command.OpenHistory))
-            .ToList();
-        entries.Add(new Entry(null));
-        entries.Add(new Entry(L10n.Text("全部记录…"), Action: Command.OpenHistory));
-        // Reaching here at all means there is history to discard.
-        entries.Add(new Entry(L10n.Text("清空记录"), Action: Command.ClearHistory));
-        return entries;
-    }
-
-    /// <summary>
-    /// One 最近记录 row: 「聊天记录.zip 等 3 个 · Claude · 已送达 · 14:32」 — the
-    /// macOS <c>menuTitle</c> (name · destination · timestamp) plus the status
-    /// pill's wording, so the menu says what became of the share, not just what
-    /// it was.
-    /// </summary>
-    public static string RecentTitle(ReadyBatch batch, DateTimeOffset now)
-    {
-        var status = new BatchRow { Batch = batch }.StatusText;
-        return string.Join(" · ", new[]
-        {
-            HistoryLabels.Name(batch, HistoryLabels.MenuNameLimit),
-            status,
-            MenuTimestamp(batch.CreatedAt, now),
-        }.Where(part => part.Length > 0));
-    }
-
-    /// <summary>「14:32」 today, 「9月4日 14:32」 this year, 「2025年9月4日 14:32」 before that.</summary>
-    public static string MenuTimestamp(DateTimeOffset createdAt, DateTimeOffset now)
-    {
-        var local = createdAt.LocalDateTime;
-        var today = now.LocalDateTime.Date;
-        var clock = HistoryLabels.ClockTime(createdAt);
-        if (local.Date == today)
-            return clock;
-        var zh = L10n.Culture;
-        var day = local.Year == today.Year
-            ? local.ToString(L10n.Text("M月d日"), zh)
-            : local.ToString(L10n.Text("yyyy年M月d日"), zh);
-        return $"{day} {clock}";
     }
 }
 
@@ -134,6 +71,7 @@ public sealed class TrayIconService : IDisposable
     private const long MenuDebounceMs = 400;
 
     private readonly MainViewModel _model;
+    private readonly ReceptionService? _reception;
     private readonly Func<MainWindow?> _window;
     private readonly Action _quit;
     private readonly HwndSource _source;
@@ -161,11 +99,12 @@ public sealed class TrayIconService : IDisposable
     /// delegate so a future close-to-tray mode can hand back a new window
     /// instead of a stale reference.
     /// </summary>
-    public TrayIconService(MainViewModel model, Func<MainWindow?> window, Action quit)
+    public TrayIconService(MainViewModel model, Func<MainWindow?> window, Action quit, ReceptionService? reception = null)
     {
         _model = model;
         _window = window;
         _quit = quit;
+        _reception = reception;
 
         // A real top-level window kept hidden off-screen — NOT HWND_MESSAGE:
         // message-only windows can never be foreground, and TrackPopupMenuEx
@@ -292,23 +231,12 @@ public sealed class TrayIconService : IDisposable
             window.BringToFront();
     }
 
-    private void OpenTab(AppTab tab)
-    {
-        _model.Navigate(tab);
-        _window()?.BringToFront();
-    }
-
     private void Dispatch(TrayMenu.Command command)
     {
         switch (command)
         {
             case TrayMenu.Command.ToggleWindow: ToggleWindow(); break;
-            case TrayMenu.Command.OpenHistory: OpenTab(AppTab.History); break;
-            case TrayMenu.Command.ClearHistory: _model.DiscardAll(); break;
-            case TrayMenu.Command.Collections: _model.ShowCollection(); break;
-            case TrayMenu.Command.OpenInbox: _model.RevealInbox(); break;
-            case TrayMenu.Command.Settings: OpenTab(AppTab.General); break;
-            case TrayMenu.Command.About: OpenTab(AppTab.About); break;
+            case TrayMenu.Command.TogglePause: _reception?.TogglePause(); break;
             case TrayMenu.Command.Quit: _quit(); break;
         }
     }
@@ -362,19 +290,7 @@ public sealed class TrayIconService : IDisposable
         _commands.Clear();
         _nextCommandId = 1;
         var windowVisible = _window()?.IsVisible == true;
-        // The menu is built inside the window procedure, where an exception
-        // escapes into the WPF message loop and takes the app down with it.
-        // Nothing the model can fail at may stop the menu from opening.
-        BatchCollection? current = null;
-        try
-        {
-            current = _model.Collections.Ledger.Current;
-        }
-        catch (Exception error)
-        {
-            InboxLogger.Write(new InboxPaths(), "tray menu: collection ledger unavailable", error);
-        }
-        Populate(menu, TrayMenu.Build(_model.Batches, windowVisible, DateTimeOffset.Now, current));
+        Populate(menu, TrayMenu.Build(windowVisible, _reception?.IsPaused == true));
 
         Native.GetCursorPos(out var point);
         // The foreground trick every tray menu needs: without it the popup does

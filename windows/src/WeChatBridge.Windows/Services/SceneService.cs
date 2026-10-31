@@ -114,6 +114,15 @@ public sealed class SceneService : IDisposable
     private readonly Func<CancellationToken, Task<GroupTitleParser.Title?>> _titleReader;
     private readonly Func<IReadOnlyList<string>, CancellationToken, Task<WeChatBatchInsights>> _insightsReader;
 
+    /// <summary>
+    /// Records a failure that degraded the share but did not stop it. The
+    /// archive still lands; what is missing is context, and without this line
+    /// there is no way to tell "the read failed" from "there was nothing to
+    /// read".
+    /// </summary>
+    private static void LogShareReadFailure(string message, Exception error) =>
+        DiagnosticSink.Warn(message, error);
+
     /// <param name="configDirectory">
     /// The Config directory the three stores share; null means
     /// <see cref="ConfigStore.DefaultDirectory"/>. Tests pass a temp directory.
@@ -200,13 +209,25 @@ public sealed class SceneService : IDisposable
         async Task<GroupTitleParser.Title?> SafeTitle()
         {
             try { return await _titleReader(CancellationToken.None); }
-            catch { return null; }
+            catch (Exception error)
+            {
+                // The title is optional context: a missing one does not stop
+                // the archive. But "the chat was filed under the wrong name"
+                // is a support question, and this is where it is answered.
+                LogShareReadFailure("群名读取失败，聊天记录将使用默认名称。", error);
+                return null;
+            }
         }
 
         async Task<WeChatBatchInsights> SafeInsights(IReadOnlyList<string> paths)
         {
             try { return await _insightsReader(paths, CancellationToken.None); }
-            catch { return WeChatBatchInsights.Empty; }
+            catch (Exception error)
+            {
+                // Insights only decorate the scene; the archive still lands.
+                LogShareReadFailure("聊天洞察解析失败，场景将不带洞察信息。", error);
+                return WeChatBatchInsights.Empty;
+            }
         }
     }
 

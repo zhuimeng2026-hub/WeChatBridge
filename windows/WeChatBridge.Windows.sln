@@ -17,6 +17,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WeChatBridge.Windows.Tests"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WeChatBridge.Windows.AppTests", "tests\WeChatBridge.Windows.AppTests\WeChatBridge.Windows.AppTests.csproj", "{8EE19C28-74BC-4734-A006-0E02ACE6816D}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DiagnosticLogProcessProbe", "tests\DiagnosticLogProcessProbe\DiagnosticLogProcessProbe.csproj", "{7A88F6D0-E077-44E0-83F4-869C5B64DE27}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -87,6 +89,18 @@ Global
 		{8EE19C28-74BC-4734-A006-0E02ACE6816D}.Release|x64.Build.0 = Release|Any CPU
 		{8EE19C28-74BC-4734-A006-0E02ACE6816D}.Release|x86.ActiveCfg = Release|Any CPU
 		{8EE19C28-74BC-4734-A006-0E02ACE6816D}.Release|x86.Build.0 = Release|Any CPU
+		{7A88F6D0-E077-44E0-83F4-869C5B64DE27}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7A88F6D0-E077-44E0-83F4-869C5B64DE27}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7A88F6D0-E077-44E0-83F4-869C5B64DE27}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{7A88F6D0-E077-44E0-83F4-869C5B64DE27}.Debug|x64.Build.0 = Debug|Any CPU
+		{7A88F6D0-E077-44E0-83F4-869C5B64DE27}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{7A88F6D0-E077-44E0-83F4-869C5B64DE27}.Debug|x86.Build.0 = Debug|Any CPU
+		{7A88F6D0-E077-44E0-83F4-869C5B64DE27}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7A88F6D0-E077-44E0-83F4-869C5B64DE27}.Release|Any CPU.Build.0 = Release|Any CPU
+		{7A88F6D0-E077-44E0-83F4-869C5B64DE27}.Release|x64.ActiveCfg = Release|Any CPU
+		{7A88F6D0-E077-44E0-83F4-869C5B64DE27}.Release|x64.Build.0 = Release|Any CPU
+		{7A88F6D0-E077-44E0-83F4-869C5B64DE27}.Release|x86.ActiveCfg = Release|Any CPU
+		{7A88F6D0-E077-44E0-83F4-869C5B64DE27}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -97,5 +111,6 @@ Global
 		{49249B0E-FDC0-45A7-978A-CC5A00CA9FDB} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{37A94781-9141-4A96-8955-791A7132707F} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{8EE19C28-74BC-4734-A006-0E02ACE6816D} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
+		{7A88F6D0-E077-44E0-83F4-869C5B64DE27} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 	EndGlobalSection
 EndGlobal

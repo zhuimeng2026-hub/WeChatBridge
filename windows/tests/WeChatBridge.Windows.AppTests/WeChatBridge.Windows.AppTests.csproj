@@ -14,6 +14,7 @@
          dependency instead and copy its output verbatim under share-target\ —
          the process tests run that executable, they never bind to its types. -->
     <ProjectReference Include="../../src/WeChatBridge.ShareTarget/WeChatBridge.ShareTarget.csproj" ReferenceOutputAssembly="false"/>
+    <ProjectReference Include="../DiagnosticLogProcessProbe/DiagnosticLogProcessProbe.csproj" ReferenceOutputAssembly="false"/>
     <Compile Include="../WeChatBridge.Windows.Tests/TempInbox.cs" Link="TempInbox.cs"/>
     <Using Include="Xunit"/>
     <Using Include="System.IO"/>
@@ -25,6 +26,15 @@
     </ItemGroup>
     <Copy SourceFiles="@(ShareTargetPayload)"
           DestinationFiles="@(ShareTargetPayload->'$(OutDir)share-target\%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
+
+  <Target Name="CopyDiagnosticLogProcessProbe" AfterTargets="Build">
+    <ItemGroup>
+      <DiagnosticLogProbePayload Include="$(MSBuildThisFileDirectory)..\DiagnosticLogProcessProbe\bin\$(Configuration)\$(TargetFramework)\**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(DiagnosticLogProbePayload)"
+          DestinationFiles="@(DiagnosticLogProbePayload->'$(OutDir)diagnostic-log-probe\%(RecursiveDir)%(Filename)%(Extension)')"
           SkipUnchangedFiles="true" />
   </Target>
 </Project>

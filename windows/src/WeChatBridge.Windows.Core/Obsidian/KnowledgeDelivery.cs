@@ -11,6 +11,24 @@ public static class KnowledgeDelivery
 {
     public enum FailureKind { NotConfigured, UnreadableArchive }
 
+    /// <summary>
+    /// Whether the archive landed whole. <see cref="Partial"/> means every file the
+    /// delivery could produce was committed, but the transcript or some media was
+    /// not converted — the note says so and the caller must not report plain success.
+    /// </summary>
+    public enum DeliveryStatus { Complete, Partial }
+
+    /// <summary>
+    /// What a delivery actually produced. The paths are the ones written, not ones
+    /// re-derived from the chat name, so 「打开笔记」 opens the real file.
+    /// </summary>
+    public sealed record DeliveryResult(
+        IReadOnlyList<string> Notes,
+        IReadOnlyList<string> Archives,
+        IReadOnlyList<string> Attachments,
+        DeliveryStatus Status,
+        IReadOnlyList<string> Warnings);
+
     public sealed class FailureException : Exception
     {
         public FailureException(FailureKind kind, Exception? inner = null)
@@ -41,7 +59,23 @@ public static class KnowledgeDelivery
     /// <summary>Delivers into an explicitly selected vault and subfolder.</summary>
     public static List<string> Deliver(
         IReadOnlyList<string> paths, string vaultPath, string subfolder,
-        string? chatName, string? sceneName, CancellationToken cancellationToken = default)
+        string? chatName, string? sceneName, CancellationToken cancellationToken = default) =>
+        DeliverResult(paths, vaultPath, subfolder, chatName, sceneName, cancellationToken).Notes.ToList();
+
+    /// <summary>
+    /// Delivers and reports what actually landed: the note paths to open, the
+    /// archived ZIPs, the extracted attachments, and whether anything degraded.
+    /// </summary>
+    /// <param name="diagnose">
+    /// Receives a message and an optional exception whenever a step degrades
+    /// instead of failing outright. Null disables the reporting, which is what
+    /// the macOS build and the tests use — the Core library must not assume a
+    /// log destination it does not own.
+    /// </param>
+    public static DeliveryResult DeliverResult(
+        IReadOnlyList<string> paths, string vaultPath, string subfolder,
+        string? chatName, string? sceneName, CancellationToken cancellationToken = default,
+        Action<string, Exception?>? diagnose = null)
     {
         if (paths.Count == 0) throw new FailureException(FailureKind.UnreadableArchive);
         FolderDelivery.ValidateFolder(vaultPath);
@@ -53,6 +87,9 @@ public static class KnowledgeDelivery
         Directory.CreateDirectory(attachmentRoot);
 
         var written = new List<string>();
+        var archivesWritten = new List<string>();
+        var attachmentsWritten = new List<string>();
+        var warnings = new List<string>();
         foreach (var path in paths)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -75,12 +112,20 @@ public static class KnowledgeDelivery
                         transcript = null;
                 }
                 catch (OperationCanceledException) { throw; }
-                catch { transcript = null; }
+                catch (Exception error)
+                {
+                    // The transcript is optional: a ZIP that does not parse as
+                    // a native WeChat archive still gets archived, just
+                    // without a readable transcript. Say so, with the reason.
+                    diagnose?.Invoke("无法解析聊天记录正文，笔记将不含消息正文。", error);
+                    transcript = null;
+                }
 
                 var archiveFolder = Path.Combine(attachmentRoot, "原始归档");
                 Directory.CreateDirectory(archiveFolder);
                 var savedArchive = FolderDelivery.Save([path], archiveFolder, cancellationToken).Single();
                 archiveRelative = $"原始归档/{Path.GetFileName(savedArchive)}";
+                archivesWritten.Add(savedArchive);
 
                 var staging = Path.Combine(Path.GetTempPath(), "wechatbridge-media-" + Guid.NewGuid().ToString("N"));
                 try
@@ -102,13 +147,19 @@ public static class KnowledgeDelivery
                         var saved = FolderDelivery.Save([sourcePath], categoryFolder, cancellationToken).Single();
                         var relative = $"{category}/{Path.GetFileName(saved)}";
                         attachmentPaths.Add(relative);
+                        attachmentsWritten.Add(saved);
                         referenceMap[sourceName] = relative;
                     }
                 }
                 catch (OperationCanceledException) { throw; }
-                catch
+                catch (Exception error)
                 {
+                    // The archive itself is already saved, so this is a
+                    // degradation rather than a failure — but the attachments
+                    // are missing, and the user needs to know why.
+                    diagnose?.Invoke("附件提取未完成，原始 ZIP 已保留。", error);
                     extractionIssue = "附件提取未完成，原始 ZIP 已保留；请检查 ZIP 是否损坏或包含不支持的内容。";
+                    warnings.Add(extractionIssue);
                 }
                 finally { TryDeleteDirectory(staging); }
             }
@@ -155,7 +206,12 @@ public static class KnowledgeDelivery
             WriteAtomic(note, markdown);
             written.Add(note);
         }
-        return written;
+        return new DeliveryResult(
+            written,
+            archivesWritten,
+            attachmentsWritten,
+            warnings.Count == 0 ? DeliveryStatus.Complete : DeliveryStatus.Partial,
+            warnings);
     }
 
     // Office Open XML documents are ZIP containers too, but are ordinary standalone

@@ -5,6 +5,7 @@ using System.Windows.Media;
 using System.Windows.Threading;
 using WeChatBridge.Windows.Components;
 using WeChatBridge.Windows.Core;
+using WeChatBridge.Windows.Services;
 
 namespace WeChatBridge.Windows;
 
@@ -126,8 +127,12 @@ public partial class CollectionWindow : Window
     private void Try(Action action)
     {
         try { action(); Message.Text = ""; _model.Reload(); }
-        catch (Exception error) { Message.Text = error is System.IO.IOException or UnauthorizedAccessException
-            ? L10n.Text("暂时无法访问收集文件，请检查文件权限或占用后重试。原始文件已保留。") : error.Message; }
+        catch (Exception error)
+        {
+            DiagnosticSink.Warn("收集窗口操作失败。", error);
+            Message.Text = error is System.IO.IOException or UnauthorizedAccessException
+            ? L10n.Text("暂时无法访问收集文件，请检查文件权限或占用后重试。原始文件已保留。") : error.Message;
+        }
     }
     private void Resume_Click(object sender, RoutedEventArgs e) => Try(() => { _model.Collections.Ledger.Resume(_id); _model.Collections.Save(); });
     private void More_Click(object sender, RoutedEventArgs e)
@@ -168,6 +173,10 @@ public partial class CollectionWindow : Window
             await _model.DeliverCollection(id, selection.Action, selection.Target, selection.Scene, selection.Folder);
             if (_id == id) { Refresh(); if (_model.Collections.Ledger.Editable(id).Status == CollectionStatus.Retry) Show(); }
         }
-        catch (Exception error) { DeliveryWindow = null; Show(); Refresh(); Message.Text = error.Message; }
+        catch (Exception error)
+        {
+            DiagnosticSink.Error("交付收集失败。", error);
+            DeliveryWindow = null; Show(); Refresh(); Message.Text = error.Message;
+        }
     }
 }
