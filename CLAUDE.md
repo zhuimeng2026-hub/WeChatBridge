@@ -609,8 +609,9 @@ Windows 端新增「知识工作台」面板（阅读优先 / 案件工作区 / 
   现在还活着的只有 `main` 上的看板，其中 M1 桌面版 beta 就绪度那块是最新的一块
   （2026-10-24 已随分支合并进主干；知识工作台那块是上一块）。
   远端分支清单：`git branch -r | grep origin/`（**origin 上的远端分支：四条**
-  ——`main`，加上三条**都还有 main 里没有的工作**的分支：**`codex/desktop-archive-design`**
-  （**比 main 多 11 个提交**：精简桌面端、WorkBuddy 自动检测、诊断日志、Obsidian 端到端测试）、
+  ——`main`，加上三条分支：**`codex/desktop-archive-design`**
+  （2026-10-31 已并入 main：精简桌面端、WorkBuddy 自动检测、诊断日志、
+  Obsidian 端到端测试、设置窗口知识库目录自动新建）、
   **`feat/sqlite-migration`**（**比 main 多 8 个提交**：服务端 store 从 postgres 换成 SQLite）、
   **`codex/lvdangtong-wechat-share`**（**比 main 多 4 个提交**：微信分享注册）。
   **推镜像时不能只推 `--all`**（`--all` 只认本地分支）。
