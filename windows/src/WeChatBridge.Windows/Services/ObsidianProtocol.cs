@@ -40,18 +40,74 @@ internal static class ObsidianProtocol
         }
     }
 
-    /// <summary>True when some Obsidian already owns the protocol.</summary>
+    /// <summary>
+    /// The executable the protocol currently points at, or null when nothing
+    /// claims it. The path is parsed out of the command value and is returned
+    /// even when the file no longer exists — callers that need "will this
+    /// actually work" must ask <see cref="IsRegistered"/>.
+    /// </summary>
+    public static string? RegisteredExecutable
+    {
+        get
+        {
+            var command = RegisteredCommand;
+            if (string.IsNullOrWhiteSpace(command))
+                return null;
+            // The shell convention is "C:\path\Obsidian.exe" "%1". A command
+            // without quotes is ambiguous — the path itself may contain spaces
+            // — so the longest prefix that exists on disk wins, and an
+            // unparseable value answers null rather than a guess.
+            var text = command.Trim();
+            if (text.StartsWith('"'))
+            {
+                var end = text.IndexOf('"', 1);
+                return end > 1 ? text[1..end] : null;
+            }
+            var candidate = text;
+            while (candidate.Length > 0)
+            {
+                if (File.Exists(candidate))
+                    return candidate;
+                var cut = candidate.LastIndexOf(' ');
+                if (cut <= 0)
+                    break;
+                candidate = candidate[..cut];
+            }
+            return null;
+        }
+    }
+
+    /// <summary>The raw command value behind the protocol, or null when unclaimed.</summary>
+    public static string? RegisteredCommand
+    {
+        get
+        {
+            try
+            {
+                using var key = Registry.CurrentUser.OpenSubKey(CommandKeyPath);
+                return key?.GetValue(null) as string;
+            }
+            catch (Exception e) when (e is System.Security.SecurityException or UnauthorizedAccessException)
+            {
+                return null;
+            }
+        }
+    }
+
+    /// <summary>
+    /// True when an Obsidian that can actually answer the URI owns the
+    /// protocol.
+    /// <para>
+    /// The registry entry alone is not enough. Uninstalling or moving Obsidian
+    /// leaves the key behind pointing at a file that is gone; treating that as
+    /// "registered" makes the caller believe the URI will open, so it never
+    /// falls back to the file manager and the user just sees nothing happen.
+    /// </para>
+    /// </summary>
     public static bool IsRegistered()
     {
-        try
-        {
-            using var key = Registry.CurrentUser.OpenSubKey(ProtocolKeyPath);
-            return key?.GetValue(null) is string;
-        }
-        catch (Exception e) when (e is System.Security.SecurityException or UnauthorizedAccessException)
-        {
-            return false;
-        }
+        var executable = RegisteredExecutable;
+        return executable is not null && File.Exists(executable);
     }
 
     /// <summary>
