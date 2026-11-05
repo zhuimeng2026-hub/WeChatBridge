@@ -273,3 +273,58 @@ func TestJoinedProjectionsAreQualified(t *testing.T) {
 		})
 	}
 }
+
+// TestInlineProjectionsStayInSync is the price of killing GO-SQLI-001 here.
+// The four auth queries used to build their SQL with `+` from accountColumns /
+// sessionColumns; inlining removes the concatenation but duplicates the
+// projection text. Scanners in scan.go read positionally, so a column renamed
+// in one copy and not the others silently shifts every field after it. This
+// test keeps the literals, the contracts, and the FOR UPDATE variant honest.
+func TestInlineProjectionsStayInSync(t *testing.T) {
+	// Extract the projection between SELECT and the first FROM/WHERE keyword,
+	// then compare against the contract with whitespace collapsed.
+	projection := func(query, prefix, suffix string) string {
+		q := norm(query)
+		start := strings.Index(q, prefix)
+		end := strings.Index(q, suffix)
+		if start < 0 || end < 0 || end < start {
+			t.Fatalf("cannot locate projection in %q (prefix %q, suffix %q)", q, prefix, suffix)
+		}
+		return strings.TrimSpace(q[start+len(prefix) : end])
+	}
+
+	cases := []struct {
+		name   string
+		query  string
+		prefix string
+		suffix string
+		want   string
+	}{
+		{"upsertAccountSQL", upsertAccountSQL, "RETURNING", ", (xmax = 0) AS created", norm(accountColumns)},
+		{"getAccountSQL", getAccountSQL, "SELECT", "FROM accounts WHERE id = $1", norm(accountColumns)},
+		{"sessionMatchSQL", sessionMatchSQL, "SELECT", "FROM accounts WHERE refresh_token_hash = $1 OR prev_refresh_token_hash = $1", norm(sessionColumns)},
+		{"sessionMatchForUpdateSQL", sessionMatchForUpdateSQL, "SELECT", "FROM accounts WHERE refresh_token_hash = $1 OR prev_refresh_token_hash = $1 FOR UPDATE", norm(sessionColumns)},
+	}
+	for _, tc := range cases {
+		if got := projection(tc.query, tc.prefix, tc.suffix); got != tc.want {
+			t.Errorf("%s projection drifted from its contract:\n got %q\nwant %q", tc.name, got, tc.want)
+		}
+	}
+	if sessionMatchForUpdateSQL != sessionMatchSQL+"\n\tFOR UPDATE" {
+		t.Errorf("the locked lookup must stay the unlocked one plus FOR UPDATE; the guard in rotateReplaceSQL depends on reading identical state")
+	}
+
+	// The whole point of the change: no concatenation in any auth query text.
+	for name, q := range map[string]string{
+		"upsertAccountSQL":         upsertAccountSQL,
+		"getAccountSQL":            getAccountSQL,
+		"sessionMatchSQL":          sessionMatchSQL,
+		"sessionMatchForUpdateSQL": sessionMatchForUpdateSQL,
+	} {
+		for _, forbidden := range []string{"` +", "+ `", "+ accountColumns", "+ sessionColumns", "Sprintf", "%s", "%v"} {
+			if strings.Contains(q, forbidden) {
+				t.Errorf("%s still contains %q — GO-SQLI-001 would keep flagging this file", name, forbidden)
+			}
+		}
+	}
+}
