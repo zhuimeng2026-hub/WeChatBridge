@@ -56,7 +56,7 @@
             </StackPanel>
             <TextBlock Margin="38,14,0,0" FontSize="14" MaxWidth="620"
                        Foreground="{StaticResource InkSecondaryColor}" TextWrapping="Wrap"
-                       Text="{loc:Loc Key='在 GitHub 上查看项目，访问官网，或向我们提交建议与问题。'}" />
+                       Text="{loc:Loc Key='在发行页查看版本说明，访问官网，或向我们提交建议与问题。'}" />
             <StackPanel Orientation="Horizontal" Margin="38,14,0,0">
                 <Button Width="150" Style="{StaticResource SettingsButton}"
                         Click="OpenProject_Click"><Button.Content><loc:Loc Key="访问项目"/></Button.Content></Button>

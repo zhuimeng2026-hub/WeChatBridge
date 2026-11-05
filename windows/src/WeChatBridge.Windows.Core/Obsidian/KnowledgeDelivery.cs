@@ -127,7 +127,7 @@ public static class KnowledgeDelivery
                 archiveRelative = $"原始归档/{Path.GetFileName(savedArchive)}";
                 archivesWritten.Add(savedArchive);
 
-                var staging = Path.Combine(Path.GetTempPath(), "wechatbridge-media-" + Guid.NewGuid().ToString("N"));
+                var staging = Path.Combine(Path.GetTempPath(), "lawdesk-media-" + Guid.NewGuid().ToString("N"));
                 try
                 {
                     Directory.CreateDirectory(staging);

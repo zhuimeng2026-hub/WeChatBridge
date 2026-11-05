@@ -40,7 +40,7 @@ public static class FolderDelivery
             throw new FailureException(FailureKind.InvalidFolder);
         // ACLs, read-only flags and sync providers all decide writability at
         // write time; the honest check is a real create.
-        var probe = Path.Combine(folder, ".wechatbridge-write-" + Guid.NewGuid().ToString("N"));
+        var probe = Path.Combine(folder, ".lawdesk-write-" + Guid.NewGuid().ToString("N"));
         try
         {
             File.WriteAllBytes(probe, []);
@@ -200,7 +200,7 @@ public static class FolderDelivery
         while (true)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var staging = Path.Combine(folder, ".wechatbridge-forward-" + Guid.NewGuid().ToString("N"));
+            var staging = Path.Combine(folder, ".lawdesk-forward-" + Guid.NewGuid().ToString("N"));
             if (!Directory.Exists(staging) && !File.Exists(staging))
             {
                 Directory.CreateDirectory(staging);

@@ -21,7 +21,7 @@ public static class LocalChatImporter
     private static async Task<BatchCommitResult> ImportAsync(InboxPaths paths, IReadOnlyList<string> files,
         string? text, string? chatName, CancellationToken cancellationToken)
     {
-        var temporary = Path.Combine(Path.GetTempPath(), "WeChatBridge-LocalImport-" + Guid.NewGuid().ToString("N"));
+        var temporary = Path.Combine(Path.GetTempPath(), "Lvdangtong-LocalImport-" + Guid.NewGuid().ToString("N"));
         StagedShare? staged = null;
         try
         {

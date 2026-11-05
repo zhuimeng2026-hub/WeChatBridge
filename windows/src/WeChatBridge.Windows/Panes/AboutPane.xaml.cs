@@ -47,12 +47,15 @@ public partial class AboutPane : UserControl
         }
     }
 
+    // Support links stay on the product's own release page. They used to point
+    // at the upstream repository, which handed every customer the original
+    // project name in one click — the one thing the shipped package must not do.
     private void OpenProject_Click(object sender, RoutedEventArgs e) =>
-        Open("https://github.com/freestylefly/WeChatBridge");
+        Open("https://gitee.com/webheat/lvdangtong/releases");
 
     private void OpenWebsite_Click(object sender, RoutedEventArgs e) =>
         Open("https://render.qmuse.pub/p/muse/2413870555736078");
 
     private void OpenIssues_Click(object sender, RoutedEventArgs e) =>
-        Open("https://github.com/freestylefly/WeChatBridge/issues/new");
+        Open("https://gitee.com/webheat/lvdangtong/issues");
 }
