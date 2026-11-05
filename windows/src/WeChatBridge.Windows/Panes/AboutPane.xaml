@@ -6,7 +6,7 @@
         <!-- App header — the macOS AboutPane header: icon, name, version pill, tagline. -->
         <StackPanel Orientation="Horizontal">
             <Image x:Name="AppIconImage" Width="76" Height="76"
-                   Source="/WeChatBridge.Windows;component/Assets/AppIcon.png"
+                   Source="/Lvdangtong.Windows;component/Assets/AppIcon.png"
                    Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality"
                    AutomationProperties.Name="{loc:Loc Key='律档通'}" />
             <StackPanel Margin="20,2,0,0" VerticalAlignment="Top">

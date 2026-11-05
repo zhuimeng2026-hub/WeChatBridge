@@ -39,12 +39,12 @@
        parsing the Condition string. -->
   <PropertyGroup Condition="'$(WeChatBridgeEdition)' == 'Perpetual'">
     <WeChatBridgeEdition>Perpetual</WeChatBridgeEdition>
-    <Version>1.0.10</Version>
+    <Version>1.0.11</Version>
     <WeChatBridgeEditionConstant>WECHATBRIDGE_PERPETUAL</WeChatBridgeEditionConstant>
-    <!-- Artifact file name segment: Lvdangtong-Buyout-1.0.10-Windows.msi.
+    <!-- Artifact file name segment: Lvdangtong-Buyout-1.0.11-Windows.msi.
          ASCII on purpose: it lands in MSI/Burn file names and log lines. -->
     <EditionToken>Buyout</EditionToken>
-    <!-- About panel: the trailing word after "Version 1.0.10 / Windows /" -->
+    <!-- About panel: the trailing word after "Version 1.0.11 / Windows /" -->
     <ProductEditionName>买断版</ProductEditionName>
     <!-- MSI Package/@Name. Distinguishes the two products in Programs and
          Features; the UpgradeCode stays shared so the two are mutually
