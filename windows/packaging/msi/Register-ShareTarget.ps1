@@ -79,7 +79,7 @@ try {
         }
     }
 
-    Get-Process -Name 'WeChatBridge.ShareTarget', 'WeChatBridge.Windows' -ErrorAction SilentlyContinue |
+    Get-Process -Name 'Lvdangtong.ShareTarget', 'Lvdangtong.Windows' -ErrorAction SilentlyContinue |
         Stop-Process -Force -ErrorAction SilentlyContinue
 
     # Also sweep the short-lived 1.0.7 ChatBridge.* registration — same

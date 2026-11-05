@@ -13,8 +13,8 @@
     * the log directory follows the drive instead of %LOCALAPPDATA%, with a
       %TEMP% fallback — a write-protected stick would otherwise fail at the very
       first New-Item, before anything has been attempted;
-    * -SkipProcessKill, because Stop-Process on WeChatBridge.ShareTarget and
-      WeChatBridge.Windows would kill the app whose button started this;
+    * -SkipProcessKill, because Stop-Process on Lvdangtong.ShareTarget and
+      Lvdangtong.Windows would kill the app whose button started this;
     * the package identity is deliberately the same as the installed build's,
       so the WeChat menu shows one 律档通 row rather than two;
     * no -CertificateTrustPrepared: nothing prepared the trust for us.
@@ -107,7 +107,7 @@ try {
     }
 
     if (-not $SkipProcessKill) {
-        Get-Process -Name 'WeChatBridge.ShareTarget', 'WeChatBridge.Windows' -ErrorAction SilentlyContinue |
+        Get-Process -Name 'Lvdangtong.ShareTarget', 'Lvdangtong.Windows' -ErrorAction SilentlyContinue |
             Stop-Process -Force -ErrorAction SilentlyContinue
     }
 

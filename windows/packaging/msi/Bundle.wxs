@@ -25,7 +25,7 @@
           ThemeFile="$(var.ThemeFile)"
           LocalizationFile="$(var.LocalizationFile)"
           SuppressOptionsUI="yes" SupportCacheOnly="yes"
-          LaunchTarget="[LocalAppDataFolder]WeChatBridge\App\WeChatBridge.Windows.exe"
+          LaunchTarget="[LocalAppDataFolder]WeChatBridge\App\Lvdangtong.Windows.exe"
           ShowVersion="yes" />
       <Payload SourceFile="$(var.IconFile)" Name="AppIcon.ico" />
     </BootstrapperApplication>
