@@ -39,7 +39,7 @@ try {
     New-Item -ItemType Directory -Path $logDirectory -Force | Out-Null
 } catch {
     # A read-only or full drive must not abort the registration before it starts.
-    $logDirectory = Join-Path $env:TEMP 'WeChatBridge\Logs\Install'
+    $logDirectory = Join-Path $env:TEMP 'Lvdangtong\Logs\Install'
     New-Item -ItemType Directory -Path $logDirectory -Force | Out-Null
 }
 $log = Join-Path $logDirectory ("register-sharetarget-{0}-{1}.log" -f (Get-Date -Format 'yyyyMMdd-HHmmss'), $PID)
