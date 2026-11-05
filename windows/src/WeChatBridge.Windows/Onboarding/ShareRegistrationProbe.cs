@@ -29,7 +29,7 @@ public enum ShareRegistrationState
 
 internal static class ShareRegistrationProbe
 {
-    public const string PackageName = "WeChatBridge.Windows.ShareTarget";
+    public const string PackageName = "Lvdangtong.ShareTarget";
 
     public static Task<ShareRegistrationState> CheckAsync() => Task.Run(Check);
 

@@ -27,7 +27,7 @@ namespace WeChatBridge.Windows.Tests;
 /// <b>Scope, and what this does not cover.</b> This test project targets
 /// <c>net10.0</c> and can reference only <c>WeChatBridge.Windows.Core</c>: the WPF
 /// assembly is <c>net10.0-windows</c> and cannot be referenced from here, so
-/// <c>WeChatBridge.Windows.dll</c> is unchecked. That is a real gap, not a
+/// <c>Lvdangtong.Windows.dll</c> is unchecked. That is a real gap, not a
 /// formality — the subscription UI, the QR window and the settings panes live
 /// there. It is covered for now only by
 /// <c>windows/scripts/Test-NoNetworkCode.ps1</c>, which reads the bytes of both
@@ -59,7 +59,7 @@ public sealed class EditionIsolationTests
         //
         // The redeem client has landed and it did NOT add an entry here, which
         // is the point worth reading twice. HttpRedeemTransport lives in
-        // WeChatBridge.Windows.dll, not in Core: the whole flow except the HTTP
+        // Lvdangtong.Windows.dll, not in Core: the whole flow except the HTTP
         // verbs is here in Core.Redeem behind IRedeemTransport, precisely so
         // that this list stays empty. Adding System.Net.Http.HttpClient to this
         // array would be wrong twice over -- Core has no such TypeRef, so the

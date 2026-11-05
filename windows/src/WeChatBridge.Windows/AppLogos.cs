@@ -103,7 +103,7 @@ public static class AppLogos
     private static string? Existing(string file)
     {
         // The share-target helper publishes one level below the install root —
-        // share-target\WeChatBridge.ShareTarget.exe versus Assets\AppLogos —
+        // share-target\Lvdangtong.ShareTarget.exe versus Assets\AppLogos —
         // so the parent directory is probed after the exe's own. (DirectoryInfo
         // rather than GetParent: BaseDirectory's trailing separator makes
         // GetParent return the directory itself.)

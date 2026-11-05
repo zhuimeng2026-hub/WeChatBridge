@@ -42,7 +42,7 @@ function Info([string]$message) { Write-Host "    $message" }
 function Warn([string]$message) { Write-Host "    $message" -ForegroundColor Yellow }
 
 function Assert-AppDirectory {
-    if (-not (Test-Path -LiteralPath (Join-Path $appDirectory 'WeChatBridge.Windows.exe'))) {
+    if (-not (Test-Path -LiteralPath (Join-Path $appDirectory 'Lvdangtong.Windows.exe'))) {
         throw "没有找到律档通主程序。请确认压缩包已经完整解压，并且 FirstRun.bat 和「律档通」文件夹在同一级。"
     }
 }
@@ -60,7 +60,7 @@ function Initialize-Vault {
 # --- Obsidian ----------------------------------------------------------------
 function Get-LatestObsidianInstaller {
     $releases = Invoke-RestMethod -Uri 'https://api.github.com/repos/obsidianmd/obsidian-releases/releases/latest' `
-        -Headers @{ 'User-Agent' = 'WeChatBridge-Portable' } -UseBasicParsing
+        -Headers @{ 'User-Agent' = 'Lvdangtong-Portable' } -UseBasicParsing
     $asset = $releases.assets |
         Where-Object { $_.name -match '^Obsidian-[\d.]+\.exe$' } |
         Select-Object -First 1
@@ -150,12 +150,12 @@ try {
     }
 
     Step '正在启动律档通…'
-    Start-Process -FilePath (Join-Path $appDirectory 'WeChatBridge.Windows.exe') -WorkingDirectory $appDirectory
+    Start-Process -FilePath (Join-Path $appDirectory 'Lvdangtong.Windows.exe') -WorkingDirectory $appDirectory
     Info '如果窗口没有出现，先检查「律档通\Data」目录是否可以写入。'
 } catch {
     Write-Host ''
     Write-Host "首次运行失败：$($_.Exception.Message)" -ForegroundColor Red
-    Write-Host '你可以直接双击「律档通\WeChatBridge.Windows.exe」使用核心功能，Obsidian 只是可选的归档目标。' -ForegroundColor Yellow
+    Write-Host '你可以直接双击「律档通\Lvdangtong.Windows.exe」使用核心功能，Obsidian 只是可选的归档目标。' -ForegroundColor Yellow
     Read-Host '按回车键退出'
     exit 1
 }

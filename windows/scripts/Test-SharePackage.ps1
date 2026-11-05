@@ -3,7 +3,7 @@ param([Parameter(Mandatory = $true)][string]$InstallRoot)
 $ErrorActionPreference = 'Stop'
 $InstallRoot = [IO.Path]::GetFullPath($InstallRoot)
 Add-Type -AssemblyName System.IO.Compression.FileSystem
-$archive = [IO.Compression.ZipFile]::OpenRead((Join-Path $InstallRoot 'WeChatBridge.ShareTarget.msix'))
+$archive = [IO.Compression.ZipFile]::OpenRead((Join-Path $InstallRoot 'Lvdangtong.ShareTarget.msix'))
 try {
     $entry = $archive.GetEntry('AppxManifest.xml')
     $reader = [IO.StreamReader]::new($entry.Open())

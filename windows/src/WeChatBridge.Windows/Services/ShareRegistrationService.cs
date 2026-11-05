@@ -32,7 +32,7 @@ internal static class ShareRegistrationService
             {
                 return File.Exists(Path.Combine(
                     Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                    "WeChatBridge", "App", "WeChatBridge.Windows.exe"));
+                    "WeChatBridge", "App", "Lvdangtong.Windows.exe"));
             }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException)
             {

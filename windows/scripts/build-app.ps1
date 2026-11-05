@@ -142,11 +142,11 @@ if ($LASTEXITCODE -ne 0) { throw 'ShareTarget publish failed.' }
 # installer. Three files whose absence or wrong version means a customer
 # double-clicks and gets a runtime dialog instead of the window.
 $expectedMainVersion = [version]"$productVersion.0"
-$mainExe = Get-Item -LiteralPath (Join-Path $OutputDirectory 'WeChatBridge.Windows.exe')
+$mainExe = Get-Item -LiteralPath (Join-Path $OutputDirectory 'Lvdangtong.Windows.exe')
 if ([version]$mainExe.VersionInfo.FileVersion -ne $expectedMainVersion) {
     throw "Main file version is $($mainExe.VersionInfo.FileVersion), expected $expectedMainVersion."
 }
-$helperExe = Get-Item -LiteralPath (Join-Path $helperOutput 'WeChatBridge.ShareTarget.exe')
+$helperExe = Get-Item -LiteralPath (Join-Path $helperOutput 'Lvdangtong.ShareTarget.exe')
 if ([version]$helperExe.VersionInfo.FileVersion -ne $expectedMainVersion) {
     throw "Helper file version is $($helperExe.VersionInfo.FileVersion), expected $expectedMainVersion."
 }

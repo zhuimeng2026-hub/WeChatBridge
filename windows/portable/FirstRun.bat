@@ -1,5 +1,5 @@
 @echo off
-rem WeChatBridge portable first run.
+rem Lvdangtong portable first run.
 rem Pure ASCII on purpose: cmd.exe reads a .bat in the system ANSI code page,
 rem so any Chinese in this file would be mangled before PowerShell ever sees it.
 rem The UTF-8-BOM PowerShell script next to this file does the real work.

@@ -48,7 +48,7 @@ function Log([string]$m) { Add-Content -Path $log -Value ("{0:O} {1}" -f [DateTi
 
 try {
     Log "user=$([Security.Principal.WindowsIdentity]::GetCurrent().User.Value) installRoot=$InstallRoot skipProcessKill=$($SkipProcessKill.IsPresent)"
-    $msix = Join-Path $InstallRoot 'WeChatBridge.ShareTarget.msix'
+    $msix = Join-Path $InstallRoot 'Lvdangtong.ShareTarget.msix'
     $certDir = Join-Path $InstallRoot 'certs'
 
     function Test-IsAdmin {
@@ -57,8 +57,8 @@ try {
             [Security.Principal.WindowsBuiltInRole]::Administrator)
     }
 
-    $leafCer = Join-Path $certDir 'WeChatBridge.Windows.Dev.cer'
-    $rootCer = Join-Path $certDir 'WeChatBridge.Windows.Dev.Root.cer'
+    $leafCer = Join-Path $certDir 'Lvdangtong.Windows.Dev.cer'
+    $rootCer = Join-Path $certDir 'Lvdangtong.Windows.Dev.Root.cer'
     if (-not (Test-Path -LiteralPath $leafCer)) { throw 'The public signing certificate is missing.' }
 
     # Appx trust is machine-wide — AppXSVC runs as SYSTEM and reads only the
@@ -96,9 +96,9 @@ try {
     if ($signature.Status -ne 'Valid') { throw "MSIX signature is not trusted: $($signature.Status)" }
 
     foreach ($applicationFile in @(
-        'WeChatBridge.Windows.exe', 'WeChatBridge.Windows.dll', 'WeChatBridge.Windows.Core.dll',
-        'share-target\WeChatBridge.ShareTarget.exe', 'share-target\WeChatBridge.ShareTarget.dll',
-        'share-target\WeChatBridge.Windows.Core.dll', 'resources.pri',
+        'Lvdangtong.Windows.exe', 'Lvdangtong.Windows.dll', 'Lvdangtong.Windows.Core.dll',
+        'share-target\Lvdangtong.ShareTarget.exe', 'share-target\Lvdangtong.ShareTarget.dll',
+        'share-target\Lvdangtong.Windows.Core.dll', 'resources.pri',
         'Assets\Square44x44Logo.png', 'Assets\Square150x150Logo.png'
     )) {
         if (-not (Test-Path -LiteralPath (Join-Path $InstallRoot $applicationFile) -PathType Leaf)) {
@@ -112,17 +112,17 @@ try {
     }
 
     Get-AppxPackage -ErrorAction SilentlyContinue |
-        Where-Object { $_.Name -in 'WeChatBridge.Windows.ShareTarget', 'ChatBridge.Windows.ShareTarget' } |
+        Where-Object { $_.Name -in 'Lvdangtong.ShareTarget', 'ChatBridge.Windows.ShareTarget' } |
         Remove-AppxPackage -ErrorAction SilentlyContinue
     Add-AppxPackage -Path $msix -ExternalLocation $InstallRoot
-    $registered = Get-AppxPackage -Name 'WeChatBridge.Windows.ShareTarget' -ErrorAction SilentlyContinue
+    $registered = Get-AppxPackage -Name 'Lvdangtong.ShareTarget' -ErrorAction SilentlyContinue
     if (-not $registered) { throw 'Package registration did not stick.' }
     if ($registered.Status -ne 'Ok') { throw "Registered package is unhealthy: $($registered.Status)" }
 
     # A registration record alone does not grant identity to an incorrectly built
     # external EXE. Launch a side-effect-free probe as this same user.
     $start = New-Object Diagnostics.ProcessStartInfo
-    $start.FileName = Join-Path $InstallRoot 'share-target\WeChatBridge.ShareTarget.exe'
+    $start.FileName = Join-Path $InstallRoot 'share-target\Lvdangtong.ShareTarget.exe'
     $start.Arguments = '--registration-check'
     $start.UseShellExecute = $false
     $start.CreateNoWindow = $true

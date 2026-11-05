@@ -106,7 +106,7 @@ public sealed class InstallationScopeTests
 
     /// <summary>The helper executable inside an installation.</summary>
     private static string HelperOf(string installationRoot) =>
-        Path.Combine(installationRoot, AppLayout.ShareTargetDirectoryName, "WeChatBridge.ShareTarget.exe");
+        Path.Combine(installationRoot, AppLayout.ShareTargetDirectoryName, "Lvdangtong.ShareTarget.exe");
 
     private static string RepoRoot()
     {

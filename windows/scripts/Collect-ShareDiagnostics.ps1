@@ -39,9 +39,9 @@ Section 'System' {
 }
 $appRoot = $AppRoot
 Section 'Installed files' {
-    foreach ($relative in @('WeChatBridge.Windows.exe','WeChatBridge.Windows.dll','WeChatBridge.Windows.Core.dll',
-        'share-target\WeChatBridge.ShareTarget.exe','share-target\WeChatBridge.ShareTarget.dll',
-        'WeChatBridge.ShareTarget.msix','resources.pri','Assets\Square44x44Logo.png','Assets\Square150x150Logo.png')) {
+    foreach ($relative in @('Lvdangtong.Windows.exe','Lvdangtong.Windows.dll','Lvdangtong.Windows.Core.dll',
+        'share-target\Lvdangtong.ShareTarget.exe','share-target\Lvdangtong.ShareTarget.dll',
+        'Lvdangtong.ShareTarget.msix','resources.pri','Assets\Square44x44Logo.png','Assets\Square150x150Logo.png')) {
         $path = Join-Path $appRoot $relative
         if (Test-Path -LiteralPath $path -PathType Leaf) {
             $file=Get-Item -LiteralPath $path
@@ -50,7 +50,7 @@ Section 'Installed files' {
     }
 }
 Section 'Share component runtime identity (1.0.5 or later)' {
-    $helper=Join-Path $appRoot 'share-target\WeChatBridge.ShareTarget.exe'
+    $helper=Join-Path $appRoot 'share-target\Lvdangtong.ShareTarget.exe'
     if (-not (Test-Path -LiteralPath $helper)) { Record 'HelperMissing'; return }
     $version=(Get-Item -LiteralPath $helper).VersionInfo.FileVersion
     if ([version]$version -lt [version]'1.0.5.0') { Record 'Older build has no side-effect-free identity probe.'; return }
@@ -70,7 +70,7 @@ Section 'Share component runtime identity (1.0.5 or later)' {
     } finally { $process.Dispose() }
 }
 Section 'Running WeChat and WeChatBridge processes' {
-    $processes = @(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -match '^(WeChat|Weixin|WeChatApp|WeChatBridge\.Windows|WeChatBridge\.ShareTarget)$' })
+    $processes = @(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -match '^(WeChat|Weixin|WeChatApp|Lvdangtong\.Windows|Lvdangtong\.ShareTarget)$' })
     if (-not $processes.Count) { Record 'No matching processes. Start WeChat before collecting.' }
     foreach ($process in $processes) {
         $path = ''; $version = ''; $errorText = ''
@@ -79,7 +79,7 @@ Section 'Running WeChat and WeChatBridge processes' {
     }
 }
 Section 'Current user ShareTarget registration' {
-    $packages=@(Get-AppxPackage -Name 'WeChatBridge.Windows.ShareTarget')
+    $packages=@(Get-AppxPackage -Name 'Lvdangtong.ShareTarget')
     Record "RegisteredPackageCount=$($packages.Count)"
     foreach($package in $packages) {
         Record "Package=$($package.PackageFullName) Status=$($package.Status) Location=$($package.InstallLocation)"
@@ -89,8 +89,8 @@ Section 'Current user ShareTarget registration' {
 }
 Section 'Public certificate trust' {
     foreach($check in @(
-        @{ File='WeChatBridge.Windows.Dev.cer'; Store='Cert:\LocalMachine\TrustedPeople' },
-        @{ File='WeChatBridge.Windows.Dev.Root.cer'; Store='Cert:\LocalMachine\Root' }
+        @{ File='Lvdangtong.Windows.Dev.cer'; Store='Cert:\LocalMachine\TrustedPeople' },
+        @{ File='Lvdangtong.Windows.Dev.Root.cer'; Store='Cert:\LocalMachine\Root' }
     )) {
         $path=Join-Path $appRoot ('certs\'+$check.File)
         if (-not (Test-Path -LiteralPath $path)) { Record "$($check.File) Missing"; continue }
@@ -106,15 +106,15 @@ Section 'Recent registration diagnostics' {
 }
 Section 'Recent Appx deployment events for this application' {
     Get-WinEvent -LogName 'Microsoft-Windows-AppXDeploymentServer/Operational' -MaxEvents 150 -ErrorAction Stop |
-        Where-Object { $_.Message -match 'WeChatBridge.Windows.ShareTarget' } | Select-Object -First 15 |
+        Where-Object { $_.Message -match 'Lvdangtong.ShareTarget' } | Select-Object -First 15 |
         ForEach-Object { Record "Time=$($_.TimeCreated) ID=$($_.Id) Level=$($_.LevelDisplayName) $($_.Message)" }
 }
 New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
 $stamp=Get-Date -Format 'yyyyMMdd-HHmmss'
-$directory=Join-Path $OutputDirectory "WeChatBridge-Diagnostics-$stamp"
+$directory=Join-Path $OutputDirectory "Lvdangtong-Diagnostics-$stamp"
 New-Item -ItemType Directory -Path $directory | Out-Null
 $report | Set-Content -LiteralPath (Join-Path $directory 'diagnostics.txt') -Encoding UTF8
-$zip=Join-Path $OutputDirectory "WeChatBridge-Diagnostics-$stamp.zip"
+$zip=Join-Path $OutputDirectory "Lvdangtong-Diagnostics-$stamp.zip"
 Compress-Archive -LiteralPath (Join-Path $directory 'diagnostics.txt') -DestinationPath $zip
 Write-Host "Diagnostics saved: $zip"
 Write-Output $zip

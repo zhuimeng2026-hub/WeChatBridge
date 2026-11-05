@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$Publisher = 'CN=WeChatBridge Windows Dev',
+    [string]$Publisher = 'CN=Lvdangtong Windows Dev',
     # No default on purpose. Every caller passes the version it actually built
     # from; a default here is one more place a stale number can survive, and it
     # is a four-segment Appx version that must agree with the payload's file
