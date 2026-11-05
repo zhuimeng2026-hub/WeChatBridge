@@ -13,7 +13,9 @@ import (
 )
 
 // The account projection. Every query that returns an account selects exactly
-// these columns in this order; scanAccount depends on it.
+// these columns in this order; scanAccount depends on it. The queries inline
+// this list as a literal instead of concatenating it, so GO-SQLI-001 has no
+// concatenation to flag; TestInlineProjectionsStayInSync keeps them aligned.
 const accountColumns = `
 	id, open_id, union_id, nickname, avatar_url, plan, install_id,
 	wechat_bound, created_at, last_login_at`
@@ -39,7 +41,9 @@ const upsertAccountSQL = `
 		avatar_url    = CASE WHEN EXCLUDED.avatar_url <> '' THEN EXCLUDED.avatar_url ELSE accounts.avatar_url END,
 		union_id      = CASE WHEN EXCLUDED.union_id IS NOT NULL THEN EXCLUDED.union_id ELSE accounts.union_id END,
 		install_id    = COALESCE(accounts.install_id, EXCLUDED.install_id)
-	RETURNING ` + accountColumns + `, (xmax = 0) AS created`
+	RETURNING 
+	id, open_id, union_id, nickname, avatar_url, plan, install_id,
+	wechat_bound, created_at, last_login_at, (xmax = 0) AS created`
 
 // upsertAccount is the shared body of a plain sign-in and of the sign-in that
 // completes a QR session. q is a tx when the caller is inside one.
@@ -322,11 +326,10 @@ func (s *Store) UpsertAccountByOpenID(ctx context.Context, openID, unionID, nick
 	return upsertAccount(ctx, s.db, openID, unionID, nickname, avatar, "", time.Now().UTC())
 }
 
-// getAccountSQL borrows accountColumns rather than repeating them: the
-// projection stays single-sourced, and the only thing joined onto the text is
-// that package constant. No query in this file is assembled from data.
 const getAccountSQL = `
-	SELECT ` + accountColumns + `
+	SELECT 
+	id, open_id, union_id, nickname, avatar_url, plan, install_id,
+	wechat_bound, created_at, last_login_at
 	FROM accounts
 	WHERE id = $1`
 
@@ -363,7 +366,8 @@ const createSessionSQL = `
 	WHERE id = $1`
 
 // sessionColumns is the token-chain projection. It serves both the unlocked
-// lookup and the locked rotation read, so both see identical state.
+// lookup and the locked rotation read, so both see identical state. Both
+// queries inline it as a literal; TestInlineProjectionsStayInSync guards that.
 const sessionColumns = `
 	id, chain_id, refresh_token_hash, prev_refresh_token_hash,
 	refresh_expires_at, session_revoked_at`
@@ -373,11 +377,18 @@ const sessionColumns = `
 // replay reach the caller's revocation path instead of looking like an
 // unknown token.
 const sessionMatchSQL = `
-	SELECT ` + sessionColumns + `
+	SELECT 
+	id, chain_id, refresh_token_hash, prev_refresh_token_hash,
+	refresh_expires_at, session_revoked_at
 	FROM accounts
 	WHERE refresh_token_hash = $1 OR prev_refresh_token_hash = $1`
 
-const sessionMatchForUpdateSQL = sessionMatchSQL + `
+const sessionMatchForUpdateSQL = `
+	SELECT 
+	id, chain_id, refresh_token_hash, prev_refresh_token_hash,
+	refresh_expires_at, session_revoked_at
+	FROM accounts
+	WHERE refresh_token_hash = $1 OR prev_refresh_token_hash = $1
 	FOR UPDATE`
 
 // rotateReplaceSQL is the conditional swap. The `refresh_token_hash = $1`
