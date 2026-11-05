@@ -172,12 +172,33 @@ Copy-Item -LiteralPath (Join-Path $repositoryRoot 'LICENSE') -Destination (Join-
 & (Join-Path $repositoryRoot 'windows\scripts\pack-msix.ps1') -Publisher $certificate.Subject -Edition $Edition -Version "$Version.0" -OutputPath $msix -ExternalContentDirectory $payload
 & (Join-Path $repositoryRoot 'windows\scripts\Test-SharePackage.ps1') -InstallRoot $payload
 
+# signtool is resolved the same way pack-msix.ps1 resolves makepri/makeappx:
+# a bare `signtool` only works when the Windows SDK is on PATH, which is not the
+# case on a machine using the extracted SDK.BuildTools payload.
+$signTool = $null
+foreach ($root in @(
+    $env:WCB_SDK_BIN,
+    (Join-Path $env:LOCALAPPDATA 'WeChatBridge-tools\extracted\bin'),
+    "${env:ProgramFiles(x86)}\Windows Kits\10\bin"
+) | Where-Object { $_ -and (Test-Path $_) }) {
+    $direct = Join-Path $root 'signtool.exe'
+    if (Test-Path $direct) { $signTool = $direct; break }
+    $candidate = Get-ChildItem (Join-Path $root "*\x64\signtool.exe") -ErrorAction SilentlyContinue |
+        Sort-Object FullName -Descending | Select-Object -First 1
+    if ($candidate) { $signTool = $candidate.FullName; break }
+}
+if (-not $signTool) {
+    $command = Get-Command signtool.exe -ErrorAction SilentlyContinue
+    if ($command) { $signTool = $command.Source }
+}
+if (-not $signTool) { throw 'signtool.exe was not found. Install the Windows SDK, set WCB_SDK_BIN, or add it to PATH.' }
+
 foreach ($file in @(
     (Join-Path $payload 'Lvdangtong.Windows.exe'),
     (Join-Path $payload 'share-target\Lvdangtong.ShareTarget.exe'),
     $msix
 )) {
-    & signtool sign /fd SHA256 /sha1 $SigningThumbprint /s My $file
+    & $signTool sign /fd SHA256 /sha1 $SigningThumbprint /s My $file
     if ($LASTEXITCODE -ne 0) { throw "Signing failed: $file" }
 }
 foreach ($file in @($msix)) {

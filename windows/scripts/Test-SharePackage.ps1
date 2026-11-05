@@ -22,10 +22,25 @@ try {
         }
     }
     $helper = Join-Path $InstallRoot $application[0].Executable
+    # Same lookup order as pack-msix.ps1's Resolve-SdkTool: PATH, then an
+    # explicit override, then the extracted SDK.BuildTools payload, then a real
+    # Windows SDK install. mt.exe is absent from PATH on SDK-less dev machines.
     $mt = Get-Command mt.exe -ErrorAction SilentlyContinue
     $mtPath = if ($mt) { $mt.Source } else {
-        (Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\mt.exe" |
-            Sort-Object FullName -Descending | Select-Object -First 1).FullName
+        $roots = @(
+            $env:WCB_SDK_BIN,
+            (Join-Path $env:LOCALAPPDATA 'WeChatBridge-tools\extracted\bin'),
+            "${env:ProgramFiles(x86)}\Windows Kits\10\bin"
+        ) | Where-Object { $_ -and (Test-Path $_) }
+        $found = $null
+        foreach ($root in $roots) {
+            $direct = Join-Path $root 'mt.exe'
+            if (Test-Path $direct) { $found = $direct; break }
+            $candidate = Get-ChildItem (Join-Path $root "*\x64\mt.exe") -ErrorAction SilentlyContinue |
+                Sort-Object FullName -Descending | Select-Object -First 1
+            if ($candidate) { $found = $candidate.FullName; break }
+        }
+        $found
     }
     if (-not $mtPath) { throw 'Windows SDK mt.exe is required for package identity verification.' }
     $extracted = Join-Path ([IO.Path]::GetTempPath()) ("WeChatBridge-manifest-$([Guid]::NewGuid().ToString('N')).xml")
