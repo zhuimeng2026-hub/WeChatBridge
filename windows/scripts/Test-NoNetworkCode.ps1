@@ -77,7 +77,7 @@ $PerpetualAllowedNamespaces = @(
     # exception to "the buy-out build never goes online", and it is the reason
     # this list is a list of exact namespaces rather than a boolean.
     #
-    # It is confined to WeChatBridge.Windows.dll: the whole flow except the
+    # It is confined to Lvdangtong.Windows.dll: the whole flow except the
     # verbs lives in Core, which still names nothing under System.Net.Http at
     # all, and EditionIsolationTests still asserts that by exact equality over
     # the Core assembly. The verbs are deliberately in the WPF assembly so that
@@ -143,21 +143,21 @@ function Get-ProductAssembly {
     $assemblies = @(
         Get-ChildItem -LiteralPath $Root -Recurse -File |
             Where-Object {
-                ($_.Name -like 'WeChatBridge.*.dll' -or $_.Name -like 'WeChatBridge.*.exe') -and
+                ($_.Name -like 'Lvdangtong.*.dll' -or $_.Name -like 'Lvdangtong.*.exe') -and
                 $_.FullName -notmatch '\\(ref|refint|obj)\\'
             } |
             Sort-Object -Property FullName -Unique
     )
     if ($assemblies.Count -eq 0) {
-        throw "No WeChatBridge.* assemblies under $Root. A check that finds nothing proves nothing; build first."
+        throw "No Lvdangtong.* assemblies under $Root. A check that finds nothing proves nothing; build first."
     }
     $script:ProductSearchRoot = $Root
     return $assemblies
 }
 
 # A short, unambiguous name for an assembly. Not the leaf name: this repository
-# produces two WeChatBridge.ShareTarget.dll and three WeChatBridge.Windows.Core.dll
-# under different output folders, and "WeChatBridge.ShareTarget.dll does not carry
+# produces two Lvdangtong.ShareTarget.dll and three Lvdangtong.Windows.Core.dll
+# under different output folders, and "Lvdangtong.ShareTarget.dll does not carry
 # version 0.1.0" is useless when four files could be meant.
 function Get-AssemblyLabel {
     param([System.IO.FileInfo]$Assembly)

@@ -104,7 +104,7 @@ if ($Arch -eq 'x64') {
 }
 $icon = Join-Path $DistDir "payload\$Arch\Assets\AppIcon.ico"
 if (-not $CertificateTrustMsiPath) {
-  $CertificateTrustMsiPath = Join-Path $DistDir "WeChatBridge-$EditionToken-$Version-CertificateTrust.msi"
+  $CertificateTrustMsiPath = Join-Path $DistDir "Lvdangtong-$EditionToken-$Version-CertificateTrust.msi"
 }
 
 foreach ($f in @($msi, $icon, $CertificateTrustMsiPath) + $exts) {

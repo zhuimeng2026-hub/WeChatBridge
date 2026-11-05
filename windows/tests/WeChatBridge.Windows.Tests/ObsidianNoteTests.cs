@@ -280,4 +280,54 @@ public sealed class ObsidianNoteTests
         Assert.Single(System.Text.RegularExpressions.Regex.Matches(again!, "第二条"));
         Assert.Single(System.Text.RegularExpressions.Regex.Matches(again!, "第三条"));
     }
+
+    /// <summary>
+    /// The generated blocks are HTML comments inside the user's note, visible in
+    /// Obsidian's source mode — so they carry the product's name, not the
+    /// internal project name the code was written under.
+    /// </summary>
+    [Fact]
+    public void RenderedNoteCarriesTheCurrentMarkerNamespace()
+    {
+        var transcript = Txt("·甲\n2026年9月20日 09:10\n第一条\n");
+        var note = ObsidianNote.Render("甲的聊天", "甲", null, DateTimeOffset.UnixEpoch,
+            transcript, "a.zip", timeZone: Utc,
+            attachmentInventory: ["图片.jpg"], extractionIssue: "OCR 未能识别");
+
+        Assert.Contains("<!-- lawdesk:attachment-inventory:start -->", note);
+        Assert.Contains("<!-- lawdesk:warning:start -->", note);
+        Assert.DoesNotContain("wechatbridge:", note);
+    }
+
+    /// <summary>
+    /// Notes written by an earlier build carry the old namespace. They must keep
+    /// merging — and the merge is where they are upgraded, so a vault fills with
+    /// the current name without anyone editing a note by hand.
+    /// </summary>
+    [Fact]
+    public void MergeUpgradesLegacyMarkersToTheCurrentNamespace()
+    {
+        var first = Txt("·甲\n2026年9月20日 09:10\n第一条\n");
+        var rendered = ObsidianNote.Render("甲的聊天", "甲", null, DateTimeOffset.UnixEpoch,
+            first, "a.zip", timeZone: Utc, attachmentInventory: ["图片.jpg"]);
+        var legacy = rendered
+            .Replace("lawdesk:attachment-inventory", "wechatbridge:attachment-inventory")
+            .Replace("lawdesk:warning", "wechatbridge:warning");
+        Assert.Contains("<!-- wechatbridge:attachment-inventory:start -->", legacy);
+
+        var second = Txt("·甲\n2026年9月20日 09:10\n第一条\n\n·乙\n2026年9月20日 09:11\n第二条\n");
+        var outcome = ObsidianNote.TryMerge(
+            legacy, second, null, "a.zip", "甲", null,
+            DateTimeOffset.UnixEpoch, out var merged, Utc,
+            attachmentInventory: ["新图片.png"]);
+
+        Assert.Equal(ObsidianNote.MergeOutcome.Merged, outcome);
+        Assert.NotNull(merged);
+        // Upgraded, and the old inventory was extended rather than duplicated.
+        Assert.DoesNotContain("wechatbridge:", merged!);
+        Assert.Contains("<!-- lawdesk:attachment-inventory:end -->", merged);
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(merged!, "## 附件清单"));
+        Assert.Contains("新图片.png", merged);
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(merged!, "第二条"));
+    }
 }

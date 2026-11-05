@@ -16,8 +16,17 @@ internal static class LaunchAtLogin
     /// <summary>
     /// Suffixed so a portable copy disabling autostart deletes its own value
     /// rather than the installed build's. Installed builds keep the plain name.
+    /// The name is visible in Task Manager's Startup tab, so it carries the
+    /// product's name rather than the project the code was written under.
     /// </summary>
-    private static string ValueName => "WeChatBridge.Windows" + AppLayout.Current.CoordinationSuffix;
+    private static string ValueName => "Lvdangtong.Windows" + AppLayout.Current.CoordinationSuffix;
+
+    /// <summary>
+    /// The value name an earlier build wrote. Left in place it would point at an
+    /// executable that no longer exists and would show the old name in Task
+    /// Manager, so every write and delete sweeps it.
+    /// </summary>
+    private static string LegacyValueName => "WeChatBridge.Windows" + AppLayout.Current.CoordinationSuffix;
 
     private static string Command =>
         $"\"{Process.GetCurrentProcess().MainModule?.FileName}\" --background";
@@ -44,6 +53,9 @@ internal static class LaunchAtLogin
             {
                 key.DeleteValue(ValueName, throwOnMissingValue: false);
             }
+            // Whatever the toggle says, the previous build's entry must go: it
+            // names an executable this build does not ship.
+            key.DeleteValue(LegacyValueName, throwOnMissingValue: false);
         }
         catch
         {

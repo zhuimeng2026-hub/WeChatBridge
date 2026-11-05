@@ -2,6 +2,10 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
+    <!-- See WeChatBridge.Windows.csproj: AssemblyName is the customer-visible
+         file name, RootNamespace stays for the linked sources to keep compiling. -->
+    <AssemblyName>Lvdangtong.ShareTarget</AssemblyName>
+    <Company>律档通</Company>
     <Product>律档通</Product>
     <AssemblyTitle>律档通分享入口</AssemblyTitle>
     <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>

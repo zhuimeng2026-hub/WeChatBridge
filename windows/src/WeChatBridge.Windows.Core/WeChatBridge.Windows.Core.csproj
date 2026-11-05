@@ -2,6 +2,12 @@
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
+    <!-- Customer-visible DLL name. RootNamespace stays WeChatBridge.Windows.Core
+         because L10n resolves its embedded en.json by manifest resource name,
+         which is RootNamespace-based, not AssemblyName-based. -->
+    <AssemblyName>Lvdangtong.Windows.Core</AssemblyName>
+    <Company>律档通</Company>
+    <Product>律档通</Product>
   </PropertyGroup>
 
   <ItemGroup>

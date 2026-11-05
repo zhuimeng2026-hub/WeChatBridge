@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$Subject = 'CN=WeChatBridge Windows Dev'
+    [string]$Subject = 'CN=Lvdangtong Windows Dev'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -35,8 +35,8 @@ if (-not $certificate -or $certificate.NotAfter -le (Get-Date).AddDays(30)) {
         -NotAfter (Get-Date).AddYears(2)
 }
 
-$cer = Join-Path $env:TEMP 'WeChatBridge.Windows.Dev.cer'
-$rootCer = Join-Path $env:TEMP 'WeChatBridge.Windows.Dev.Root.cer'
+$cer = Join-Path $env:TEMP 'Lvdangtong.Windows.Dev.cer'
+$rootCer = Join-Path $env:TEMP 'Lvdangtong.Windows.Dev.Root.cer'
 Export-Certificate -Cert $certificate -FilePath $cer -Force | Out-Null
 Export-Certificate -Cert $root -FilePath $rootCer -Force | Out-Null
 $trusted = Get-ChildItem Cert:\CurrentUser\TrustedPeople -ErrorAction SilentlyContinue |

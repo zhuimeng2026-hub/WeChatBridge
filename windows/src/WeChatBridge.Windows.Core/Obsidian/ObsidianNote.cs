@@ -16,6 +16,27 @@ public static class ObsidianNote
         RegexOptions.Multiline | RegexOptions.Compiled);
 
     /// <summary>
+    /// The namespace this writer stamps into the HTML comments it wraps around
+    /// generated blocks. Notes are the user's file and the comment is visible in
+    /// Obsidian's source mode, so it must carry the product's own name.
+    /// </summary>
+    private const string MarkerNamespace = "lawdesk";
+
+    /// <summary>
+    /// What notes written before the rename carry. Still stripped and still
+    /// merged — and rewritten to <see cref="MarkerNamespace"/> on the next
+    /// merge, so already-archived notes clean themselves up over time.
+    /// </summary>
+    private const string LegacyMarkerNamespace = "wechatbridge";
+
+    /// <summary>Matches either namespace, for reads that must span both.</summary>
+    private const string AnyMarkerNamespace = "(?:" + LegacyMarkerNamespace + "|" + MarkerNamespace + ")";
+
+    /// <summary>One generated block's markers in the current namespace.</summary>
+    private static (string Open, string Close) Marker(string block) =>
+        ($"<!-- {MarkerNamespace}:{block}:start -->", $"<!-- {MarkerNamespace}:{block}:end -->");
+
+    /// <summary>
     /// The line this writer appends when another archive is merged into an
     /// existing note (「追加归档：[[附件/x.zip]]（时间）」). It is written
     /// between two messages, so without excluding it here it would become
@@ -156,19 +177,21 @@ public static class ObsidianNote
         }
         if (!string.IsNullOrEmpty(extractionIssue))
         {
+            var warning = Marker("warning");
             lines.Add("");
-            lines.Add("<!-- wechatbridge:warning:start -->");
+            lines.Add(warning.Open);
             lines.Add(extractionIssue);
-            lines.Add("<!-- wechatbridge:warning:end -->");
+            lines.Add(warning.Close);
         }
         if (attachmentInventory is { Count: > 0 })
         {
+            var inventory = Marker("attachment-inventory");
             lines.Add("");
-            lines.Add("<!-- wechatbridge:attachment-inventory:start -->");
+            lines.Add(inventory.Open);
             lines.Add("## 附件清单");
             foreach (var attachment in attachmentInventory.Distinct(StringComparer.Ordinal))
                 lines.Add($"- {AttachmentLink(attachment)}");
-            lines.Add("<!-- wechatbridge:attachment-inventory:end -->");
+            lines.Add(inventory.Close);
         }
         lines.Add("");
         return string.Join('\n', lines);
@@ -258,13 +281,15 @@ public static class ObsidianNote
         var merged = new StringBuilder(normalized.Length + 256);
         merged.Append("---\n").AppendJoin('\n', frontLines).Append("\n---");
         var body = normalized[(closing + 4)..].TrimEnd('\n');
-        // Keep a single attachment inventory across incremental deliveries.
-        const string inventoryEnd = "<!-- wechatbridge:attachment-inventory:end -->";
-        var hasInventory = body.Contains(inventoryEnd, StringComparison.Ordinal);
-        if (newAttachments.Count > 0 && hasInventory)
+        // Keep a single attachment inventory across incremental deliveries. The
+        // end marker may carry either namespace: a note written before the
+        // rename still has the old one, and appending into it must keep working.
+        var inventoryEnd = Regex.Match(body,
+            $@"<!-- {AnyMarkerNamespace}:attachment-inventory:end -->");
+        if (newAttachments.Count > 0 && inventoryEnd.Success)
         {
             var newLines = string.Join("", newAttachments.Select(p => "- " + AttachmentLink(p) + "\n"));
-            body = body.Replace(inventoryEnd, newLines + inventoryEnd, StringComparison.Ordinal);
+            body = body[..inventoryEnd.Index] + newLines + body[inventoryEnd.Index..];
         }
         merged.Append(body);
         merged.Append('\n');
@@ -275,9 +300,12 @@ public static class ObsidianNote
         // parsing. ArchiveMarkerPrefix still filters the bare marker line, so
         // notes written before the comments existed keep the same identity.
         if (newArchive)
-            merged.Append("\n<!-- wechatbridge:archive:start -->\n").Append(ArchiveMarkerPrefix)
+        {
+            var archive = Marker("archive");
+            merged.Append("\n").Append(archive.Open).Append('\n').Append(ArchiveMarkerPrefix)
                 .Append(AttachmentLink(archiveName))
-                .Append('（').Append(StampFor(mergedAt, zone)).Append('）').Append("\n<!-- wechatbridge:archive:end -->\n");
+                .Append('（').Append(StampFor(mergedAt, zone)).Append('）').Append('\n').Append(archive.Close).Append('\n');
+        }
         foreach (var record in fresh)
         {
             merged.Append("\n**").Append(record.Sender).Append("** · ")
@@ -286,18 +314,45 @@ public static class ObsidianNote
             foreach (var attachment in ReferencedAttachments(record.Text, attachments))
                 merged.Append('\n').Append(AttachmentLink(attachment)).Append('\n');
         }
-        if (newAttachments.Count > 0 && !hasInventory)
+        if (newAttachments.Count > 0 && !inventoryEnd.Success)
         {
-            merged.Append("\n<!-- wechatbridge:attachment-inventory:start -->\n## 附件清单\n");
+            var inventory = Marker("attachment-inventory");
+            merged.Append("\n").Append(inventory.Open).Append("\n## 附件清单\n");
             foreach (var attachment in newAttachments)
                 merged.Append("- ").Append(AttachmentLink(attachment)).Append('\n');
-            merged.Append("<!-- wechatbridge:attachment-inventory:end -->\n");
+            merged.Append(inventory.Close).Append('\n');
         }
         if (!string.IsNullOrEmpty(extractionIssue))
-            merged.Append("\n<!-- wechatbridge:warning:start -->\n")
-                .Append(extractionIssue).Append("\n<!-- wechatbridge:warning:end -->\n");
-        mergedMarkdown = merged.ToString();
+        {
+            var warning = Marker("warning");
+            merged.Append("\n").Append(warning.Open).Append('\n')
+                .Append(extractionIssue).Append('\n').Append(warning.Close).Append('\n');
+        }
+        // Whatever the note was written under, it leaves this method in the
+        // current namespace — that is how the notes of an earlier build shed
+        // the old name without anyone editing them by hand.
+        mergedMarkdown = UpgradeMarkerNamespaces(merged.ToString());
         return MergeOutcome.Merged;
+    }
+
+    /// <summary>
+    /// Rewrites the legacy marker namespace to the current one. Only the six
+    /// exact marker strings are touched, so message bodies that happen to
+    /// mention the old name are left alone.
+    /// </summary>
+    private static string UpgradeMarkerNamespaces(string markdown)
+    {
+        var legacyPrefix = LegacyMarkerNamespace + ":";
+        if (!markdown.Contains(legacyPrefix, StringComparison.Ordinal))
+            return markdown;
+        foreach (var block in new[] { "archive", "warning", "attachment-inventory" })
+        {
+            var (open, close) = Marker(block);
+            markdown = markdown
+                .Replace($"<!-- {LegacyMarkerNamespace}:{block}:start -->", open, StringComparison.Ordinal)
+                .Replace($"<!-- {LegacyMarkerNamespace}:{block}:end -->", close, StringComparison.Ordinal);
+        }
+        return markdown;
     }
 
     /// <summary>
@@ -322,12 +377,14 @@ public static class ObsidianNote
 
     private static string StripGeneratedMetadata(string markdown)
     {
+        // Both namespaces are stripped: a note written by an earlier build must
+        // keep merging correctly, and it is upgraded on its next merge anyway.
         var withoutInventory = Regex.Replace(markdown,
-            @"(?s)<!-- wechatbridge:attachment-inventory:start -->.*?<!-- wechatbridge:attachment-inventory:end -->", "");
+            $@"(?s)<!-- {AnyMarkerNamespace}:attachment-inventory:start -->.*?<!-- {AnyMarkerNamespace}:attachment-inventory:end -->", "");
         var withoutWarnings = Regex.Replace(withoutInventory,
-            @"(?s)<!-- wechatbridge:warning:start -->.*?<!-- wechatbridge:warning:end -->", "");
+            $@"(?s)<!-- {AnyMarkerNamespace}:warning:start -->.*?<!-- {AnyMarkerNamespace}:warning:end -->", "");
         return Regex.Replace(withoutWarnings,
-            @"(?s)<!-- wechatbridge:archive:start -->.*?<!-- wechatbridge:archive:end -->", "");
+            $@"(?s)<!-- {AnyMarkerNamespace}:archive:start -->.*?<!-- {AnyMarkerNamespace}:archive:end -->", "");
     }
 
     private static string StampFor(DateTimeOffset value, TimeZoneInfo zone) =>

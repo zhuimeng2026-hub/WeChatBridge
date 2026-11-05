@@ -65,7 +65,7 @@ public sealed class UiSmokeTests
                 SynchronizationContext.SetSynchronizationContext(new System.Windows.Threading.DispatcherSynchronizationContext(app.Dispatcher));
                 app.Resources.MergedDictionaries.Add(new ResourceDictionary
                 {
-                    Source = new Uri("pack://application:,,,/WeChatBridge.Windows;component/Themes/AppTheme.xaml"),
+                    Source = new Uri("pack://application:,,,/Lvdangtong.Windows;component/Themes/AppTheme.xaml"),
                 });
                 LoginRefreshRegression.VerifyAsyncScan();
                 LoginRefreshRegression.VerifySessionRefresh();

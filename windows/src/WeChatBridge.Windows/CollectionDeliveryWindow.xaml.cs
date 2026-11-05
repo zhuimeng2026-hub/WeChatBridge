@@ -50,7 +50,7 @@ public partial class CollectionDeliveryWindow : Window
     {
         _model = model;
         _id = id;
-        Resources.MergedDictionaries.Add(new ResourceDictionary { Source = new Uri("pack://application:,,,/WeChatBridge.Windows;component/Themes/AppTheme.xaml") });
+        Resources.MergedDictionaries.Add(new ResourceDictionary { Source = new Uri("pack://application:,,,/Lvdangtong.Windows;component/Themes/AppTheme.xaml") });
         InitializeComponent();
         MaxHeight = SystemParameters.WorkArea.Height - 30;
         RefreshSummary();

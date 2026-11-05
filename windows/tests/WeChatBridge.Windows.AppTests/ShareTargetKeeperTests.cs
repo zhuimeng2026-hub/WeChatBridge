@@ -21,7 +21,7 @@ public sealed class ShareTargetKeeperTests
     private const int ExitBudgetMilliseconds = 20_000;
 
     private static string HelperPath =>
-        Path.Combine(AppContext.BaseDirectory, "share-target", "WeChatBridge.ShareTarget.exe");
+        Path.Combine(AppContext.BaseDirectory, "share-target", "Lvdangtong.ShareTarget.exe");
 
     [Fact]
     public void LoserOfKeeperElectionExitsInsteadOfLingering()

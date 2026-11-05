@@ -2,6 +2,12 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
+    <!-- Assembly name is the file name the customer sees (Lvdangtong.Windows.exe)
+         and the Company field in the file's Version tab. RootNamespace is left
+         at the project name on purpose: namespaces never surface in Explorer,
+         and renaming them would touch every source file for no user-visible gain. -->
+    <AssemblyName>Lvdangtong.Windows</AssemblyName>
+    <Company>律档通</Company>
     <Product>律档通</Product>
     <AssemblyTitle>律档通</AssemblyTitle>
     <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>

@@ -69,7 +69,7 @@ jobs:
           ./windows/scripts/pack-msix.ps1 `
             -Publisher $env:SIGNPATH_MSIX_PUBLISHER `
             -Version '${{ inputs.version }}' `
-            -OutputPath windows/artifacts/release/WeChatBridge.ShareTarget.msix
+            -OutputPath windows/artifacts/release/Lvdangtong.ShareTarget.msix
 
       - name: Create unsigned release bundle
         shell: pwsh

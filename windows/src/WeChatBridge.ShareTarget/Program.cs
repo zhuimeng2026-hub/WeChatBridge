@@ -71,7 +71,7 @@ internal static class Program
         // shares the inbox's log with the main app — one file, one timeline.
         DiagnosticSink.Attach(paths);
 
-        // Dev/self-test hook: `WeChatBridge.ShareTarget.exe --picker-preview`
+        // Dev/self-test hook: `Lvdangtong.ShareTarget.exe --picker-preview`
         // opens the entry panel with sample rows so the design can be
         // exercised without a real WeChat share. Checked first so a preview
         // never forwards to a resident keeper.
@@ -685,7 +685,7 @@ internal static class Program
         if (root is null)
             return;
 
-        var mainPath = Path.Combine(root, "WeChatBridge.Windows.exe");
+        var mainPath = Path.Combine(root, "Lvdangtong.Windows.exe");
         if (!File.Exists(mainPath))
             return;
 

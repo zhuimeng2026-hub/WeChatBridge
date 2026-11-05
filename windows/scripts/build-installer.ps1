@@ -89,7 +89,7 @@ if (-not (Test-Path -LiteralPath $WixExtensionDirectory)) {
 }
 if (-not $SigningThumbprint) {
     $SigningThumbprint = (Get-ChildItem Cert:\CurrentUser\My |
-        Where-Object Subject -eq 'CN=WeChatBridge Windows Dev' |
+        Where-Object Subject -eq 'CN=Lvdangtong Windows Dev' |
         Sort-Object NotAfter -Descending | Select-Object -First 1).Thumbprint
     if (-not $SigningThumbprint) { throw 'No development certificate found. Run new-dev-certificate.ps1 or pass -SigningThumbprint.' }
 }
@@ -107,9 +107,9 @@ if (-not $SkipPublish) {
 }
 # A self-contained payload must not silently become a framework-dependent installer.
 foreach ($applicationFile in @(
-    'WeChatBridge.Windows.exe', 'WeChatBridge.Windows.dll', 'WeChatBridge.Windows.Core.dll',
-    'share-target\WeChatBridge.ShareTarget.exe', 'share-target\WeChatBridge.ShareTarget.dll',
-    'share-target\WeChatBridge.Windows.Core.dll'
+    'Lvdangtong.Windows.exe', 'Lvdangtong.Windows.dll', 'Lvdangtong.Windows.Core.dll',
+    'share-target\Lvdangtong.ShareTarget.exe', 'share-target\Lvdangtong.ShareTarget.dll',
+    'share-target\Lvdangtong.Windows.Core.dll'
 )) {
     $file = Get-Item -LiteralPath (Join-Path $payload $applicationFile)
     if ([version]$file.VersionInfo.FileVersion -ne [version]"$Version.0") {
@@ -123,10 +123,10 @@ foreach ($hostDirectory in @($payload, (Join-Path $payload 'share-target'))) {
 }
 $certDirectory = Join-Path $payload 'certs'
 New-Item -ItemType Directory -Path $certDirectory -Force | Out-Null
-Export-Certificate -Cert $certificate -FilePath (Join-Path $certDirectory 'WeChatBridge.Windows.Dev.cer') -Force | Out-Null
+Export-Certificate -Cert $certificate -FilePath (Join-Path $certDirectory 'Lvdangtong.Windows.Dev.cer') -Force | Out-Null
 $issuer = Get-ChildItem Cert:\CurrentUser\My | Where-Object Subject -eq $certificate.Issuer | Sort-Object NotAfter -Descending | Select-Object -First 1
 if (-not $issuer) { throw 'The public issuing certificate was not found.' }
-Export-Certificate -Cert $issuer -FilePath (Join-Path $certDirectory 'WeChatBridge.Windows.Dev.Root.cer') -Force | Out-Null
+Export-Certificate -Cert $issuer -FilePath (Join-Path $certDirectory 'Lvdangtong.Windows.Dev.Root.cer') -Force | Out-Null
 Copy-Item -LiteralPath (Join-Path $msiDirectory 'Register-ShareTarget.ps1'), (Join-Path $msiDirectory 'Unregister-ShareTarget.ps1') -Destination $payload -Force
 Copy-Item -LiteralPath (Join-Path $repositoryRoot 'LICENSE') -Destination (Join-Path $payload 'LICENSE.txt') -Force
 $license = [IO.File]::ReadAllText((Join-Path $repositoryRoot 'LICENSE')).Replace('\','\\').Replace('{','\{').Replace('}','\}').Replace("`r",'').Replace("`n",'\par ')
@@ -134,12 +134,12 @@ $license = [IO.File]::ReadAllText((Join-Path $repositoryRoot 'LICENSE')).Replace
 $assets = Join-Path $payload 'Assets'
 New-Item -ItemType Directory -Path $assets -Force | Out-Null
 Get-ChildItem (Join-Path $repositoryRoot 'windows\packaging\SparsePackage\Assets') -File | Copy-Item -Destination $assets -Force
-$msix = Join-Path $payload 'WeChatBridge.ShareTarget.msix'
+$msix = Join-Path $payload 'Lvdangtong.ShareTarget.msix'
 & (Join-Path $PSScriptRoot 'pack-msix.ps1') -Publisher $certificate.Subject -Edition $Edition -Version "$Version.0" -OutputPath $msix -ExternalContentDirectory $payload
 & (Join-Path $PSScriptRoot 'Test-SharePackage.ps1') -InstallRoot $payload
 foreach ($file in @(
-    (Join-Path $payload 'WeChatBridge.Windows.exe'),
-    (Join-Path $payload 'share-target\WeChatBridge.ShareTarget.exe'),
+    (Join-Path $payload 'Lvdangtong.Windows.exe'),
+    (Join-Path $payload 'share-target\Lvdangtong.ShareTarget.exe'),
     $msix
 )) {
     & signtool sign /fd SHA256 /sha1 $SigningThumbprint /s My $file
@@ -148,10 +148,10 @@ foreach ($file in @(
 $util = Join-Path $WixExtensionDirectory 'wixtoolset.util.wixext\wixext6\WixToolset.Util.wixext.dll'
 $ui = Join-Path $WixExtensionDirectory 'wixtoolset.ui.wixext\wixext6\WixToolset.UI.wixext.dll'
 # The edition token goes into every file name: two products that ship artifacts
-# called WeChatBridge-1.0.8-* and WeChatBridge-0.1.0-* are distinguishable, but a
+# called Lvdangtong-1.0.8-* and Lvdangtong-0.1.0-* are distinguishable, but a
 # support request quoting "the installer" is not, and a Subscription MSI that
 # looks like a Perpetual one is the failure this whole split exists to prevent.
-$trustMsi = Join-Path $DistDirectory "WeChatBridge-$EditionToken-$Version-CertificateTrust.msi"
+$trustMsi = Join-Path $DistDirectory "Lvdangtong-$EditionToken-$Version-CertificateTrust.msi"
 & wix build (Join-Path $msiDirectory 'CertificateTrust.wxs') -ext $util -arch x64 -d "MsiVersion=$Version.0" -d "PayloadDir=$payload" -o $trustMsi
 if ($LASTEXITCODE -ne 0) { throw 'Certificate trust prerequisite build failed.' }
 & signtool sign /fd SHA256 /sha1 $SigningThumbprint /s My $trustMsi
@@ -171,8 +171,8 @@ $setup = Join-Path $DistDirectory "律档通-$EditionToken-$Version-Windows-Setu
 # Burn needs both its cached engine and the full self-contained bundle signed.
 $signingDirectory = Join-Path $DistDirectory 'signing'
 New-Item -ItemType Directory -Path $signingDirectory -Force | Out-Null
-$engine = Join-Path $signingDirectory "WeChatBridge-$EditionToken-$Version-engine.exe"
-$reattached = Join-Path $signingDirectory "WeChatBridge-$EditionToken-$Version-signed-bundle.exe"
+$engine = Join-Path $signingDirectory "Lvdangtong-$EditionToken-$Version-engine.exe"
+$reattached = Join-Path $signingDirectory "Lvdangtong-$EditionToken-$Version-signed-bundle.exe"
 & wix burn detach $setup -engine $engine
 if ($LASTEXITCODE -ne 0) { throw 'Burn engine extraction failed.' }
 & signtool sign /fd SHA256 /sha1 $SigningThumbprint /s My $engine

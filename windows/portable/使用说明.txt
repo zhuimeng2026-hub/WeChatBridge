@@ -13,10 +13,10 @@
 
    不想要 Obsidian？在这个窗口里运行：
        FirstRun.bat -SkipObsidian
-   或者直接跳过这一步，双击「律档通\WeChatBridge.Windows.exe」——
+   或者直接跳过这一步，双击「律档通\Lvdangtong.Windows.exe」——
    核心的转发功能不依赖 Obsidian。
 
-2. 之后每次只要双击「律档通\WeChatBridge.Windows.exe」。
+2. 之后每次只要双击「律档通\Lvdangtong.Windows.exe」。
 
 
 聊天记录怎么进来

@@ -37,7 +37,7 @@
     <!-- Command lines consumed by the deferred QuietExec CAs below. Each property
          is named after its CA so WixQuietExec picks it up from CustomActionData. -->
     <SetProperty Id="KillRunningInstances" Sequence="execute" Before="KillRunningInstances"
-        Value="&quot;[System64Folder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoProfile -NonInteractive -WindowStyle Hidden -Command &quot;Get-Process -Name 'WeChatBridge.ShareTarget','WeChatBridge.Windows' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue&quot;" />
+        Value="&quot;[System64Folder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoProfile -NonInteractive -WindowStyle Hidden -Command &quot;Get-Process -Name 'Lvdangtong.ShareTarget','Lvdangtong.Windows' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue&quot;" />
     <SetProperty Id="RegisterShareTarget" Sequence="execute" Before="RegisterShareTarget"
         Value="&quot;[System64Folder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File &quot;[INSTALLFOLDER]Register-ShareTarget.ps1&quot; -CertificateTrustPrepared" />
     <SetProperty Id="UnregisterShareTarget" Sequence="execute" Before="UnregisterShareTarget"
@@ -70,7 +70,7 @@
     <DirectoryRef Id="WeChatBridgeProgramsFolder">
       <Component Id="StartMenuShortcut" Guid="{27836C97-D2EB-4891-AB2B-88F388DE7FA7}">
         <Shortcut Id="WeChatBridgeShortcut" Name="律档通"
-                  Target="[INSTALLFOLDER]WeChatBridge.Windows.exe"
+                  Target="[INSTALLFOLDER]Lvdangtong.Windows.exe"
                   WorkingDirectory="INSTALLFOLDER" Icon="AppIcon.ico" />
         <RegistryValue Root="HKCU" Key="Software\WeChatBridge" Name="installed" Type="integer" Value="1" KeyPath="yes" />
         <!-- Which of the two products is installed here. The installed=1 marker

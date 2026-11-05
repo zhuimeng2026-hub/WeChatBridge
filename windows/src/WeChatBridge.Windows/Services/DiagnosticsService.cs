@@ -82,7 +82,15 @@ internal static class DiagnosticsService
     private static IEnumerable<string> ObsidianFacts()
     {
         yield return "--- Obsidian ---";
+        // Which executable answers obsidian:// is the fact that decides whether
+        // "open the vault" works. "协议已注册: True" alone cannot distinguish a
+        // working install from a registry entry left behind by an uninstall.
+        var handler = SafePath(() => ObsidianProtocol.RegisteredExecutable);
         yield return $"  协议已注册: {SafeText(() => ObsidianProtocol.IsRegistered().ToString())}";
+        yield return $"  协议指向: {handler}";
+        // SafePath answers "(null)" / "(无法读取: …)" — neither is a path.
+        if (!handler.StartsWith('('))
+            yield return $"  协议目标存在: {File.Exists(handler)}";
         yield return $"  便携版自带: {SafePath(() => ObsidianProtocol.PortableExecutable)}";
         yield return $"  正在运行: {SafeText(() => ObsidianVaultRegistry.IsRunning().ToString())}";
         var vaults = SafeList(() => ObsidianVaultRegistry.List());

@@ -5,7 +5,7 @@
  Background="{StaticResource SurfaceColor}" ResizeMode="NoResize" WindowStartupLocation="CenterOwner"
  FontFamily="Microsoft YaHei UI, Segoe UI" UseLayoutRounding="True" SnapsToDevicePixels="True"
  TextOptions.TextFormattingMode="Display" TextOptions.TextRenderingMode="ClearType"
- Icon="/WeChatBridge.Windows;component/Assets/AppIcon.png">
+ Icon="/Lvdangtong.Windows;component/Assets/AppIcon.png">
  <shell:WindowChrome.WindowChrome><shell:WindowChrome CaptionHeight="52" CornerRadius="12" GlassFrameThickness="0"
  ResizeBorderThickness="0" UseAeroCaptionButtons="False"/></shell:WindowChrome.WindowChrome>
  <Window.Resources>
@@ -25,7 +25,7 @@
  <Grid.RowDefinitions><RowDefinition Height="52"/><RowDefinition Height="*"/></Grid.RowDefinitions>
  <Grid MouseLeftButtonDown="OnDragMove" Margin="20,0,12,0">
  <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
- <Image Source="/WeChatBridge.Windows;component/Assets/AppIcon.png" Width="28" Height="28"/>
+ <Image Source="/Lvdangtong.Windows;component/Assets/AppIcon.png" Width="28" Height="28"/>
  <TextBlock Text="{loc:Loc Key='设置律档通'}" FontSize="15" FontWeight="SemiBold" Margin="10,0,0,0" VerticalAlignment="Center"/>
  </StackPanel>
  <Button Width="32" Height="32" MinHeight="32" MinWidth="0" Padding="0" HorizontalAlignment="Right" Content="×" FontSize="22"

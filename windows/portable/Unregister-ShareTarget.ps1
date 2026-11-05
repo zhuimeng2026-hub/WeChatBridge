@@ -20,10 +20,10 @@ $ErrorActionPreference = 'Stop'
 $installRoot = [IO.Path]::GetFullPath((Split-Path -Parent $MyInvocation.MyCommand.Path))
 $marker = Join-Path $installRoot 'Data\Logs\Install\ShareRegistration.json'
 
-Get-Process -Name 'WeChatBridge.ShareTarget', 'WeChatBridge.Windows' -ErrorAction SilentlyContinue |
+Get-Process -Name 'Lvdangtong.ShareTarget', 'Lvdangtong.Windows' -ErrorAction SilentlyContinue |
     Stop-Process -Force -ErrorAction SilentlyContinue
 Get-AppxPackage -ErrorAction SilentlyContinue |
-    Where-Object { $_.Name -in 'WeChatBridge.Windows.ShareTarget', 'ChatBridge.Windows.ShareTarget' } |
+    Where-Object { $_.Name -in 'Lvdangtong.ShareTarget', 'ChatBridge.Windows.ShareTarget' } |
     Remove-AppxPackage -ErrorAction SilentlyContinue
 if (Test-Path -LiteralPath $marker) { Remove-Item -LiteralPath $marker -Force }
 Write-Output 'Share target registration removed.'

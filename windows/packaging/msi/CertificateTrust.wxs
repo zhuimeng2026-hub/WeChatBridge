@@ -16,10 +16,10 @@
           </Component>
           <Directory Id="TrustCertificateFolder" Name="certs">
             <Component Id="TrustLeaf" Guid="*">
-              <File Source="$(var.PayloadDir)\certs\WeChatBridge.Windows.Dev.cer" KeyPath="yes" />
+              <File Source="$(var.PayloadDir)\certs\Lvdangtong.Windows.Dev.cer" KeyPath="yes" />
             </Component>
             <Component Id="TrustRoot" Guid="*">
-              <File Source="$(var.PayloadDir)\certs\WeChatBridge.Windows.Dev.Root.cer" KeyPath="yes" />
+              <File Source="$(var.PayloadDir)\certs\Lvdangtong.Windows.Dev.Root.cer" KeyPath="yes" />
             </Component>
           </Directory>
         </Directory>

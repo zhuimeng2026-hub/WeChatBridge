@@ -14,8 +14,8 @@ public class CollectionDialogWindow : Window
         Title = title; Width = 460; MinWidth = 320; SizeToContent = SizeToContent.Height;
         WindowStyle = WindowStyle.None; AllowsTransparency = true; Background = Brushes.Transparent;
         ShowInTaskbar = false; ResizeMode = ResizeMode.NoResize; WindowStartupLocation = WindowStartupLocation.CenterOwner;
-        Resources.MergedDictionaries.Add(new ResourceDictionary { Source = new Uri("pack://application:,,,/WeChatBridge.Windows;component/Themes/AppTheme.xaml") });
-        Resources.MergedDictionaries.Add(new ResourceDictionary { Source = new Uri("pack://application:,,,/WeChatBridge.Windows;component/Components/CollectionComponents.xaml") });
+        Resources.MergedDictionaries.Add(new ResourceDictionary { Source = new Uri("pack://application:,,,/Lvdangtong.Windows;component/Themes/AppTheme.xaml") });
+        Resources.MergedDictionaries.Add(new ResourceDictionary { Source = new Uri("pack://application:,,,/Lvdangtong.Windows;component/Components/CollectionComponents.xaml") });
         SetResourceReference(ForegroundProperty, "InkColor");
         Loaded += (_, _) => { var area = CollectionPlacement.WorkArea(this); MaxHeight = Math.Max(200, area.Height - 30); };
         PreviewKeyDown += (_, e) => { if (e.Key == Key.Escape) { Close(); e.Handled = true; } };

@@ -100,5 +100,5 @@ jobs:
             Sort-Object FullName -Descending |
             Select-Object -First 1
           if (-not $makeAppx) { throw 'MakeAppx.exe was not found on the runner.' }
-          & $makeAppx.FullName pack /d windows/packaging/SparsePackage /p windows/artifacts/WeChatBridge.ShareTarget.msix /nv
+          & $makeAppx.FullName pack /d windows/packaging/SparsePackage /p windows/artifacts/Lvdangtong.ShareTarget.msix /nv
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

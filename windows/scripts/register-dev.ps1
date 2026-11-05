@@ -23,13 +23,13 @@ trap {
     throw
 }
 
-$helper = Join-Path $installRoot 'share-target\WeChatBridge.ShareTarget.exe'
+$helper = Join-Path $installRoot 'share-target\Lvdangtong.ShareTarget.exe'
 $manifestDir = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\packaging\SparsePackage'))
 $manifestPath = Join-Path $manifestDir 'AppxManifest.xml'
-$packagePath = Join-Path $installRoot 'WeChatBridge.ShareTarget.msix'
+$packagePath = Join-Path $installRoot 'Lvdangtong.ShareTarget.msix'
 
 if (-not (Test-Path $helper)) { throw "Share Target helper not found: $helper" }
-if (-not (Test-Path (Join-Path $installRoot 'WeChatBridge.Windows.exe'))) { throw 'WPF host not found under InstallRoot.' }
+if (-not (Test-Path (Join-Path $installRoot 'Lvdangtong.Windows.exe'))) { throw 'WPF host not found under InstallRoot.' }
 if (-not (Test-Path $manifestPath)) { throw "Sparse package manifest not found: $manifestPath" }
 
 # An AllowExternalContent package resolves the paths its manifest declares against the
@@ -48,7 +48,7 @@ if (Test-Path $assetSource) {
 
 if (-not $CertificateThumbprint) {
     $CertificateThumbprint = (Get-ChildItem Cert:\CurrentUser\My |
-        Where-Object Subject -eq 'CN=WeChatBridge Windows Dev' |
+        Where-Object Subject -eq 'CN=Lvdangtong Windows Dev' |
         Sort-Object NotAfter -Descending | Select-Object -First 1).Thumbprint
 }
 if (-not $CertificateThumbprint) { throw 'Run new-dev-certificate.ps1 first.' }
@@ -75,7 +75,7 @@ $version = ($buildProps.Project.PropertyGroup |
     Select-Object -First 1)
 if (-not $version) { throw "Directory.Build.props has no PropertyGroup for WeChatBridgeEdition='$Edition'." }
 $apxVersion = [version]$version
-& $packScript -Publisher 'CN=WeChatBridge Windows Dev' -Edition $Edition -Version "$apxVersion.0" -OutputPath $packagePath -ExternalContentDirectory $installRoot
+& $packScript -Publisher 'CN=Lvdangtong Windows Dev' -Edition $Edition -Version "$apxVersion.0" -OutputPath $packagePath -ExternalContentDirectory $installRoot
 $signTool = Get-Command signtool.exe -ErrorAction SilentlyContinue
 if (-not $signTool) {
     $signTool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" -ErrorAction SilentlyContinue |
@@ -92,7 +92,7 @@ if ($signature.Status -ne 'Valid') {
 }
 
 Get-AppxPackage -ErrorAction SilentlyContinue |
-    Where-Object { $_.Name -in 'WeChatBridge.Windows.ShareTarget', 'ChatBridge.Windows.ShareTarget' } |
+    Where-Object { $_.Name -in 'Lvdangtong.ShareTarget', 'ChatBridge.Windows.ShareTarget' } |
     Remove-AppxPackage -ErrorAction SilentlyContinue
 try {
     Add-AppxPackage -Path $packagePath -ExternalLocation $installRoot
@@ -101,7 +101,7 @@ catch {
     $hresult = ('0x{0:X8}' -f ($_.Exception.HResult -band 0xffffffff))
     throw "Add-AppxPackage failed ($hresult): $($_.Exception.Message)"
 }
-$registered = Get-AppxPackage -Name 'WeChatBridge.Windows.ShareTarget' -ErrorAction SilentlyContinue
+$registered = Get-AppxPackage -Name 'Lvdangtong.ShareTarget' -ErrorAction SilentlyContinue
 if (-not $registered) { throw 'Add-AppxPackage returned but the package is not registered.' }
 Write-RegistrationLog "成功 $($registered.PackageFullName)"
 Write-Output "Registered: $($registered.PackageFullName)"

@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$Publisher = 'CN=WeChatBridge Windows Dev',
+    [string]$Publisher = 'CN=Lvdangtong Windows Dev',
     # No default on purpose. Every caller passes the version it actually built
     # from; a default here is one more place a stale number can survive, and it
     # is a four-segment Appx version that must agree with the payload's file
@@ -32,10 +32,24 @@ if (-not (Test-Path (Join-Path $sourceDirectory 'AppxManifest.xml'))) { throw 'S
 function Resolve-SdkTool([string]$name) {
     $command = Get-Command $name -ErrorAction SilentlyContinue
     if ($command) { return $command.Source }
-    $candidate = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\$name" -ErrorAction SilentlyContinue |
-        Sort-Object FullName -Descending | Select-Object -First 1
-    if ($candidate) { return $candidate.FullName }
-    throw "$name was not found. Install the Windows SDK or add it to PATH."
+    # Fallbacks matter: makepri/makeappx/signtool/mt are not on PATH on a machine
+    # without the Windows SDK installed, and the failure then reads like a
+    # missing SDK rather than a missing PATH entry. WCB_SDK_BIN wins so a caller
+    # can pin an exact build; the second entry is the extracted
+    # Microsoft.Windows.SDK.BuildTools payload these dev machines use.
+    $searchRoots = @(
+        $env:WCB_SDK_BIN,
+        (Join-Path $env:LOCALAPPDATA 'WeChatBridge-tools\extracted\bin'),
+        "${env:ProgramFiles(x86)}\Windows Kits\10\bin"
+    ) | Where-Object { $_ -and (Test-Path $_) }
+    foreach ($root in $searchRoots) {
+        $direct = Join-Path $root $name
+        if (Test-Path $direct) { return $direct }
+        $candidate = Get-ChildItem (Join-Path $root "*\x64\$name") -ErrorAction SilentlyContinue |
+            Sort-Object FullName -Descending | Select-Object -First 1
+        if ($candidate) { return $candidate.FullName }
+    }
+    throw "$name was not found. Install the Windows SDK, set WCB_SDK_BIN, or add it to PATH."
 }
 
 try {

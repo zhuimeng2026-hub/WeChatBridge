@@ -11,10 +11,10 @@
           FirstRun.ps1
           使用说明.txt
           律档通\                      <- PortableRoot
-              WeChatBridge.Windows.exe / .dll
+              Lvdangtong.Windows.exe / .dll
               share-target\...
               Assets\  Resources\  resources.pri
-              WeChatBridge.ShareTarget.msix
+              Lvdangtong.ShareTarget.msix
               certs\*.cer
               Register-ShareTarget.ps1  Unregister-ShareTarget.ps1
               portable.flag
@@ -40,7 +40,7 @@
 
 .PARAMETER SigningThumbprint
   Certificate in Cert:\CurrentUser\My. Defaults to the newest
-  "CN=WeChatBridge Windows Dev" certificate. Pass a real code-signing
+  "CN=Lvdangtong Windows Dev" certificate. Pass a real code-signing
   certificate's thumbprint for anything you distribute.
 
 .PARAMETER OutputDirectory
@@ -82,7 +82,7 @@ $OutputDirectory = [IO.Path]::GetFullPath($OutputDirectory)
 # it as AppContext.BaseDirectory and derives Data\ from it. Introducing an extra
 # app\ level here would break that and silently strand the data one level up.
 $payload = Join-Path $OutputDirectory '律档通'
-$msix = Join-Path $payload 'WeChatBridge.ShareTarget.msix'
+$msix = Join-Path $payload 'Lvdangtong.ShareTarget.msix'
 $AppLayoutMarker = 'portable.flag'
 
 # Same lookup as build-installer.ps1: five call sites used to carry this value
@@ -108,7 +108,7 @@ elseif ($Version -ne $productVersion) {
 
 if (-not $SigningThumbprint) {
     $SigningThumbprint = (Get-ChildItem Cert:\CurrentUser\My |
-        Where-Object Subject -eq 'CN=WeChatBridge Windows Dev' |
+        Where-Object Subject -eq 'CN=Lvdangtong Windows Dev' |
         Sort-Object NotAfter -Descending | Select-Object -First 1).Thumbprint
     if (-not $SigningThumbprint) { throw 'No development certificate found. Run new-dev-certificate.ps1 or pass -SigningThumbprint.' }
 }
@@ -135,9 +135,9 @@ if (-not $SkipPublish) {
 
 # A self-contained payload must not quietly become a framework-dependent stick.
 foreach ($applicationFile in @(
-    'WeChatBridge.Windows.exe', 'WeChatBridge.Windows.dll', 'WeChatBridge.Windows.Core.dll',
-    'share-target\WeChatBridge.ShareTarget.exe', 'share-target\WeChatBridge.ShareTarget.dll',
-    'share-target\WeChatBridge.Windows.Core.dll'
+    'Lvdangtong.Windows.exe', 'Lvdangtong.Windows.dll', 'Lvdangtong.Windows.Core.dll',
+    'share-target\Lvdangtong.ShareTarget.exe', 'share-target\Lvdangtong.ShareTarget.dll',
+    'share-target\Lvdangtong.Windows.Core.dll'
 )) {
     $file = Get-Item -LiteralPath (Join-Path $payload $applicationFile)
     if ([version]$file.VersionInfo.FileVersion -ne [version]"$Version.0") {
@@ -161,10 +161,10 @@ Get-ChildItem (Join-Path $repositoryRoot 'windows\packaging\SparsePackage\Assets
 $certDirectory = Join-Path $payload 'certs'
 New-Item -ItemType Directory -Path $certDirectory -Force | Out-Null
 # These two names are hardcoded by Register-ShareTarget.ps1.
-Export-Certificate -Cert $certificate -FilePath (Join-Path $certDirectory 'WeChatBridge.Windows.Dev.cer') -Force | Out-Null
+Export-Certificate -Cert $certificate -FilePath (Join-Path $certDirectory 'Lvdangtong.Windows.Dev.cer') -Force | Out-Null
 $issuer = Get-ChildItem Cert:\CurrentUser\My | Where-Object Subject -eq $certificate.Issuer | Sort-Object NotAfter -Descending | Select-Object -First 1
 if (-not $issuer) { throw 'The public issuing certificate was not found.' }
-Export-Certificate -Cert $issuer -FilePath (Join-Path $certDirectory 'WeChatBridge.Windows.Dev.Root.cer') -Force | Out-Null
+Export-Certificate -Cert $issuer -FilePath (Join-Path $certDirectory 'Lvdangtong.Windows.Dev.Root.cer') -Force | Out-Null
 
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'Register-ShareTarget.ps1'), (Join-Path $PSScriptRoot 'Unregister-ShareTarget.ps1') -Destination $payload -Force
 Copy-Item -LiteralPath (Join-Path $repositoryRoot 'LICENSE') -Destination (Join-Path $OutputDirectory 'LICENSE.txt') -Force
@@ -172,12 +172,33 @@ Copy-Item -LiteralPath (Join-Path $repositoryRoot 'LICENSE') -Destination (Join-
 & (Join-Path $repositoryRoot 'windows\scripts\pack-msix.ps1') -Publisher $certificate.Subject -Edition $Edition -Version "$Version.0" -OutputPath $msix -ExternalContentDirectory $payload
 & (Join-Path $repositoryRoot 'windows\scripts\Test-SharePackage.ps1') -InstallRoot $payload
 
+# signtool is resolved the same way pack-msix.ps1 resolves makepri/makeappx:
+# a bare `signtool` only works when the Windows SDK is on PATH, which is not the
+# case on a machine using the extracted SDK.BuildTools payload.
+$signTool = $null
+foreach ($root in @(
+    $env:WCB_SDK_BIN,
+    (Join-Path $env:LOCALAPPDATA 'WeChatBridge-tools\extracted\bin'),
+    "${env:ProgramFiles(x86)}\Windows Kits\10\bin"
+) | Where-Object { $_ -and (Test-Path $_) }) {
+    $direct = Join-Path $root 'signtool.exe'
+    if (Test-Path $direct) { $signTool = $direct; break }
+    $candidate = Get-ChildItem (Join-Path $root "*\x64\signtool.exe") -ErrorAction SilentlyContinue |
+        Sort-Object FullName -Descending | Select-Object -First 1
+    if ($candidate) { $signTool = $candidate.FullName; break }
+}
+if (-not $signTool) {
+    $command = Get-Command signtool.exe -ErrorAction SilentlyContinue
+    if ($command) { $signTool = $command.Source }
+}
+if (-not $signTool) { throw 'signtool.exe was not found. Install the Windows SDK, set WCB_SDK_BIN, or add it to PATH.' }
+
 foreach ($file in @(
-    (Join-Path $payload 'WeChatBridge.Windows.exe'),
-    (Join-Path $payload 'share-target\WeChatBridge.ShareTarget.exe'),
+    (Join-Path $payload 'Lvdangtong.Windows.exe'),
+    (Join-Path $payload 'share-target\Lvdangtong.ShareTarget.exe'),
     $msix
 )) {
-    & signtool sign /fd SHA256 /sha1 $SigningThumbprint /s My $file
+    & $signTool sign /fd SHA256 /sha1 $SigningThumbprint /s My $file
     if ($LASTEXITCODE -ne 0) { throw "Signing failed: $file" }
 }
 foreach ($file in @($msix)) {
