@@ -37,3 +37,26 @@ Windows 使用临时目录构造 ZIP 验证四种类别、大小写扩展名、�
 - macOS 代码已静态审核并补充 Swift 回归测试；本机没有可运行 macOS/Xcode 的环境，未执行 Swift 构建或测试。
 
 功能分支：`codex/attachment-categories`。使用独立工作树，不包含原工作区未提交的登录相关改动。
+
+## Obsidian 可见性：为什么「Word 文档」「电子表格」看起来是空的（2026-11-06）
+
+**现象**：知识库 `D:\律档通知识库\微信聊天\附件\` 下 `Word文档`、`电子表格` 目录存在但内容空白，`PDF`、`图片`、`视频` 正常；笔记里 `[[附件/Word文档/律师函模板.docx]]` 显示为灰色未解析链接。
+
+**不是分类失败**：磁盘上 `律师函模板.docx`（39 KB）、`管辖异议书.docx`（38 KB）、`2026-10-29订单数据-影刀测试.xlsx`（5.9 KB）都在正确目录内，时间戳与批次一致。`其他`（.msi）、`原始归档`（.zip）同样"空白"，因为它们也不是 Obsidian 原生支持的扩展名。
+
+**原因**：Obsidian 的文件树与链接索引只收录它自己能打开的扩展名（md、pdf、图片、音频、视频）。其余扩展名被过滤掉，且 `[[…]]` 无法解析到被过滤的文件。开关在 vault 的 `.obsidian/app.json` 里，键名 `showUnsupportedFiles`，默认缺失即 false；界面位置是「设置 → 文件与链接 → 显示所有类型文件 / Detect all file extensions」。旧版 `EnsureVaultInitialized` 只创建空的 `.obsidian` 目录、不写任何配置，所以每个新知识库必然复现。
+
+**修法**：`ObsidianVaultRegistry.EnsureVaultInitialized` 初始化时以合并方式补写 `showUnsupportedFiles: true`。
+
+- 只补缺失的键：已有该键（含用户显式设为 `false`）时不动，避免每次保存设置都把用户的关闭动作翻回来。
+- 保留 `app.json` 其他所有键；非对象的异常文件（如 `[]`）原样放过，不用自己的理解覆盖别人的配置。
+- 与 vault 注册表一致，先写 `.tmp` 再 move，避免半截文件。
+- 失败不阻断初始化：只读目录、被运行中的 Obsidian 占用都按既有非致命类别处理（这类降级不额外记日志）。
+- Obsidian 只在启动时读 `app.json`，因此 Obsidian 正在运行时改动要**重启 Obsidian 才生效**。
+
+副作用需知：开启后 `原始归档\` 的 zip 与 `其他\` 的 msi 也会出现在文件树里，目录会比之前"乱"，但律师查原件反而更直接。
+
+macOS 不需要同步改动：macOS 端只使用用户已选好的知识库，不初始化也不写 `.obsidian` 配置。
+
+**验证**：`ObsidianVaultRegistryTests` 37/37 通过（新增/改写 7 条：新库补键、保留其他键、尊重显式 false、非对象文件不动、未初始化目录报错、已存在的旧库可修复、初始化后自定义键仍在）。全量测试与构建交给 CI。
+

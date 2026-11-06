@@ -382,7 +382,101 @@ public sealed class ObsidianVaultRegistryTests : IDisposable
 
         Assert.Null(error);
         Assert.True(File.Exists(marker));
-        Assert.Equal("{\"custom\":true}", File.ReadAllText(marker));
+        // Everything the user (or Obsidian) had stays, and exactly one key we
+        // own is added on top — see the app.json seeding tests below.
+        var root = JsonNode.Parse(File.ReadAllText(marker))!.AsObject();
+        Assert.True(root["custom"]!.GetValue<bool>());
+        Assert.True(root["showUnsupportedFiles"]!.GetValue<bool>());
+    }
+
+    [Fact]
+    public void EnsureVaultInitialized_seeds_showUnsupportedFiles_for_a_new_vault()
+    {
+        // Without this key Obsidian hides docx/xlsx from the file explorer, so
+        // the delivered Word and spreadsheet folders look empty even though the
+        // files are there.
+        var folder = NewFolder("fresh");
+
+        Assert.True(ObsidianVaultRegistry.EnsureVaultInitialized(folder, out _));
+
+        var root = JsonNode.Parse(
+            File.ReadAllText(Path.Combine(folder, ".obsidian", "app.json")))!.AsObject();
+        Assert.True(root["showUnsupportedFiles"]!.GetValue<bool>());
+    }
+
+    [Fact]
+    public void Seeding_keeps_every_other_app_json_key_untouched()
+    {
+        var folder = NewFolder("tuned");
+        var marker = Path.Combine(folder, ".obsidian", "app.json");
+        Directory.CreateDirectory(Path.Combine(folder, ".obsidian"));
+        File.WriteAllText(
+            marker,
+            "{\"livePreview\":false,\"attachmentFolderPath\":\"./\",\"tabSize\":2}");
+
+        Assert.True(ObsidianVaultRegistry.EnsureVaultInitialized(folder, out _));
+
+        var root = JsonNode.Parse(File.ReadAllText(marker))!.AsObject();
+        Assert.False(root["livePreview"]!.GetValue<bool>());
+        Assert.Equal("./", root["attachmentFolderPath"]!.GetValue<string>());
+        Assert.Equal(2, root["tabSize"]!.GetValue<int>());
+        Assert.True(root["showUnsupportedFiles"]!.GetValue<bool>());
+    }
+
+    [Fact]
+    public void Seeding_respects_an_explicit_false()
+    {
+        // The user may have turned the setting off on purpose; the product must
+        // not flip it back on every time the settings dialog is saved.
+        var folder = NewFolder("opted-out");
+        var marker = Path.Combine(folder, ".obsidian", "app.json");
+        Directory.CreateDirectory(Path.Combine(folder, ".obsidian"));
+        File.WriteAllText(marker, "{\"showUnsupportedFiles\":false}");
+
+        Assert.True(ObsidianVaultRegistry.EnsureVaultInitialized(folder, out _));
+
+        var root = JsonNode.Parse(File.ReadAllText(marker))!.AsObject();
+        Assert.False(root["showUnsupportedFiles"]!.GetValue<bool>());
+    }
+
+    [Fact]
+    public void Seeding_leaves_a_non_object_app_json_alone()
+    {
+        var folder = NewFolder("hand-made");
+        var marker = Path.Combine(folder, ".obsidian", "app.json");
+        Directory.CreateDirectory(Path.Combine(folder, ".obsidian"));
+        File.WriteAllText(marker, "[]");
+
+        Assert.True(ObsidianVaultRegistry.EnsureVaultInitialized(folder, out _));
+
+        Assert.Equal("[]", File.ReadAllText(marker));
+    }
+
+    [Fact]
+    public void EnsureUnsupportedFilesVisible_reports_an_uninitialised_vault()
+    {
+        var folder = NewFolder("not-a-vault");
+
+        Assert.False(ObsidianVaultRegistry.EnsureUnsupportedFilesVisible(folder, out var error));
+
+        Assert.NotNull(error);
+    }
+
+    [Fact]
+    public void EnsureUnsupportedFilesVisible_fixes_a_vault_that_already_exists()
+    {
+        // The situation on a machine that has been running an older build: the
+        // vault and its folder categories are there, app.json is `{}`.
+        var folder = NewFolder("already-there");
+        var marker = Path.Combine(folder, ".obsidian", "app.json");
+        Directory.CreateDirectory(Path.Combine(folder, ".obsidian"));
+        File.WriteAllText(marker, "{}");
+
+        Assert.True(ObsidianVaultRegistry.EnsureUnsupportedFilesVisible(folder, out var error));
+
+        Assert.Null(error);
+        var root = JsonNode.Parse(File.ReadAllText(marker))!.AsObject();
+        Assert.True(root["showUnsupportedFiles"]!.GetValue<bool>());
     }
 
     [Fact]

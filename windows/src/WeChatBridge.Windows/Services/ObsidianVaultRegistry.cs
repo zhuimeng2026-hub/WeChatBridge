@@ -321,6 +321,13 @@ internal static class ObsidianVaultRegistry
     /// and a folder the user pointed at a pre-existing vault keeps whatever
     /// Obsidian already wrote there.
     /// </para>
+    /// <para>
+    /// One exception to "untouched": a vault whose <c>app.json</c> never
+    /// mentioned <c>showUnsupportedFiles</c> gets that key seeded to true, so
+    /// the delivered <c>docx</c>/<c>xlsx</c> attachments are not hidden from
+    /// Obsidian's file explorer. See
+    /// <see cref="EnsureUnsupportedFilesVisible"/> for why that matters.
+    /// </para>
     /// </summary>
     /// <param name="vaultPath">The vault folder to initialise.</param>
     /// <param name="error">Why the initialisation failed, when it did.</param>
@@ -344,12 +351,138 @@ internal static class ObsidianVaultRegistry
         {
             if (!Directory.Exists(obsidianDir))
                 Directory.CreateDirectory(obsidianDir);
-            return true;
         }
         catch (Exception write) when (write is IOException or UnauthorizedAccessException
             or NotSupportedException or ArgumentException)
         {
             error = $"无法初始化知识库目录：{write.Message}";
+            return false;
+        }
+
+        // Best effort: a vault Obsidian cannot list .docx inside still works as
+        // a vault, so a failed seed must not fail the initialisation. Reasons
+        // are the ones the product already treats as non-fatal (read-only
+        // folder, file locked by a running Obsidian).
+        SeedUnsupportedFilesVisible(obsidianDir);
+        return true;
+    }
+
+    /// <summary>Obsidian's per-vault settings file, inside <c>.obsidian</c>.</summary>
+    private const string AppConfigFileName = "app.json";
+
+    /// <summary>
+    /// Obsidian's switch for showing file types it cannot open itself. The
+    /// settings UI calls it "Detect all file extensions" /
+    /// 「显示所有类型文件」.
+    /// </summary>
+    private const string ShowUnsupportedFilesKey = "showUnsupportedFiles";
+
+    /// <summary>
+    /// Turns on "show files Obsidian cannot open" for this vault, so delivered
+    /// <c>docx</c>/<c>xlsx</c> attachments are visible instead of turning their
+    /// category folders into empty ones.
+    /// <para>
+    /// The reason this has to be done by the product: Obsidian's file explorer
+    /// and its link index only carry the extensions Obsidian opens natively
+    /// (markdown, PDF, images, audio, video). Every other extension is filtered
+    /// out of the tree and out of <c>[[…]]</c> resolution — the folder exists,
+    /// the file is on disk, and the user sees an empty folder with a grey,
+    /// un-clickable link in the note. Word and spreadsheet attachments are
+    /// delivered into exactly those filtered categories, so every fresh vault
+    /// reproduced it.
+    /// </para>
+    /// <para>
+    /// Merge-only and idempotent: everything else in <c>app.json</c> is kept
+    /// verbatim, a key that is already present is respected (including an
+    /// explicit <c>false</c> — the user may have chosen to hide the archives),
+    /// and an unreadable or non-object file is left alone rather than
+    /// overwritten with our own idea of it.
+    /// </para>
+    /// <para>
+    /// Obsidian reads this file at startup, so the change becomes visible on
+    /// the next start when Obsidian is already running.
+    /// </para>
+    /// </summary>
+    /// <returns>True when the vault now requests unsupported files visible.</returns>
+    public static bool EnsureUnsupportedFilesVisible(string vaultPath, out string? error)
+    {
+        error = null;
+        var normalized = Normalize(vaultPath);
+        if (normalized.Length == 0)
+        {
+            error = "知识库路径为空。";
+            return false;
+        }
+        var obsidianDir = Path.Combine(normalized, ".obsidian");
+        if (!Directory.Exists(obsidianDir))
+        {
+            error = $"知识库尚未初始化：{normalized}";
+            return false;
+        }
+        if (!SeedUnsupportedFilesVisible(obsidianDir))
+        {
+            error = Path.Combine(obsidianDir, AppConfigFileName);
+            return false;
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// The merge itself. <paramref name="obsidianDir"/> is the vault's
+    /// <c>.obsidian</c> folder, which the caller has already confirmed exists.
+    /// </summary>
+    private static bool SeedUnsupportedFilesVisible(string obsidianDir)
+    {
+        var path = Path.Combine(obsidianDir, AppConfigFileName);
+        JsonObject root;
+        try
+        {
+            if (!File.Exists(path))
+            {
+                root = new JsonObject();
+            }
+            else
+            {
+                var text = File.ReadAllText(path);
+                if (string.IsNullOrWhiteSpace(text))
+                {
+                    root = new JsonObject();
+                }
+                else
+                {
+                    using var document = JsonDocument.Parse(text);
+                    // Not an object: somebody's hand-made file. Leave it alone.
+                    if (document.RootElement.ValueKind != JsonValueKind.Object)
+                        return true;
+                    root = (JsonObject)JsonNode.Parse(document.RootElement.GetRawText())!;
+                }
+            }
+        }
+        catch (Exception read) when (read is IOException or UnauthorizedAccessException
+            or JsonException or NotSupportedException)
+        {
+            return false;
+        }
+
+        // Already answered — either by us on an earlier run or by the user in
+        // Obsidian's settings. Nothing to add.
+        if (root.ContainsKey(ShowUnsupportedFilesKey))
+            return true;
+
+        root[ShowUnsupportedFilesKey] = true;
+        try
+        {
+            // Same reasoning as the vault registry: write beside the original
+            // and move into place, so a crash cannot leave Obsidian with a
+            // half-written settings file.
+            var temporary = path + ".tmp";
+            File.WriteAllText(temporary, root.ToJsonString(new JsonSerializerOptions { WriteIndented = false }));
+            File.Move(temporary, path, overwrite: true);
+            return true;
+        }
+        catch (Exception write) when (write is IOException or UnauthorizedAccessException
+            or NotSupportedException or ArgumentException)
+        {
             return false;
         }
     }
