@@ -3,6 +3,21 @@ namespace WeChatBridge.Windows.Core;
 /// <summary>Stable folder names used for saved chat attachments.</summary>
 public static class AttachmentCategory
 {
+    /// <summary>
+    /// Folder for the files Obsidian must not list: the raw WeChat ZIP and
+    /// anything technical that arrived with a client's files.
+    /// <para>
+    /// The leading dot is the whole mechanism. Obsidian skips every path whose
+    /// segment starts with one — no plugin, no CSS, no patch to Obsidian — so
+    /// these files stay on disk, keep their path, and stay out of the file
+    /// explorer, the link index, search and quick switcher. Deliberately a
+    /// native behaviour rather than a UI filter: a vault configured this way
+    /// works on any Obsidian version and on any machine the folder is copied
+    /// to, including one where the customer has never opened the settings.
+    /// </para>
+    /// </summary>
+    public const string HiddenOriginalsFolder = ".原始归档";
+
     private static readonly HashSet<string> Images = new(StringComparer.OrdinalIgnoreCase)
     {
         "png", "jpg", "jpeg", "gif", "bmp", "webp", "tif", "tiff", "heic", "heif", "avif", "svg", "ico",
@@ -36,6 +51,22 @@ public static class AttachmentCategory
         "mp4", "mov", "m4v", "avi", "mkv", "wmv", "flv", "webm", "mpg", "mpeg", "3gp", "ts",
     };
 
+    /// <summary>
+    /// Extensions a lawyer never works with: what a file arrived in, not what
+    /// it says. Kept narrow on purpose — an unknown document format from a
+    /// client (<c>ofd</c>, <c>eml</c>, <c>wps</c>) must stay in <c>其他</c> and
+    /// stay visible, because it may well be the case file.
+    /// </summary>
+    private static readonly HashSet<string> Technical = new(StringComparer.OrdinalIgnoreCase)
+    {
+        // Archives.
+        "zip", "rar", "7z", "tar", "gz", "tgz", "bz2", "xz",
+        // Installers and binaries.
+        "msi", "msix", "appx", "exe", "dll", "sys", "cab", "iso",
+        // Scripts and system leftovers.
+        "bat", "cmd", "ps1", "vbs", "reg", "tmp", "bak", "lnk",
+    };
+
     public static string FolderFor(string fileName)
     {
         var extension = Path.GetExtension(fileName).TrimStart('.');
@@ -49,4 +80,12 @@ public static class AttachmentCategory
         if (Videos.Contains(extension)) return "视频";
         return "其他";
     }
+
+    /// <summary>
+    /// True when the file is packaging or machinery rather than content, so it
+    /// belongs in <see cref="HiddenOriginalsFolder"/> instead of a category a
+    /// reader browses.
+    /// </summary>
+    public static bool IsTechnical(string fileName) =>
+        Technical.Contains(Path.GetExtension(fileName).TrimStart('.'));
 }

@@ -173,7 +173,9 @@ public static class ObsidianNote
             lines.Add("");
             lines.Add(archiveName is null
                 ? "此文件为独立附件，没有聊天正文。"
-                : "此 ZIP 未包含可识别的聊天正文。原始 ZIP 已保留，可在附件中打开。");
+                : IsHiddenAttachment(archiveName)
+                    ? "此 ZIP 未包含可识别的聊天正文。原始 ZIP 已保留，Obsidian 不显示，需要时在资源管理器中打开。"
+                    : "此 ZIP 未包含可识别的聊天正文。原始 ZIP 已保留，可在附件中打开。");
         }
         if (!string.IsNullOrEmpty(extractionIssue))
         {
@@ -423,8 +425,21 @@ public static class ObsidianNote
         return result;
     }
 
+    /// <summary>
+    /// Where a file sits in the note: a clickable link, or plain text when it
+    /// lives under a dot-prefixed folder.
+    /// <para>
+    /// Obsidian does not index dot paths, so <c>[[附件/.原始归档/x.zip]]</c>
+    /// would render as a broken link that offers to create the file — worse
+    /// than saying nothing. The path is written as a code span instead: it
+    /// stays readable, it survives filenames carrying markdown's own
+    /// punctuation, and it does not look clickable.
+    /// </para>
+    /// </summary>
     private static string AttachmentLink(string name)
     {
+        if (IsHiddenAttachment(name))
+            return $"`附件/{name}`";
         var path = $"附件/{name}"
             .Replace("\\", "\\\\", StringComparison.Ordinal)
             .Replace("[", "\\[", StringComparison.Ordinal)
@@ -434,6 +449,17 @@ public static class ObsidianNote
             .Replace("|", "\\|", StringComparison.Ordinal);
         var extension = Path.GetExtension(name).TrimStart('.');
         return EmbeddableExtensions.Contains(extension) ? $"![[{path}]]" : $"[[{path}]]";
+    }
+
+    /// <summary>
+    /// True when the attachment path starts with a dot, which is how the
+    /// delivery keeps files out of Obsidian's view.
+    /// </summary>
+    private static bool IsHiddenAttachment(string name)
+    {
+        var slash = name.IndexOf('/');
+        var first = slash < 0 ? name : name[..slash];
+        return first.StartsWith('.');
     }
 
     private static string Quoted(string value) =>

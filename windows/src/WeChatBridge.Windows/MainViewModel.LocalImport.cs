@@ -35,7 +35,7 @@ public sealed partial class MainViewModel
                     await Task.Run(() => KnowledgeDelivery.Deliver(
                         batch.Items.Select(item => item.FullPath).ToList(),
                         _settings.ObsidianVaultPath!, _settings.ObsidianSubfolder,
-                        batch.ChatName, sceneName: null));
+                        batch.ChatName, sceneName: null, obsidianVaultLayout: true));
                     Record(BatchOutcomeKind.Delivered, batch.Id, targetName: "Obsidian");
                     archived = true;
                 }

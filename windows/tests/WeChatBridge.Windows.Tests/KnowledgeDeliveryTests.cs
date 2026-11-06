@@ -283,6 +283,88 @@ public sealed class KnowledgeDeliveryTests
             KnowledgeDelivery.Deliver([source], destination, "项目", null, null, cancellation.Token));
     }
 
+    [Fact]
+    public void ObsidianLayoutKeepsTheRawArchiveAndTechnicalFilesOutOfSight()
+    {
+        // Obsidian lists every extension once unsupported files are shown, so
+        // the vault layout parks the raw ZIP and the machinery under a folder
+        // whose name starts with a dot — the one thing Obsidian ignores on its
+        // own, with no plugin, snippet or patched install.
+        using var fixture = new TempInbox();
+        var source = Zip(fixture, "chat.zip", [
+            ("聊天记录.txt", "·甲\n2026年9月20日 09:10\n合同.pdf\n"),
+            ("合同.pdf", "pdf"),
+            ("setup.msi", "installer"),
+            ("律师函.docx", "word"),
+        ]);
+        var destination = Path.Combine(fixture.Root, "vault");
+        Directory.CreateDirectory(destination);
+
+        var notePath = KnowledgeDelivery.DeliverResult(
+            [source], destination, "项目", "群", null, obsidianVaultLayout: true).Notes.Single();
+        var note = File.ReadAllText(notePath);
+        var attachmentRoot = Path.Combine(destination, "项目", "附件");
+
+        Assert.True(File.Exists(Path.Combine(attachmentRoot, ".原始归档", "chat.zip")));
+        Assert.True(File.Exists(Path.Combine(attachmentRoot, ".原始归档", "setup.msi")));
+        Assert.False(Directory.Exists(Path.Combine(attachmentRoot, "原始归档")));
+        Assert.False(Directory.Exists(Path.Combine(attachmentRoot, "其他")));
+        Assert.True(File.Exists(Path.Combine(attachmentRoot, "Word文档", "律师函.docx")));
+        Assert.True(File.Exists(Path.Combine(attachmentRoot, "PDF", "合同.pdf")));
+
+        // A dot path is not indexed, so a [[…]] link would render as a broken
+        // link offering to create the file. Written as text instead.
+        Assert.Contains("`附件/.原始归档/chat.zip`", note);
+        Assert.Contains("`附件/.原始归档/setup.msi`", note);
+        Assert.DoesNotContain("[[附件/.原始归档", note);
+        // Case work keeps its clickable link.
+        Assert.Contains("[[附件/Word文档/律师函.docx]]", note);
+    }
+
+    [Fact]
+    public void FolderLayoutKeepsTheReadableArchiveFolderName()
+    {
+        // A plain folder has nothing filtering it, and the user is the one
+        // opening the ZIP — moving it to a dot folder there is a regression,
+        // not a fix.
+        using var fixture = new TempInbox();
+        var source = Zip(fixture, "chat.zip", [
+            ("聊天记录.txt", "·甲\n2026年9月20日 09:10\n"),
+            ("setup.msi", "installer"),
+        ]);
+        var destination = Path.Combine(fixture.Root, "out");
+        Directory.CreateDirectory(destination);
+
+        var notePath = KnowledgeDelivery.Deliver([source], destination, "项目", "群", null).Single();
+        var note = File.ReadAllText(notePath);
+        var attachmentRoot = Path.Combine(destination, "项目", "附件");
+
+        Assert.True(File.Exists(Path.Combine(attachmentRoot, "原始归档", "chat.zip")));
+        Assert.True(File.Exists(Path.Combine(attachmentRoot, "其他", "setup.msi")));
+        Assert.Contains("[[附件/原始归档/chat.zip]]", note);
+        Assert.Contains("[[附件/其他/setup.msi]]", note);
+    }
+
+    [Fact]
+    public void CaseWorkExtensionsAreNeverTreatedAsTechnical()
+    {
+        // The reverse constraint: hiding a client's document would be worse
+        // than showing an installer. Unknown formats stay in 其他, visible.
+        foreach (var name in new[]
+        {
+            "律师函.docx", "数据.xlsx", "合同.pdf", "陈述.pptx", "扫描件.jpg",
+            "录音.m4a", "口供.wav", "发票.ofd", "邮件.eml", "金山.wps", "说明.txt",
+        })
+        {
+            Assert.False(AttachmentCategory.IsTechnical(name), name);
+        }
+
+        foreach (var name in new[] { "包.zip", "安装包.msi", "脚本.bat", "镜像.iso", "备份.7z", "库.dll" })
+        {
+            Assert.True(AttachmentCategory.IsTechnical(name), name);
+        }
+    }
+
     private static string Zip(TempInbox fixture, string name, IReadOnlyList<(string Path, string Text)> entries)
     {
         var path = fixture.WriteSource(name, "");

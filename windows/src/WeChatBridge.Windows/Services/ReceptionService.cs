@@ -847,7 +847,8 @@ public sealed class ReceptionService : INotifyPropertyChanged, IDisposable
                 cancellationToken: cancellationToken,
                 // Degradations are written to the log with the reason; the job
                 // record only carries the summary the user sees.
-                diagnose: (message, error) => InboxLogger.Write(_paths, message, error)),
+                diagnose: (message, error) => InboxLogger.Write(_paths, message, error),
+                obsidianVaultLayout: true),
                 cancellationToken).ConfigureAwait(false);
 
             var note = result.Notes.FirstOrDefault();

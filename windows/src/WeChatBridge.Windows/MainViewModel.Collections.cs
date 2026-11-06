@@ -220,7 +220,7 @@ public sealed partial class MainViewModel
                     var notes = new List<string>();
                     foreach (var batch in batches)
                         notes.AddRange(await Task.Run(() => KnowledgeDelivery.Deliver(batch.Items.Select(i => i.FullPath).ToList(), root,
-                            _settings.ObsidianSubfolder, batch.ChatName, null)));
+                            _settings.ObsidianSubfolder, batch.ChatName, null, obsidianVaultLayout: true)));
                     succeeded = true;
                     detail = L10n.Format($"已保存 {notes.Distinct().Count()} 篇笔记，原始 ZIP 已保留。");
                     if (action == ShareAction.Obsidian && _settings.OpenObsidianAfterDelivery) OpenInObsidian(root, notes);

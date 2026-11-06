@@ -60,26 +60,33 @@ Windows 使用临时目录构造 ZIP 验证四种类别、大小写扩展名、�
 
 macOS 不需要同步改动：macOS 端只使用用户已选好的知识库，不初始化也不写 `.obsidian` 配置。
 
-## 技术类文件不进文件树（2026-11-06，同日追加）
+## 技术类文件不进文件树（2026-11-06，当日两版，结论取原生方案）
 
 上一步是"全开"，代价立竿见影：`原始归档\` 里的微信导出 zip、`其他\` 里的 .msi 之类一起冒了出来。这些不是办案材料，客户打开知识库只该看到 PDF、Word、表格、图片、视频。需求是**按类型排除，而不是整体关掉**。
 
-先排除两条走不通的路：
+三条路的结论：
 
 | 方案 | 结论 |
 | --- | --- |
 | Obsidian「设置 → 文件与链接 → 排除的文件」（`userIgnoreFilters`） | **不行**。官方行为只在搜索、关系图谱、反链中被隐藏，文件树照旧显示（"the file explorer still shows them"）。 |
-| 把 `原始归档` 改成 `.原始归档` 点前缀目录 | 可以隐藏（Obsidian 完全跳过点开头路径），但会**移动磁盘上的路径**，笔记里 `[[原始归档/…zip]]` 这条唯一指向原件的链接随之失效，还要迁移老知识库。 |
+| CSS 代码片段按 `data-path` 后缀隐藏（`.obsidian/snippets/…css`） | 能用，**已废弃**。依赖 Obsidian 内部 DOM 类名（`.nav-file-title` / `.nav-folder-title`），等于往客户的 Obsidian 里注入样式，客户侧感觉像打补丁；类名一变就失效。 |
+| **`附件/.原始归档/` 点前缀目录** | **采用**。Obsidian 原生跳过任何点开头的路径段，不索引、不显示、不解析链接，不需要插件、不需要样式、不改 Obsidian 本体。 |
 
-**采用：CSS 代码片段**。`.obsidian/snippets/hide-technical-files.css` 以 `data-path` 后缀匹配隐藏条目，再由 `appearance.json` 的 `enabledCssSnippets` 自动启用。
+### 最终实现
 
-- 隐藏内容：压缩包（zip/rar/7z/tar/gz/tgz/bz2/xz）、安装包与可执行文件（msi/msix/appx/exe/dll/sys/cab/iso）、脚本与系统文件（bat/cmd/ps1/vbs/reg/tmp/bak/lnk），以及 `原始归档` 文件夹本身。
-- 后缀匹配带 `i` 标志，`.ZIP` 这类大写扩展名同样命中（Windows 来源常见）。
-- **只影响文件树显示**：路径不变、文件不移动、链接照旧可点（点开由系统默认程序处理），关掉 snippet 立刻全部回来。这是唯一一个"隐藏但不动磁盘"的原生机制。
-- 反向约束也写进测试：`.docx`、`.xlsx`、`.pdf` 不能出现在隐藏列表里，防止哪天手滑把办案文件也藏了。
-- snippet 由程序维护，文本变化即重写（新增扩展名能推到老知识库）；`appearance.json` 只做追加，用户自己启用的 snippet 与 `baseFontSize` 等键全部保留，已启用则不重复写、不重复加。
-- DOM 依赖风险：`.nav-file-title` / `.nav-folder-title[data-path]` 是 Obsidian 1.x 的长期类名，已在本机 1.9 安装包 `obsidian.asar` 中确认存在。若某天 Obsidian 改名，失败表现是"文件又出现了"，纯显示问题，不丢数据。
+- `AttachmentCategory.HiddenOriginalsFolder = ".原始归档"`，`AttachmentCategory.IsTechnical(fileName)` 判定"封装形态而非内容"的扩展名：压缩包（zip/rar/7z/tar/gz/tgz/bz2/xz）、安装包与可执行文件（msi/msix/appx/exe/dll/sys/cab/iso）、脚本与系统文件（bat/cmd/ps1/vbs/reg/tmp/bak/lnk）。
+- `KnowledgeDelivery` 新增 `obsidianVaultLayout` 参数（默认 false）：
+  - **true（Obsidian 各入口）**：整批 ZIP 与 `IsTechnical` 命中的单个附件都进 `.原始归档/`。
+  - **false（沉淀到文件夹）**：保持可读的 `原始归档/` 与 `其他/`。普通文件夹没有任何过滤器，用户本来就要自己打开 ZIP，改了反而是回归。
+  - 调用点：`MainViewModel.Collections`（仅 Obsidian 分支）、`MainViewModel.LocalImport`、`MainViewModel` 的转发入口（按 `ShareAction.Obsidian` 判定）、`ReceptionService` 的接收投递；`ShareAction.Folder` 与 `Delivery` 的配置重载（本就指向 vault）分别为 false / true。
+- `ObsidianNote.AttachmentLink`：路径首段以点开头时输出 `\`附件/.原始归档/x.zip\`` 纯文本而不是 `[[…]]`。点路径不进索引，写链接只会变成"未找到、要不要新建"的坏链接，比不写更糟。`其他` 里客户发来的 `ofd/eml/wps` 仍是正常可点链接。
+- 反向约束写进测试：`docx/xlsx/pdf/pptx/jpg/m4a/ofd/eml/wps/txt` 一律不算 technical。藏错办案文件比露出安装包严重得多。
+- 老数据不迁移：已有 `原始归档/` 与其笔记链接继续有效，新批次才落在 `.原始归档/`，与"既有 Markdown 和旧附件保持有效"的既定策略一致。
 
-两个配置都由 Obsidian 启动时读取，所以运行中的 Obsidian 要**重新加载**才看得到；`showUnsupportedFiles` 与 snippet 必须同时生效，缺一个就是"全看不见"或"连 zip 一起看见"。
+### 与配置的关系
 
-**验证**：`ObsidianVaultRegistryTests` 42/42 通过（本次新增 5 条：snippet 装上并启用、隐藏列表内容正确且不含办案类型、用户自己的 snippet 与外观键保留、重复初始化不重复登记、未初始化目录报错）。
+只剩一处配置改动：`app.json` 的 `showUnsupportedFiles: true`（见上一节），让 docx/xlsx 可见。它和点前缀目录配合才成立——缺少它就是"Word/表格看不见"，只多不少。客户机器上的 Obsidian 保持原样，没有任何注入物。
+
+**验证**：Windows Core `KnowledgeDeliveryTests` 25/25（新增 3 条：Obsidian 布局下 ZIP 与 msi 进 `.原始归档` 且笔记写成纯文本、文件夹布局保持 `原始归档`/`其他` 与可点链接、办案扩展名不得判为 technical）；`ObsidianVaultRegistryTests` + `ForwardingTests` 42/42。全量测试交 CI。
+
+**遗留**：macOS 端仍未同步（`KnowledgeDelivery.swift` 用 `原始归档`、`ObsidianNote.swift` 的附件链接也未区分点路径），本机无 Swift 工具链，无法编译验证，待 macOS 环境处理。

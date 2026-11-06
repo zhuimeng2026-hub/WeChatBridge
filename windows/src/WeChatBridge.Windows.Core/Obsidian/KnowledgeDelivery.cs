@@ -53,14 +53,17 @@ public static class KnowledgeDelivery
         var settings = new ObsidianSettingsStore(configDirectory).Load();
         if (string.IsNullOrEmpty(settings.VaultPath))
             throw new FailureException(FailureKind.NotConfigured);
-        return Deliver(paths, settings.VaultPath, settings.Subfolder, chatName, sceneName, cancellationToken);
+        return Deliver(paths, settings.VaultPath, settings.Subfolder, chatName, sceneName,
+            cancellationToken, obsidianVaultLayout: true);
     }
 
     /// <summary>Delivers into an explicitly selected vault and subfolder.</summary>
     public static List<string> Deliver(
         IReadOnlyList<string> paths, string vaultPath, string subfolder,
-        string? chatName, string? sceneName, CancellationToken cancellationToken = default) =>
-        DeliverResult(paths, vaultPath, subfolder, chatName, sceneName, cancellationToken).Notes.ToList();
+        string? chatName, string? sceneName, CancellationToken cancellationToken = default,
+        bool obsidianVaultLayout = false) =>
+        DeliverResult(paths, vaultPath, subfolder, chatName, sceneName, cancellationToken,
+            obsidianVaultLayout: obsidianVaultLayout).Notes.ToList();
 
     /// <summary>
     /// Delivers and reports what actually landed: the note paths to open, the
@@ -72,10 +75,20 @@ public static class KnowledgeDelivery
     /// the macOS build and the tests use — the Core library must not assume a
     /// log destination it does not own.
     /// </param>
+    /// <param name="obsidianVaultLayout">
+    /// When the destination is an Obsidian vault, the raw ZIP and the
+    /// technical leftovers go to <see cref="AttachmentCategory.HiddenOriginalsFolder"/>
+    /// instead of a browsable category — Obsidian lists every file it did not
+    /// write itself once unsupported extensions are shown, and a lawyer should
+    /// not be paging through installers. A plain folder export keeps the
+    /// readable `原始归档` name: nothing filters it there, and the user is the
+    /// one opening the ZIP.
+    /// </param>
     public static DeliveryResult DeliverResult(
         IReadOnlyList<string> paths, string vaultPath, string subfolder,
         string? chatName, string? sceneName, CancellationToken cancellationToken = default,
-        Action<string, Exception?>? diagnose = null)
+        Action<string, Exception?>? diagnose = null,
+        bool obsidianVaultLayout = false)
     {
         if (paths.Count == 0) throw new FailureException(FailureKind.UnreadableArchive);
         FolderDelivery.ValidateFolder(vaultPath);
@@ -90,6 +103,21 @@ public static class KnowledgeDelivery
         var archivesWritten = new List<string>();
         var attachmentsWritten = new List<string>();
         var warnings = new List<string>();
+
+        // Where the raw ZIP goes. Inside a vault the name starts with a dot so
+        // Obsidian never lists it; a plain folder keeps the readable name.
+        var archiveFolderName = obsidianVaultLayout ? AttachmentCategory.HiddenOriginalsFolder : "原始归档";
+
+        // Same reasoning for individual attachments: packaging and machinery
+        // are not what a reader browses a vault for.
+        string CategoryFor(string fileName)
+        {
+            var category = AttachmentCategory.FolderFor(fileName);
+            return obsidianVaultLayout && AttachmentCategory.IsTechnical(fileName)
+                ? AttachmentCategory.HiddenOriginalsFolder
+                : category;
+        }
+
         foreach (var path in paths)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -121,10 +149,10 @@ public static class KnowledgeDelivery
                     transcript = null;
                 }
 
-                var archiveFolder = Path.Combine(attachmentRoot, "原始归档");
+                var archiveFolder = Path.Combine(attachmentRoot, archiveFolderName);
                 Directory.CreateDirectory(archiveFolder);
                 var savedArchive = FolderDelivery.Save([path], archiveFolder, cancellationToken).Single();
-                archiveRelative = $"原始归档/{Path.GetFileName(savedArchive)}";
+                archiveRelative = $"{archiveFolderName}/{Path.GetFileName(savedArchive)}";
                 archivesWritten.Add(savedArchive);
 
                 var staging = Path.Combine(Path.GetTempPath(), "lawdesk-media-" + Guid.NewGuid().ToString("N"));
@@ -141,7 +169,7 @@ public static class KnowledgeDelivery
                     {
                         cancellationToken.ThrowIfCancellationRequested();
                         var sourcePath = Path.Combine(staging, sourceName.Replace('/', Path.DirectorySeparatorChar));
-                        var category = AttachmentCategory.FolderFor(sourceName);
+                        var category = CategoryFor(sourceName);
                         var categoryFolder = Path.Combine(attachmentRoot, category);
                         Directory.CreateDirectory(categoryFolder);
                         var saved = FolderDelivery.Save([sourcePath], categoryFolder, cancellationToken).Single();
@@ -165,7 +193,7 @@ public static class KnowledgeDelivery
             }
             else
             {
-                var category = AttachmentCategory.FolderFor(Path.GetFileName(path));
+                var category = CategoryFor(Path.GetFileName(path));
                 var categoryFolder = Path.Combine(attachmentRoot, category);
                 Directory.CreateDirectory(categoryFolder);
                 var saved = FolderDelivery.Save([path], categoryFolder, cancellationToken).Single();

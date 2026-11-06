@@ -77,6 +77,8 @@ Forward with the “Article extraction” skill installed, and the agent fetches
 
 Attachments are rendered the way they appear in WeChat, so images, files, and links keep their original shape and you can read the note without opening the original ZIP.
 
+The raw ZIPs and installers that are not case material are filed under `附件/.原始归档`. Obsidian never shows a folder whose name starts with a dot — that is its own rule, with no plugin and no setting to change — so the file tree only carries PDFs, Word documents, spreadsheets, images and videos. The note still records them as plain paths; open that folder in File Explorer when you need the original. Saving to a plain folder is unaffected and keeps `附件/原始归档` and `附件/其他`.
+
 ![Attachment rendering](shared/Screenshots/usage-obsidian-attachments.png)
 
 ## History

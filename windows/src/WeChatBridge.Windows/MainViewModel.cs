@@ -948,7 +948,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
                     var paths = batch.Items.Select(i => i.FullPath).ToList();
                     var written = KnowledgeDelivery.Deliver(
                         paths, vault, action == ShareAction.Obsidian ? _settings.ObsidianSubfolder : _settings.DeliverySubfolder,
-                        choice.GroupName, null);
+                        choice.GroupName, null, obsidianVaultLayout: action == ShareAction.Obsidian);
                     if (action == ShareAction.Obsidian && _settings.OpenObsidianAfterDelivery)
                         OpenInObsidian(vault, written);
                     // No scene or insights to advance; the call still stamps
