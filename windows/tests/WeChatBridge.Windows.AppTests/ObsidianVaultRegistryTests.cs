@@ -479,6 +479,90 @@ public sealed class ObsidianVaultRegistryTests : IDisposable
         Assert.True(root["showUnsupportedFiles"]!.GetValue<bool>());
     }
 
+    // --- technical files hidden in the file explorer -------------------------
+
+    [Fact]
+    public void Initialising_a_vault_installs_and_enables_the_snippet()
+    {
+        // Showing unsupported files is all-or-nothing, so the raw ZIP and any
+        // installer a client sent would show up next to the case files. The
+        // snippet is what filters those back out of the explorer.
+        var folder = NewFolder("snippet");
+
+        Assert.True(ObsidianVaultRegistry.EnsureVaultInitialized(folder, out _));
+
+        var css = Path.Combine(folder, ".obsidian", "snippets", "hide-technical-files.css");
+        Assert.True(File.Exists(css));
+        var enabled = JsonNode.Parse(
+            File.ReadAllText(Path.Combine(folder, ".obsidian", "appearance.json")))!
+            .AsObject()["enabledCssSnippets"]!.AsArray();
+        Assert.Contains(enabled, node => node!.GetValue<string>() == "hide-technical-files");
+    }
+
+    [Fact]
+    public void The_snippet_hides_archives_installers_and_the_archive_folder()
+    {
+        var folder = NewFolder("snippet-content");
+
+        Assert.True(ObsidianVaultRegistry.EnsureVaultInitialized(folder, out _));
+
+        var css = File.ReadAllText(
+            Path.Combine(folder, ".obsidian", "snippets", "hide-technical-files.css"));
+        // Case-insensitive suffix match: a Windows machine writes .ZIP too.
+        Assert.Contains("[data-path$=\".zip\" i]", css);
+        Assert.Contains("[data-path$=\".msi\" i]", css);
+        Assert.Contains("[data-path$=\".exe\" i]", css);
+        Assert.Contains("[data-path$=\"/原始归档\"]", css);
+        // The case-work types must stay out of the hide list.
+        Assert.DoesNotContain(".docx", css);
+        Assert.DoesNotContain(".xlsx", css);
+        Assert.DoesNotContain(".pdf", css);
+    }
+
+    [Fact]
+    public void The_snippet_keeps_the_snippets_the_user_enabled_themselves()
+    {
+        var folder = NewFolder("own-snippets");
+        var marker = Path.Combine(folder, ".obsidian", "appearance.json");
+        Directory.CreateDirectory(Path.Combine(folder, ".obsidian"));
+        File.WriteAllText(
+            marker,
+            "{\"baseFontSize\":16,\"enabledCssSnippets\":[\"my-theme\"]}");
+
+        Assert.True(ObsidianVaultRegistry.EnsureVaultInitialized(folder, out _));
+
+        var root = JsonNode.Parse(File.ReadAllText(marker))!.AsObject();
+        Assert.Equal(16, root["baseFontSize"]!.GetValue<int>());
+        var enabled = root["enabledCssSnippets"]!.AsArray();
+        Assert.Equal(2, enabled.Count);
+        Assert.Contains(enabled, node => node!.GetValue<string>() == "my-theme");
+        Assert.Contains(enabled, node => node!.GetValue<string>() == "hide-technical-files");
+    }
+
+    [Fact]
+    public void Enabling_the_snippet_twice_does_not_duplicate_it()
+    {
+        var folder = NewFolder("twice");
+
+        Assert.True(ObsidianVaultRegistry.EnsureVaultInitialized(folder, out _));
+        Assert.True(ObsidianVaultRegistry.EnsureVaultInitialized(folder, out _));
+
+        var enabled = JsonNode.Parse(
+            File.ReadAllText(Path.Combine(folder, ".obsidian", "appearance.json")))!
+            .AsObject()["enabledCssSnippets"]!.AsArray();
+        Assert.Single(enabled);
+    }
+
+    [Fact]
+    public void EnsureTechnicalFilesHidden_reports_an_uninitialised_vault()
+    {
+        var folder = NewFolder("not-a-vault-either");
+
+        Assert.False(ObsidianVaultRegistry.EnsureTechnicalFilesHidden(folder, out var error));
+
+        Assert.NotNull(error);
+    }
+
     [Fact]
     public void EnsureVaultInitialized_reports_failure_for_a_missing_directory()
     {

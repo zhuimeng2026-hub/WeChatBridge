@@ -56,7 +56,30 @@ Windows 使用临时目录构造 ZIP 验证四种类别、大小写扩展名、�
 
 副作用需知：开启后 `原始归档\` 的 zip 与 `其他\` 的 msi 也会出现在文件树里，目录会比之前"乱"，但律师查原件反而更直接。
 
-macOS 不需要同步改动：macOS 端只使用用户已选好的知识库，不初始化也不写 `.obsidian` 配置。
-
 **验证**：`ObsidianVaultRegistryTests` 37/37 通过（新增/改写 7 条：新库补键、保留其他键、尊重显式 false、非对象文件不动、未初始化目录报错、已存在的旧库可修复、初始化后自定义键仍在）。全量测试与构建交给 CI。
 
+macOS 不需要同步改动：macOS 端只使用用户已选好的知识库，不初始化也不写 `.obsidian` 配置。
+
+## 技术类文件不进文件树（2026-11-06，同日追加）
+
+上一步是"全开"，代价立竿见影：`原始归档\` 里的微信导出 zip、`其他\` 里的 .msi 之类一起冒了出来。这些不是办案材料，客户打开知识库只该看到 PDF、Word、表格、图片、视频。需求是**按类型排除，而不是整体关掉**。
+
+先排除两条走不通的路：
+
+| 方案 | 结论 |
+| --- | --- |
+| Obsidian「设置 → 文件与链接 → 排除的文件」（`userIgnoreFilters`） | **不行**。官方行为只在搜索、关系图谱、反链中被隐藏，文件树照旧显示（"the file explorer still shows them"）。 |
+| 把 `原始归档` 改成 `.原始归档` 点前缀目录 | 可以隐藏（Obsidian 完全跳过点开头路径），但会**移动磁盘上的路径**，笔记里 `[[原始归档/…zip]]` 这条唯一指向原件的链接随之失效，还要迁移老知识库。 |
+
+**采用：CSS 代码片段**。`.obsidian/snippets/hide-technical-files.css` 以 `data-path` 后缀匹配隐藏条目，再由 `appearance.json` 的 `enabledCssSnippets` 自动启用。
+
+- 隐藏内容：压缩包（zip/rar/7z/tar/gz/tgz/bz2/xz）、安装包与可执行文件（msi/msix/appx/exe/dll/sys/cab/iso）、脚本与系统文件（bat/cmd/ps1/vbs/reg/tmp/bak/lnk），以及 `原始归档` 文件夹本身。
+- 后缀匹配带 `i` 标志，`.ZIP` 这类大写扩展名同样命中（Windows 来源常见）。
+- **只影响文件树显示**：路径不变、文件不移动、链接照旧可点（点开由系统默认程序处理），关掉 snippet 立刻全部回来。这是唯一一个"隐藏但不动磁盘"的原生机制。
+- 反向约束也写进测试：`.docx`、`.xlsx`、`.pdf` 不能出现在隐藏列表里，防止哪天手滑把办案文件也藏了。
+- snippet 由程序维护，文本变化即重写（新增扩展名能推到老知识库）；`appearance.json` 只做追加，用户自己启用的 snippet 与 `baseFontSize` 等键全部保留，已启用则不重复写、不重复加。
+- DOM 依赖风险：`.nav-file-title` / `.nav-folder-title[data-path]` 是 Obsidian 1.x 的长期类名，已在本机 1.9 安装包 `obsidian.asar` 中确认存在。若某天 Obsidian 改名，失败表现是"文件又出现了"，纯显示问题，不丢数据。
+
+两个配置都由 Obsidian 启动时读取，所以运行中的 Obsidian 要**重新加载**才看得到；`showUnsupportedFiles` 与 snippet 必须同时生效，缺一个就是"全看不见"或"连 zip 一起看见"。
+
+**验证**：`ObsidianVaultRegistryTests` 42/42 通过（本次新增 5 条：snippet 装上并启用、隐藏列表内容正确且不含办案类型、用户自己的 snippet 与外观键保留、重复初始化不重复登记、未初始化目录报错）。

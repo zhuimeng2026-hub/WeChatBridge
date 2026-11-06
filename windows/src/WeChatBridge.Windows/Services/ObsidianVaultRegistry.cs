@@ -326,7 +326,9 @@ internal static class ObsidianVaultRegistry
     /// mentioned <c>showUnsupportedFiles</c> gets that key seeded to true, so
     /// the delivered <c>docx</c>/<c>xlsx</c> attachments are not hidden from
     /// Obsidian's file explorer. See
-    /// <see cref="EnsureUnsupportedFilesVisible"/> for why that matters.
+    /// <see cref="EnsureUnsupportedFilesVisible"/> for why that matters. The
+    /// technical leftovers that switch also un-hides are filtered again by a
+    /// CSS snippet — see <see cref="EnsureTechnicalFilesHidden"/>.
     /// </para>
     /// </summary>
     /// <param name="vaultPath">The vault folder to initialise.</param>
@@ -364,6 +366,7 @@ internal static class ObsidianVaultRegistry
         // are the ones the product already treats as non-fatal (read-only
         // folder, file locked by a running Obsidian).
         SeedUnsupportedFilesVisible(obsidianDir);
+        SeedTechnicalFilesHidden(obsidianDir);
         return true;
     }
 
@@ -437,26 +440,8 @@ internal static class ObsidianVaultRegistry
         JsonObject root;
         try
         {
-            if (!File.Exists(path))
-            {
-                root = new JsonObject();
-            }
-            else
-            {
-                var text = File.ReadAllText(path);
-                if (string.IsNullOrWhiteSpace(text))
-                {
-                    root = new JsonObject();
-                }
-                else
-                {
-                    using var document = JsonDocument.Parse(text);
-                    // Not an object: somebody's hand-made file. Leave it alone.
-                    if (document.RootElement.ValueKind != JsonValueKind.Object)
-                        return true;
-                    root = (JsonObject)JsonNode.Parse(document.RootElement.GetRawText())!;
-                }
-            }
+            if (!TryLoadJsonObject(path, out root))
+                return true;
         }
         catch (Exception read) when (read is IOException or UnauthorizedAccessException
             or JsonException or NotSupportedException)
@@ -470,11 +455,202 @@ internal static class ObsidianVaultRegistry
             return true;
 
         root[ShowUnsupportedFilesKey] = true;
+        return WriteJsonAtomically(path, root);
+    }
+
+    /// <summary>Folder Obsidian loads CSS snippets from, inside <c>.obsidian</c>.</summary>
+    private const string SnippetsFolderName = "snippets";
+
+    /// <summary>
+    /// Name of the snippet that keeps technical junk out of the file explorer.
+    /// Extension-less on purpose: Obsidian registers snippets by file stem.
+    /// </summary>
+    private const string TechnicalFilesSnippet = "hide-technical-files";
+
+    /// <summary>
+    /// The snippet itself. Hides, in the file explorer only, the extensions a
+    /// lawyer never works with — raw archives, installers, binaries, scripts —
+    /// plus the <c>原始归档</c> folder that holds the WeChat export.
+    /// <para>
+    /// <c>data-path</c> suffix matching is case-insensitive (<c>i</c> flag) so
+    /// <c>.ZIP</c> from a Windows machine is covered as well. Nothing is hidden
+    /// once the snippet is switched off, and no file moves.
+    /// </para>
+    /// </summary>
+    private const string TechnicalFilesCss = """
+        /*
+         * 律档通生成：文件树只显示办案会用到的文件类型。
+         * 原始压缩包、安装包、可执行文件、脚本留在磁盘上，只是不在 Obsidian 里出现；
+         * 笔记里的链接仍然可以点击。
+         * 本文件由程序维护，重新保存知识库设置时会被覆盖。
+         */
+
+        .nav-folder-title[data-path$="/原始归档"],
+        .nav-file-title[data-path$=".zip" i],
+        .nav-file-title[data-path$=".rar" i],
+        .nav-file-title[data-path$=".7z" i],
+        .nav-file-title[data-path$=".tar" i],
+        .nav-file-title[data-path$=".gz" i],
+        .nav-file-title[data-path$=".tgz" i],
+        .nav-file-title[data-path$=".bz2" i],
+        .nav-file-title[data-path$=".xz" i],
+        .nav-file-title[data-path$=".msi" i],
+        .nav-file-title[data-path$=".msix" i],
+        .nav-file-title[data-path$=".appx" i],
+        .nav-file-title[data-path$=".exe" i],
+        .nav-file-title[data-path$=".dll" i],
+        .nav-file-title[data-path$=".sys" i],
+        .nav-file-title[data-path$=".cab" i],
+        .nav-file-title[data-path$=".iso" i],
+        .nav-file-title[data-path$=".bat" i],
+        .nav-file-title[data-path$=".cmd" i],
+        .nav-file-title[data-path$=".ps1" i],
+        .nav-file-title[data-path$=".vbs" i],
+        .nav-file-title[data-path$=".reg" i],
+        .nav-file-title[data-path$=".tmp" i],
+        .nav-file-title[data-path$=".bak" i],
+        .nav-file-title[data-path$=".lnk" i] {
+          display: none;
+        }
+
+        """;
+
+    /// <summary>
+    /// Keeps the attachments a lawyer has no use for out of Obsidian's file
+    /// explorer, without moving anything on disk.
+    /// <para>
+    /// Two settings have to work together and neither alone is enough.
+    /// <see cref="EnsureUnsupportedFilesVisible"/> is what makes the delivered
+    /// <c>docx</c>/<c>xlsx</c> appear at all, but it is all-or-nothing: it also
+    /// un-hides the raw ZIP in <c>原始归档</c> and anything technical that
+    /// arrived with a client's files. Obsidian's own "Excluded files" setting
+    /// looks like the answer and is not — it only affects search, graph and
+    /// backlinks, never the file explorer. A CSS snippet is the one native
+    /// mechanism that removes an entry from the tree, and it leaves the path
+    /// untouched, so the note's <c>[[原始归档/…zip]]</c> link keeps working.
+    /// </para>
+    /// <para>
+    /// Product-managed and idempotent: the snippet is rewritten whenever its
+    /// text changes, so a new extension reaches existing vaults on the next
+    /// settings save. Everything else in <c>appearance.json</c> — including
+    /// snippets the user enabled themselves — is preserved. Both files are
+    /// read by Obsidian at startup, so a running Obsidian shows the result
+    /// after a restart.
+    /// </para>
+    /// </summary>
+    /// <returns>True when the snippet exists and is enabled for the vault.</returns>
+    public static bool EnsureTechnicalFilesHidden(string vaultPath, out string? error)
+    {
+        error = null;
+        var normalized = Normalize(vaultPath);
+        if (normalized.Length == 0)
+        {
+            error = "知识库路径为空。";
+            return false;
+        }
+        var obsidianDir = Path.Combine(normalized, ".obsidian");
+        if (!Directory.Exists(obsidianDir))
+        {
+            error = $"知识库尚未初始化：{normalized}";
+            return false;
+        }
+        if (!SeedTechnicalFilesHidden(obsidianDir))
+        {
+            error = "无法写入知识库的显示设置。";
+            return false;
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// Writes the snippet and enables it. <paramref name="obsidianDir"/> is the
+    /// vault's <c>.obsidian</c> folder, which the caller has already confirmed
+    /// exists.
+    /// </summary>
+    private static bool SeedTechnicalFilesHidden(string obsidianDir)
+    {
         try
         {
-            // Same reasoning as the vault registry: write beside the original
-            // and move into place, so a crash cannot leave Obsidian with a
-            // half-written settings file.
+            var snippets = Path.Combine(obsidianDir, SnippetsFolderName);
+            Directory.CreateDirectory(snippets);
+            var snippetPath = Path.Combine(snippets, TechnicalFilesSnippet + ".css");
+            var existing = File.Exists(snippetPath) ? File.ReadAllText(snippetPath) : null;
+            if (!string.Equals(existing, TechnicalFilesCss, StringComparison.Ordinal))
+                File.WriteAllText(snippetPath, TechnicalFilesCss);
+        }
+        catch (Exception write) when (write is IOException or UnauthorizedAccessException
+            or NotSupportedException)
+        {
+            return false;
+        }
+
+        var appearancePath = Path.Combine(obsidianDir, "appearance.json");
+        JsonObject root;
+        bool changed;
+        try
+        {
+            if (!TryLoadJsonObject(appearancePath, out root))
+                return true;
+            var enabled = root["enabledCssSnippets"] as JsonArray;
+            changed = enabled is null;
+            if (enabled is null)
+            {
+                enabled = new JsonArray();
+                root["enabledCssSnippets"] = enabled;
+            }
+            var already = enabled.Any(node =>
+                node is JsonValue value
+                && value.TryGetValue<string>(out var name)
+                && string.Equals(name, TechnicalFilesSnippet, StringComparison.Ordinal));
+            if (!already)
+            {
+                enabled.Add(TechnicalFilesSnippet);
+                changed = true;
+            }
+        }
+        catch (Exception read) when (read is IOException or UnauthorizedAccessException
+            or JsonException or NotSupportedException)
+        {
+            return false;
+        }
+
+        // Untouched when it already lists the snippet: this file belongs to
+        // Obsidian, and a rewrite every save is noise it has to re-read.
+        return !changed || WriteJsonAtomically(appearancePath, root);
+    }
+
+    /// <summary>
+    /// Reads a JSON settings file into an object.
+    /// <para>
+    /// A missing or empty file yields a fresh object (the caller is about to
+    /// create it). Returns false when the file exists but is not a JSON object:
+    /// that is somebody's hand-made file, and merging into it would overwrite
+    /// whatever shape they chose.
+    /// </para>
+    /// </summary>
+    private static bool TryLoadJsonObject(string path, out JsonObject root)
+    {
+        root = new JsonObject();
+        if (!File.Exists(path))
+            return true;
+        var text = File.ReadAllText(path);
+        if (string.IsNullOrWhiteSpace(text))
+            return true;
+        using var document = JsonDocument.Parse(text);
+        if (document.RootElement.ValueKind != JsonValueKind.Object)
+            return false;
+        root = (JsonObject)JsonNode.Parse(document.RootElement.GetRawText())!;
+        return true;
+    }
+
+    /// <summary>
+    /// Writes the object beside the original and moves it into place, so a
+    /// crash cannot leave Obsidian with a half-written settings file.
+    /// </summary>
+    private static bool WriteJsonAtomically(string path, JsonObject root)
+    {
+        try
+        {
             var temporary = path + ".tmp";
             File.WriteAllText(temporary, root.ToJsonString(new JsonSerializerOptions { WriteIndented = false }));
             File.Move(temporary, path, overwrite: true);
